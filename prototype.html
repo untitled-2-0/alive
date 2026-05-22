@@ -1,0 +1,1433 @@
+&#65533;<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alive &#65533; Therapy Platform</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --primary: #5B6AF0; --primary-light: #EEF0FD; --primary-dark: #3D4CC7;
+  --accent: #38BFA1; --accent-light: #E8F8F5;
+  --danger: #E05252; --danger-light: #FEF2F2;
+  --warn: #F59E0B; --warn-light: #FFFBEB;
+  --text: #1A1D2E; --text-muted: #6B7280;
+  --border: #E5E7EB; --bg: #F8F9FC; --white: #FFFFFF;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06);
+  --radius: 12px;
+}
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.55; }
+
+/* SCREENS */
+.screen { display: none; min-height: 100vh; flex-direction: column; }
+.screen.active { display: flex; }
+
+/* NAV */
+nav.topnav {
+  background: var(--white); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 28px; height: 60px; gap: 8px;
+  position: sticky; top: 0; z-index: 100;
+}
+.nav-logo { font-weight: 700; font-size: 18px; color: var(--primary); margin-right: auto; cursor: pointer; text-decoration: none; }
+.nav-logo span { color: var(--accent); }
+.nav-link { padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 14px; color: var(--text-muted); border: none; background: none; transition: .15s; }
+.nav-link:hover, .nav-link.active { background: var(--primary-light); color: var(--primary); }
+.nav-btn { padding: 7px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; border: none; transition: .15s; }
+.nav-btn.primary { background: var(--primary); color: #fff; }
+.nav-btn.primary:hover { background: var(--primary-dark); }
+.nav-btn.outline { background: none; border: 1.5px solid var(--border); color: var(--text); }
+.nav-btn.outline:hover { border-color: var(--primary); color: var(--primary); }
+.nav-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--primary); color: #fff; display: grid; place-items: center; font-size: 13px; font-weight: 700; cursor: pointer; flex-shrink: 0; }
+.nav-role-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: var(--primary-light); color: var(--primary); }
+.nav-role-badge.therapist { background: var(--accent-light); color: #0F766E; }
+.nav-role-badge.admin { background: var(--warn-light); color: #92400E; }
+
+/* LAYOUT */
+.page-wrap { max-width: 1100px; margin: 0 auto; padding: 36px 24px; flex: 1; }
+.page-wrap.narrow { max-width: 680px; }
+.page-wrap.wide { max-width: 1300px; }
+.page-header { margin-bottom: 28px; }
+.page-header h1 { font-size: 26px; font-weight: 700; }
+.page-header p { color: var(--text-muted); margin-top: 4px; }
+
+/* CARD */
+.card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 24px; }
+.card + .card { margin-top: 16px; }
+
+/* GRIDS */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; }
+
+/* BUTTONS */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 20px; border-radius: 8px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; transition: .15s; text-decoration: none; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-outline { background: none; border: 1.5px solid var(--border); color: var(--text); }
+.btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-ghost { background: none; border: none; color: var(--text-muted); padding: 6px 10px; cursor: pointer; }
+.btn-ghost:hover { color: var(--primary); }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+.btn-lg { padding: 13px 28px; font-size: 16px; border-radius: 10px; }
+.btn-block { width: 100%; justify-content: center; }
+
+/* FORM */
+.form-group { margin-bottom: 18px; }
+.form-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+.form-input, .form-select, .form-textarea { width: 100%; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--white); outline: none; transition: border-color .15s; font-family: inherit; color: var(--text); }
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--primary); }
+.form-textarea { resize: vertical; min-height: 90px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.checkbox-group { display: flex; flex-direction: column; gap: 8px; }
+.checkbox-item { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+.checkbox-item input { width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary); }
+.radio-group { display: flex; flex-direction: column; gap: 10px; }
+.radio-card { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color .15s; }
+.radio-card:hover { border-color: var(--primary); }
+.radio-card input { margin-top: 2px; accent-color: var(--primary); }
+.radio-card-label { font-weight: 600; font-size: 14px; }
+.radio-card-desc { font-size: 12px; color: var(--text-muted); }
+
+/* BADGES / TAGS */
+.badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.badge-green { background: var(--accent-light); color: #0F766E; }
+.badge-blue { background: var(--primary-light); color: var(--primary); }
+.badge-yellow { background: var(--warn-light); color: #92400E; }
+.badge-red { background: var(--danger-light); color: var(--danger); }
+.badge-gray { background: #F3F4F6; color: var(--text-muted); }
+.tag { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; background: var(--primary-light); color: var(--primary); }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* SIDEBAR LAYOUT */
+.sidebar-layout { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: start; }
+.sidebar { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; position: sticky; top: 80px; }
+.sidebar-link { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; color: var(--text-muted); border: none; background: none; width: 100%; text-align: left; transition: .15s; }
+.sidebar-link:hover { background: var(--bg); color: var(--text); }
+.sidebar-link.active { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+.sidebar-section { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; padding: 12px 12px 4px; }
+
+/* STAT CARD */
+.stat-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
+.stat-label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+.stat-value { font-size: 28px; font-weight: 700; }
+.stat-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+/* TABLE */
+.table-wrap { overflow-x: auto; border-radius: var(--radius); box-shadow: var(--shadow); }
+table { width: 100%; border-collapse: collapse; background: var(--white); }
+thead th { background: var(--bg); padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+tbody td { padding: 13px 16px; border-top: 1px solid var(--border); font-size: 14px; }
+tbody tr:hover td { background: #FAFBFF; }
+
+/* AVATAR */
+.avatar { border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent)); color: #fff; display: grid; place-items: center; font-weight: 700; flex-shrink: 0; }
+.avatar-lg { width: 80px; height: 80px; font-size: 28px; }
+.avatar-md { width: 48px; height: 48px; font-size: 18px; }
+.avatar-sm { width: 36px; height: 36px; font-size: 14px; }
+
+/* PROGRESS */
+.progress-bar-wrap { background: var(--border); border-radius: 99px; height: 6px; }
+.progress-bar { background: var(--primary); border-radius: 99px; height: 6px; }
+
+/* MISC */
+hr.divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+.alert { padding: 12px 16px; border-radius: 8px; font-size: 14px; }
+.alert-info { background: var(--primary-light); color: var(--primary); }
+.alert-warn { background: var(--warn-light); color: #92400E; }
+.alert-danger { background: var(--danger-light); color: var(--danger); }
+.flex-between { display: flex; justify-content: space-between; align-items: center; }
+.flex-center { display: flex; align-items: center; }
+.gap-8 { gap: 8px; } .gap-12 { gap: 12px; } .gap-16 { gap: 16px; }
+.mb-8 { margin-bottom: 8px; } .mb-16 { margin-bottom: 16px; } .mb-24 { margin-bottom: 24px; }
+.mt-8 { margin-top: 8px; } .mt-16 { margin-top: 16px; } .mt-24 { margin-top: 24px; }
+.text-muted { color: var(--text-muted); } .text-sm { font-size: 13px; } .text-xs { font-size: 12px; }
+.font-bold { font-weight: 700; }
+
+/* TABS */
+.tabs { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 24px; }
+.tab-btn { padding: 10px 20px; border: none; background: none; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: .15s; }
+.tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* MODAL */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: grid; place-items: center; z-index: 999; }
+.modal-box { background: var(--white); border-radius: var(--radius); padding: 32px; max-width: 480px; width: 90%; box-shadow: 0 8px 40px rgba(0,0,0,.18); text-align: center; }
+
+/* CALENDAR */
+.cal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; }
+.cal-day-name { text-align: center; font-size: 12px; font-weight: 700; color: var(--text-muted); padding: 6px 0; }
+.cal-day { text-align: center; padding: 8px 4px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: .15s; }
+.cal-day.empty { cursor: default; }
+.cal-day.available:hover { background: var(--primary-light); color: var(--primary); }
+.cal-day.selected { background: var(--primary); color: #fff; font-weight: 700; }
+.cal-day.past { color: var(--border); cursor: default; }
+.time-slots { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-top: 16px; }
+.time-slot { padding: 9px; border: 1.5px solid var(--border); border-radius: 8px; text-align: center; font-size: 13px; cursor: pointer; transition: .15s; }
+.time-slot:hover { border-color: var(--primary); color: var(--primary); }
+.time-slot.selected { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 700; }
+.time-slot.booked { background: var(--bg); color: var(--text-muted); cursor: not-allowed; text-decoration: line-through; }
+
+/* MESSAGES */
+.msg-layout { display: grid; grid-template-columns: 280px 1fr; height: calc(100vh - 60px); }
+.msg-list { background: var(--white); border-right: 1px solid var(--border); overflow-y: auto; }
+.msg-list-header { padding: 16px; font-weight: 700; border-bottom: 1px solid var(--border); }
+.msg-item { display: flex; gap: 12px; padding: 14px 16px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background .12s; }
+.msg-item:hover { background: var(--bg); }
+.msg-item.active { background: var(--primary-light); }
+.msg-thread { display: flex; flex-direction: column; }
+.msg-thread-header { padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--white); display: flex; align-items: center; gap: 12px; }
+.msg-bubbles { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; background: var(--bg); }
+.bubble-wrap { display: flex; gap: 10px; align-items: flex-end; }
+.bubble-wrap.mine { flex-direction: row-reverse; }
+.bubble { max-width: 65%; padding: 11px 15px; border-radius: 16px; font-size: 14px; line-height: 1.5; }
+.bubble.theirs { background: var(--white); box-shadow: var(--shadow); border-bottom-left-radius: 4px; }
+.bubble.mine { background: var(--primary); color: #fff; border-bottom-right-radius: 4px; }
+.bubble-time { font-size: 11px; color: var(--text-muted); }
+.msg-compose { padding: 14px 20px; border-top: 1px solid var(--border); background: var(--white); display: flex; gap: 10px; }
+.msg-compose input { flex: 1; padding: 10px 16px; border: 1.5px solid var(--border); border-radius: 24px; font-size: 14px; outline: none; }
+.msg-compose input:focus { border-color: var(--primary); }
+
+/* VIDEO */
+.video-room { background: #0f1117; flex: 1; display: flex; flex-direction: column; }
+.video-main { flex: 1; display: grid; grid-template-columns: 1fr 300px; }
+.video-tile { border-radius: 12px; background: #1e2132; position: relative; display: flex; align-items: center; justify-content: center; }
+.video-stage { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.video-label { position: absolute; bottom: 10px; left: 12px; color: #fff; font-size: 12px; font-weight: 600; background: rgba(0,0,0,.5); padding: 3px 8px; border-radius: 6px; }
+.video-controls { background: #1e2132; padding: 16px 24px; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.vid-btn { width: 46px; height: 46px; border-radius: 50%; border: none; cursor: pointer; display: grid; place-items: center; font-size: 18px; transition: .15s; }
+.vid-btn-normal { background: #2a2f45; color: #fff; }
+.vid-btn-normal:hover { background: #3a405a; }
+.vid-btn-danger { background: var(--danger); color: #fff; }
+.video-sidebar-chat { background: #1a1e2e; display: flex; flex-direction: column; }
+.video-chat-header { padding: 16px; border-bottom: 1px solid #2a2f45; color: #fff; font-weight: 600; font-size: 14px; }
+.video-chat-msgs { flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.chat-msg-name { font-weight: 700; color: var(--primary); margin-bottom: 2px; font-size: 13px; }
+.chat-msg-name.them { color: var(--accent); }
+.chat-msg-text { color: #c0c4d8; font-size: 13px; }
+.video-chat-input { padding: 12px; border-top: 1px solid #2a2f45; display: flex; gap: 8px; }
+.video-chat-input input { flex: 1; background: #2a2f45; border: none; border-radius: 8px; padding: 9px 12px; color: #fff; font-size: 13px; outline: none; }
+
+/* ONBOARDING STEPS */
+.ob-step { display: none; }
+.ob-step.active { display: block; }
+.step-dot { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; border: 2px solid var(--border); color: var(--text-muted); }
+.step-dot.done { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step-dot.current { background: var(--primary); border-color: var(--primary); color: #fff; }
+.step-line { flex: 1; height: 2px; background: var(--border); border-radius: 2px; }
+.step-line.done { background: var(--accent); }
+
+/* THERAPIST CARD */
+.therapist-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px; display: flex; gap: 18px; align-items: flex-start; cursor: pointer; transition: box-shadow .15s; }
+.therapist-card:hover { box-shadow: 0 4px 24px rgba(91,106,240,.15); }
+
+/* LANDING / LOGIN */
+.landing-root { min-height: 100vh; display: grid; grid-template-columns: 1fr 480px; }
+
+/* Left panel &#65533; hero */
+.landing-hero {
+  background: linear-gradient(160deg, #3D4CC7 0%, #5B6AF0 45%, #38BFA1 100%);
+  display: flex; flex-direction: column; padding: 0; position: relative; overflow: hidden;
+}
+.landing-hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='600' height='600' viewBox='0 0 600 600' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Ccircle cx='300' cy='300' r='280'/%3E%3Ccircle cx='300' cy='300' r='200'/%3E%3Ccircle cx='300' cy='300' r='120'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") center/cover;
+}
+.landing-hero-nav {
+  position: relative; z-index: 2;
+  display: flex; align-items: center; padding: 28px 40px; gap: 12px;
+}
+.hero-logo { font-size: 22px; font-weight: 800; color: #fff; margin-right: auto; }
+.hero-logo span { opacity: .75; }
+.hero-nav-link { color: rgba(255,255,255,.75); font-size: 14px; padding: 7px 14px; border-radius: 8px; border: none; background: none; cursor: pointer; transition: .15s; }
+.hero-nav-link:hover { background: rgba(255,255,255,.12); color: #fff; }
+.landing-hero-body {
+  flex: 1; display: flex; flex-direction: column; justify-content: center;
+  padding: 40px 48px 60px; position: relative; z-index: 2;
+}
+.hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25);
+  padding: 6px 14px; border-radius: 999px; margin-bottom: 28px;
+  font-size: 13px; color: rgba(255,255,255,.9); font-weight: 500; width: fit-content;
+}
+.hero-eyebrow span { width: 7px; height: 7px; border-radius: 50%; background: #7DFFD0; display: inline-block; }
+.landing-hero-body h1 {
+  font-size: clamp(32px, 3.5vw, 48px); font-weight: 800; color: #fff;
+  line-height: 1.15; letter-spacing: -.02em; margin-bottom: 20px;
+}
+.landing-hero-body h1 em { font-style: normal; color: #A5F3DC; }
+.landing-hero-body p { font-size: 17px; color: rgba(255,255,255,.8); line-height: 1.6; max-width: 460px; margin-bottom: 40px; }
+
+.hero-stats { display: flex; gap: 32px; margin-bottom: 44px; }
+.hero-stat { }
+.hero-stat-num { font-size: 26px; font-weight: 800; color: #fff; }
+.hero-stat-label { font-size: 12px; color: rgba(255,255,255,.65); margin-top: 2px; }
+
+.hero-testimonials { display: flex; flex-direction: column; gap: 12px; }
+.hero-quote {
+  background: rgba(255,255,255,.1); backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.18); border-radius: 14px;
+  padding: 16px 18px; display: flex; gap: 12px; align-items: flex-start;
+}
+.hero-quote-avatar {
+  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+  background: rgba(255,255,255,.25); display: grid; place-items: center;
+  font-size: 13px; font-weight: 700; color: #fff;
+}
+.hero-quote-text { font-size: 13px; color: rgba(255,255,255,.9); line-height: 1.5; }
+.hero-quote-name { font-size: 11px; color: rgba(255,255,255,.55); margin-top: 4px; }
+
+/* Right panel &#65533; login form */
+.landing-form-panel {
+  background: var(--white); display: flex; flex-direction: column;
+  justify-content: center; padding: 56px 48px; overflow-y: auto;
+}
+.form-panel-header { margin-bottom: 36px; }
+.form-panel-header h2 { font-size: 26px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
+.form-panel-header p { color: var(--text-muted); font-size: 15px; }
+
+.role-selector { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 28px; }
+.role-option {
+  padding: 14px 10px; border: 2px solid var(--border); border-radius: 12px;
+  text-align: center; cursor: pointer; transition: all .18s;
+  background: var(--white);
+}
+.role-option:hover { border-color: var(--primary); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(91,106,240,.12); }
+.role-option.selected { border-color: var(--primary); background: var(--primary-light); }
+.role-option .role-icon { font-size: 24px; margin-bottom: 6px; }
+.role-option .role-name { font-size: 13px; font-weight: 700; color: var(--text); }
+.role-option.selected .role-name { color: var(--primary); }
+
+.form-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0; }
+.form-divider::before, .form-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.form-divider span { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+
+.login-input-wrap { position: relative; margin-bottom: 16px; }
+.login-input-wrap .input-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 16px; pointer-events: none; }
+.login-input-wrap input {
+  width: 100%; padding: 12px 14px 12px 42px; border: 1.5px solid var(--border);
+  border-radius: 10px; font-size: 14px; background: var(--white); outline: none;
+  transition: border-color .15s; font-family: inherit; color: var(--text);
+}
+.login-input-wrap input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(91,106,240,.1); }
+.login-input-wrap input::placeholder { color: #9CA3AF; }
+
+.login-btn {
+  width: 100%; padding: 14px; background: var(--primary); color: #fff;
+  border: none; border-radius: 10px; font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: all .18s; letter-spacing: .01em;
+  margin-top: 4px;
+}
+.login-btn:hover { background: var(--primary-dark); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(91,106,240,.35); }
+.login-btn:active { transform: none; }
+
+.demo-hint {
+  margin-top: 20px; padding: 14px 16px; background: #F8F9FC;
+  border-radius: 10px; border: 1px dashed var(--border);
+  font-size: 12px; color: var(--text-muted); line-height: 1.6;
+}
+.demo-hint strong { color: var(--text); }
+
+@media (max-width: 900px) {
+  .landing-root { grid-template-columns: 1fr; }
+  .landing-hero { min-height: 380px; }
+  .landing-form-panel { padding: 40px 28px; }
+}
+
+@media(max-width:768px){
+  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr;}
+  .sidebar-layout{grid-template-columns:1fr;}
+  .msg-layout{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<!-- &#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533; LANDING + LOGIN &#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533; -->
+<section class="screen active" id="screen-login">
+  <div class="landing-root">
+
+    <!-- &#65533;&#65533;&#65533;&#65533; LEFT: Hero &#65533;&#65533;&#65533;&#65533; -->
+    <div class="landing-hero">
+      <nav class="landing-hero-nav">
+        <div class="hero-logo">Alive</div>
+        <button class="hero-nav-link">How It Works</button>
+        <button class="hero-nav-link">For Therapists</button>
+        <button class="hero-nav-link">Pricing</button>
+      </nav>
+
+      <div class="landing-hero-body">
+        <div class="hero-eyebrow"><span></span> Trusted by 12,000+ people across 40 countries</div>
+
+        <h1>Therapy that <em>fits your life</em>, not the other way around</h1>
+        <p>Get matched with a licensed therapist in minutes. Secure video sessions, private messaging, and flexible scheduling &#65533; all in one place.</p>
+
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <div class="hero-stat-num">2,400+</div>
+            <div class="hero-stat-label">Licensed Therapists</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-num">96%</div>
+            <div class="hero-stat-label">Client Satisfaction</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-num">48h</div>
+            <div class="hero-stat-label">Avg. Time to First Session</div>
+          </div>
+        </div>
+
+        <div class="hero-testimonials">
+          <div class="hero-quote">
+            <div class="hero-quote-avatar">AT</div>
+            <div>
+              <div class="hero-quote-text">"I found my therapist within a day. The matching was spot-on &#65533; she specialises in exactly what I needed."</div>
+              <div class="hero-quote-name">Alex T. &middot; Client since 2024</div>
+            </div>
+          </div>
+          <div class="hero-quote">
+            <div class="hero-quote-avatar">MR</div>
+            <div>
+              <div class="hero-quote-text">"The platform made it easy to manage my schedule and stay connected with clients between sessions."</div>
+              <div class="hero-quote-name">Dr. Maria R. &middot; Therapist</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- &#65533;&#65533;&#65533;&#65533; RIGHT: Login Form &#65533;&#65533;&#65533;&#65533; -->
+    <div class="landing-form-panel">
+      <div class="form-panel-header">
+        <h2>Welcome back</h2>
+        <p>Sign in to continue your journey</p>
+      </div>
+
+      <div style="font-size:13px;font-weight:700;color:var(--text-muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:.05em;">I am a&#11046;</div>
+      <div class="role-selector">
+        <div class="role-option selected" id="role-client" onclick="selectRole('client')">
+          <div class="role-icon">&#65533;x"&#65533;</div>
+          <div class="role-name">Client</div>
+        </div>
+        <div class="role-option" id="role-therapist" onclick="selectRole('therapist')">
+          <div class="role-icon">&#65533;x&#65533;&#65533;</div>
+          <div class="role-name">Therapist</div>
+        </div>
+        <div class="role-option" id="role-admin" onclick="selectRole('admin')">
+          <div class="role-icon">&#65533;a"&#65039;</div>
+          <div class="role-name">Admin</div>
+        </div>
+      </div>
+
+      <div class="login-input-wrap">
+        <span class="input-icon">&#65533;S0&#65039;</span>
+        <input type="email" placeholder="Email address" id="login-email">
+      </div>
+      <div class="login-input-wrap">
+        <span class="input-icon">&#65533;x</span>
+        <input type="password" placeholder="Password" id="login-password">
+      </div>
+
+      <div style="text-align:right;margin-bottom:20px;margin-top:-4px;">
+        <button style="font-size:13px;color:var(--primary);background:none;border:none;cursor:pointer;font-weight:600;">Forgot password?</button>
+      </div>
+
+      <button class="login-btn" onclick="doLogin()">Sign In &#65533; </button>
+
+      <div class="form-divider"><span>NEW TO Alive?</span></div>
+
+      <button onclick="goScreen('onboarding')" style="width:100%;padding:13px;background:none;border:2px solid var(--border);border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;color:var(--text);transition:.18s;" onmouseover="this.style.borderColor='var(--primary)';this.style.color='var(--primary)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">
+        Create a free account
+      </button>
+
+      <div class="demo-hint">
+        <strong>Demo:</strong> select Client, Therapist, or Admin above, then click Sign In to explore that role. No real credentials needed.
+      </div>
+
+      <p style="text-align:center;font-size:12px;color:var(--text-muted);margin-top:24px;line-height:1.6;">
+        By signing in you agree to our <a href="#" style="color:var(--primary)">Terms of Service</a> and <a href="#" style="color:var(--primary)">Privacy Policy</a>.
+      </p>
+    </div>
+
+  </div>
+</section>
+
+<!-- &#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533; ONBOARDING (new client signup) &#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533; -->
+<section class="screen" id="screen-onboarding">
+  <nav class="topnav">
+    <a class="nav-logo" onclick="goScreen('login')">Alive</a>
+    <button class="nav-link" onclick="goScreen('login')">&#65533; &#65533; Back to login</button>
+  </nav>
+  <div class="page-wrap narrow">
+    <div class="page-header"><h1>Create your account</h1><p>5 minutes to find the right therapist for you.</p></div>
+
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:32px;">
+      <div class="step-dot done" id="sd1">&#65533;S</div><div class="step-line done" id="sl1"></div>
+      <div class="step-dot current" id="sd2">2</div><div class="step-line" id="sl2"></div>
+      <div class="step-dot" id="sd3">3</div><div class="step-line" id="sl3"></div>
+      <div class="step-dot" id="sd4">4</div>
+    </div>
+
+    <div class="ob-step" id="ob1">
+      <div class="card">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:20px;">Your details</h2>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">First Name *</label><input class="form-input" placeholder="Jane"></div>
+          <div class="form-group"><label class="form-label">Last Name *</label><input class="form-input" placeholder="Smith"></div>
+        </div>
+        <div class="form-group"><label class="form-label">Email *</label><input class="form-input" type="email" placeholder="jane@example.com"></div>
+        <div class="form-group"><label class="form-label">Password *</label><input class="form-input" type="password" placeholder="Min. 8 characters"></div>
+        <div class="form-group"><label class="form-label">Date of Birth *</label><input class="form-input" type="date"></div>
+      </div>
+      <div class="flex-between mt-24"><span class="text-sm text-muted">Step 1 of 4</span><button class="btn btn-primary" onclick="obStep(2)">Continue &#65533; </button></div>
+    </div>
+
+    <div class="ob-step active" id="ob2">
+      <div class="card">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:20px;">What brings you here?</h2>
+        <div class="form-group">
+          <label class="form-label">Primary concern *</label>
+          <div class="radio-group">
+            <label class="radio-card"><input type="radio" name="concern"><div><div class="radio-card-label">Anxiety & Stress</div><div class="radio-card-desc">Worry, panic, burnout</div></div></label>
+            <label class="radio-card"><input type="radio" name="concern"><div><div class="radio-card-label">Depression & Mood</div><div class="radio-card-desc">Low mood, grief, motivation</div></div></label>
+            <label class="radio-card"><input type="radio" name="concern"><div><div class="radio-card-label">Relationships</div><div class="radio-card-desc">Couples, family, or personal</div></div></label>
+            <label class="radio-card"><input type="radio" name="concern"><div><div class="radio-card-label">Trauma & PTSD</div><div class="radio-card-desc">Past traumatic experiences</div></div></label>
+          </div>
+        </div>
+        <div class="form-group"><label class="form-label">Anything to add? <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label><textarea class="form-textarea" placeholder="In your own words&#11046;"></textarea></div>
+      </div>
+      <div class="flex-between mt-24">
+        <button class="btn btn-outline btn-sm" onclick="obStep(1)">&#65533; &#65533; Back</button>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-ghost btn-sm" onclick="alert('Progress saved!')">Save & Exit</button>
+          <button class="btn btn-primary" onclick="obStep(3)">Continue &#65533; </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ob-step" id="ob3">
+      <div class="card">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:20px;">Goals & preferences</h2>
+        <div class="form-group">
+          <label class="form-label">What would you like to achieve? *</label>
+          <div class="checkbox-group">
+            <label class="checkbox-item"><input type="checkbox"> Develop coping strategies</label>
+            <label class="checkbox-item"><input type="checkbox"> Improve relationships</label>
+            <label class="checkbox-item"><input type="checkbox"> Process past experiences</label>
+            <label class="checkbox-item"><input type="checkbox"> Reduce anxiety / depression symptoms</label>
+            <label class="checkbox-item"><input type="checkbox"> Personal growth & self-awareness</label>
+          </div>
+        </div>
+        <hr class="divider">
+        <div class="form-group"><label class="form-label">Preferred language *</label>
+          <select class="form-select"><option>English</option><option>Spanish</option><option>French</option><option>Arabic</option><option>Mandarin</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Therapist gender preference <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+          <div style="display:flex;gap:10px">
+            <label class="radio-card" style="flex:1;padding:10px"><input type="radio" name="gender"><div class="radio-card-label">No preference</div></label>
+            <label class="radio-card" style="flex:1;padding:10px"><input type="radio" name="gender"><div class="radio-card-label">Female</div></label>
+            <label class="radio-card" style="flex:1;padding:10px"><input type="radio" name="gender"><div class="radio-card-label">Male</div></label>
+          </div>
+        </div>
+      </div>
+      <div class="flex-between mt-24">
+        <button class="btn btn-outline btn-sm" onclick="obStep(2)">&#65533; &#65533; Back</button>
+        <button class="btn btn-primary" onclick="obStep(4)">Continue &#65533; </button>
+      </div>
+    </div>
+
+    <div class="ob-step" id="ob4">
+      <div class="card">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:20px;">Availability</h2>
+        <div class="form-group">
+          <label class="form-label">Preferred days *</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline btn-sm" onclick="this.classList.toggle('btn-primary');this.classList.toggle('btn-outline')">Mon</button>
+            <button class="btn btn-outline btn-sm" onclick="this.classList.toggle('btn-primary');this.classList.toggle('btn-outline')">Tue</button>
+            <button class="btn btn-outline btn-sm" onclick="this.classList.toggle('btn-primary');this.classList.toggle('btn-outline')">Wed</button>
+            <button class="btn btn-outline btn-sm" onclick="this.classList.toggle('btn-primary');this.classList.toggle('btn-outline')">Thu</button>
+            <button class="btn btn-outline btn-sm" onclick="this.classList.toggle('btn-primary');this.classList.toggle('btn-outline')">Fri</button>
+            <button class="btn btn-outline btn-sm" onclick="this.classList.toggle('btn-primary');this.classList.toggle('btn-outline')">Sat</button>
+            <button class="btn btn-outline btn-sm" onclick="this.classList.toggle('btn-primary');this.classList.toggle('btn-outline')">Sun</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Time of day *</label>
+          <div style="display:flex;gap:10px">
+            <label class="radio-card" style="flex:1;padding:10px 14px"><input type="radio" name="tod"><div><div class="radio-card-label">Morning</div><div class="radio-card-desc">8am&#65533;12pm</div></div></label>
+            <label class="radio-card" style="flex:1;padding:10px 14px"><input type="radio" name="tod"><div><div class="radio-card-label">Afternoon</div><div class="radio-card-desc">12&#65533;5pm</div></div></label>
+            <label class="radio-card" style="flex:1;padding:10px 14px"><input type="radio" name="tod"><div><div class="radio-card-label">Evening</div><div class="radio-card-desc">5&#65533;9pm</div></div></label>
+          </div>
+        </div>
+      </div>
+      <div class="flex-between mt-24">
+        <button class="btn btn-outline btn-sm" onclick="obStep(3)">&#65533; &#65533; Back</button>
+        <button class="btn btn-primary btn-lg" onclick="currentRole='client';goScreen('client-dash')">See My Matches &#65533; </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- &#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533; CLIENT &#65533; shared nav injected by JS &#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533; -->
+
+<!-- CLIENT: Browse Therapists -->
+<section class="screen" id="screen-browse">
+  <nav class="topnav" id="nav-browse"></nav>
+  <div class="page-wrap">
+    <div class="flex-between mb-24">
+      <div class="page-header" style="margin:0"><h1>Find a Therapist</h1><p>Results matched to your profile</p></div>
+      <button class="btn btn-outline">Filters &#65533;&#65533;</button>
+    </div>
+    <div style="display:grid;grid-template-columns:240px 1fr;gap:24px;align-items:start">
+      <aside class="card">
+        <h3 style="font-size:14px;font-weight:700;margin-bottom:16px">Filters</h3>
+        <div class="form-group">
+          <label class="form-label">Specialisation</label>
+          <div class="checkbox-group">
+            <label class="checkbox-item"><input type="checkbox" checked> Anxiety</label>
+            <label class="checkbox-item"><input type="checkbox" checked> Depression</label>
+            <label class="checkbox-item"><input type="checkbox"> Trauma / PTSD</label>
+            <label class="checkbox-item"><input type="checkbox"> Relationships</label>
+            <label class="checkbox-item"><input type="checkbox"> CBT</label>
+          </div>
+        </div>
+        <hr class="divider">
+        <div class="form-group"><label class="form-label">Language</label><select class="form-select"><option>English</option><option>Spanish</option></select></div>
+        <div class="form-group"><label class="form-label">Price ($/hr)</label><div style="display:flex;gap:8px"><input class="form-input" placeholder="Min" style="width:50%"><input class="form-input" placeholder="Max" style="width:50%"></div></div>
+        <div class="form-group"><label class="checkbox-item"><input type="checkbox" checked> Only accepting clients</label></div>
+        <button class="btn btn-primary btn-block btn-sm">Apply</button>
+      </aside>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <div class="therapist-card" onclick="goScreen('profile')">
+          <div class="avatar avatar-lg">SR</div>
+          <div style="flex:1">
+            <div class="flex-between"><h3 style="font-size:16px;font-weight:700">Dr. Sarah Reynolds</h3><span style="font-size:13px;font-weight:700;color:var(--accent)">96% match</span></div>
+            <div class="text-muted text-sm mb-8">Clinical Psychologist &middot; 12 yrs &middot; English, Spanish</div>
+            <div class="tags mb-8"><span class="tag">Anxiety</span><span class="tag">CBT</span><span class="tag">Depression</span></div>
+            <div class="flex-center gap-12"><span class="badge badge-green">&#65533;&#65533; Accepting</span><span class="text-sm text-muted">$120/session</span><span class="text-sm text-muted">&#11088; 4.9</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();goScreen('booking')">Book</button>
+            <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();goScreen('profile')">Profile</button>
+          </div>
+        </div>
+        <div class="therapist-card" onclick="goScreen('profile')">
+          <div class="avatar avatar-lg" style="background:linear-gradient(135deg,#38BFA1,#5B6AF0)">MP</div>
+          <div style="flex:1">
+            <div class="flex-between"><h3 style="font-size:16px;font-weight:700">Marcus Powell, LCSW</h3><span style="font-size:13px;font-weight:700;color:var(--accent)">89% match</span></div>
+            <div class="text-muted text-sm mb-8">Social Worker &middot; 8 yrs &middot; English</div>
+            <div class="tags mb-8"><span class="tag">Trauma</span><span class="tag">PTSD</span><span class="tag">Grief</span></div>
+            <div class="flex-center gap-12"><span class="badge badge-green">&#65533;&#65533; Accepting</span><span class="text-sm text-muted">$95/session</span><span class="text-sm text-muted">&#11088; 4.7</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+            <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();goScreen('booking')">Book</button>
+            <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();goScreen('profile')">Profile</button>
+          </div>
+        </div>
+        <div class="therapist-card">
+          <div class="avatar avatar-lg" style="background:linear-gradient(135deg,#F59E0B,#E05252)">LK</div>
+          <div style="flex:1">
+            <div class="flex-between"><h3 style="font-size:16px;font-weight:700">Dr. Leila Khoury</h3><span style="font-size:13px;font-weight:700;color:var(--accent)">81% match</span></div>
+            <div class="text-muted text-sm mb-8">Psychiatrist &middot; 15 yrs &middot; EN, AR, FR</div>
+            <div class="tags mb-8"><span class="tag">Mood Disorders</span><span class="tag">Bipolar</span></div>
+            <div class="flex-center gap-12"><span class="badge badge-yellow">&#65533;&#65533; Waitlist</span><span class="text-sm text-muted">$180/session</span><span class="text-sm text-muted">&#11088; 4.9</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+            <button class="btn btn-outline btn-sm" disabled style="opacity:.5">Waitlisted</button>
+            <button class="btn btn-outline btn-sm" onclick="goScreen('profile')">Profile</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CLIENT: Therapist Profile -->
+<section class="screen" id="screen-profile">
+  <nav class="topnav" id="nav-profile"></nav>
+  <div class="page-wrap">
+    <button class="btn btn-ghost mb-16" onclick="goScreen('browse')">&#65533; &#65533; Back to results</button>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:28px;align-items:start">
+      <div>
+        <div class="card mb-16">
+          <div style="display:flex;gap:20px;align-items:flex-start">
+            <div class="avatar avatar-lg" style="width:90px;height:90px;font-size:32px">SR</div>
+            <div style="flex:1">
+              <div class="flex-between"><h1 style="font-size:22px;font-weight:800">Dr. Sarah Reynolds</h1><span class="badge badge-green">&#65533;&#65533; Accepting</span></div>
+              <p class="text-muted text-sm mb-8">Clinical Psychologist &middot; CA, NY</p>
+              <div class="flex-center gap-12 mb-8"><span>&#11088; 4.9</span><span class="text-muted text-sm">84 reviews &middot; 12 years exp.</span></div>
+              <div class="tags"><span class="tag">Anxiety</span><span class="tag">CBT</span><span class="tag">Depression</span><span class="tag">OCD</span><span class="tag">Stress</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchTab('about')">About</button>
+          <button class="tab-btn" onclick="switchTab('availability')">Availability</button>
+          <button class="tab-btn" onclick="switchTab('reviews')">Reviews</button>
+        </div>
+        <div class="tab-panel active" id="tab-about">
+          <div class="card mb-16">
+            <h3 style="font-weight:700;margin-bottom:12px">Bio</h3>
+            <p class="text-sm text-muted" style="line-height:1.7">Dr. Reynolds is a licensed clinical psychologist with 12+ years helping clients manage anxiety, depression, and life transitions. She uses evidence-based CBT, ACT, and mindfulness approaches in a collaborative, client-centred way.</p>
+          </div>
+          <div class="card mb-16">
+            <h3 style="font-weight:700;margin-bottom:12px">Education & Credentials</h3>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div class="flex-center gap-12"><span style="font-size:20px">&#65533;x}</span><div><div style="font-weight:600;font-size:14px">Ph.D. Clinical Psychology</div><div class="text-muted text-sm">Stanford University, 2012</div></div></div>
+              <div class="flex-center gap-12"><span style="font-size:20px">&#65533;xS</span><div><div style="font-weight:600;font-size:14px">Licensed Psychologist (PSY 29087)</div><div class="text-muted text-sm">California Board of Psychology</div></div></div>
+            </div>
+          </div>
+          <div class="card"><h3 style="font-weight:700;margin-bottom:12px">Languages</h3><div class="tags"><span class="tag">English (Native)</span><span class="tag">Spanish (Fluent)</span></div></div>
+        </div>
+        <div class="tab-panel" id="tab-availability">
+          <div class="card">
+            <h3 style="font-weight:700;margin-bottom:16px">Available &#65533; June 2025</h3>
+            <div class="cal-header">
+              <button class="btn btn-ghost btn-sm">&#65533; &#65533; May</button>
+              <span style="font-weight:600">June 2025</span>
+              <button class="btn btn-ghost btn-sm">Jul &#65533; </button>
+            </div>
+            <div class="cal-grid" id="cal-profile"></div>
+          </div>
+        </div>
+        <div class="tab-panel" id="tab-reviews">
+          <div class="card">
+            <div style="display:flex;gap:24px;align-items:center;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border)">
+              <div style="text-align:center"><div style="font-size:48px;font-weight:800">4.9</div><div>&#11088;&#11088;&#11088;&#11088;&#11088;</div><div class="text-xs text-muted">84 reviews</div></div>
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="text-xs" style="width:20px">5&#65533;&#65533;&</span><div class="progress-bar-wrap" style="flex:1"><div class="progress-bar" style="width:85%"></div></div></div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span class="text-xs" style="width:20px">4&#65533;&#65533;&</span><div class="progress-bar-wrap" style="flex:1"><div class="progress-bar" style="width:12%;background:var(--accent)"></div></div></div>
+                <div style="display:flex;align-items:center;gap:8px"><span class="text-xs" style="width:20px">3&#65533;&#65533;&</span><div class="progress-bar-wrap" style="flex:1"><div class="progress-bar" style="width:3%;background:var(--warn)"></div></div></div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <div><div class="flex-between mb-8"><div class="flex-center gap-8"><div class="avatar avatar-sm">AT</div><span style="font-weight:600;font-size:14px">Alex T.</span></div><span class="text-xs text-muted">May 2025</span></div><div>&#11088;&#11088;&#11088;&#11088;&#11088;</div><p class="text-sm text-muted" style="margin-top:4px">Dr. Reynolds has been incredibly helpful. Her CBT approach gave me real tools to manage anxiety day-to-day.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <aside>
+        <div class="card" style="position:sticky;top:80px">
+          <div class="flex-between mb-16"><span style="font-size:22px;font-weight:800">$120</span><span class="text-muted text-sm">/ 50-min</span></div>
+          <button class="btn btn-primary btn-block mb-8" onclick="goScreen('booking')">Book a Session</button>
+          <button class="btn btn-outline btn-block mb-16" onclick="goScreen('client-messages')">Message</button>
+          <hr class="divider">
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+            <div class="flex-between"><span class="text-muted">Session</span><span>Video</span></div>
+            <div class="flex-between"><span class="text-muted">Languages</span><span>EN, ES</span></div>
+            <div class="flex-between"><span class="text-muted">Response</span><span>Within 24h</span></div>
+            <div class="flex-between"><span class="text-muted">Cancellation</span><span>24h notice</span></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- CLIENT: Booking -->
+<section class="screen" id="screen-booking">
+  <nav class="topnav" id="nav-booking"></nav>
+  <div class="page-wrap narrow">
+    <button class="btn btn-ghost mb-16" onclick="goScreen('profile')">&#65533; &#65533; Back to profile</button>
+    <div class="page-header"><h1>Book a Session</h1><p>with Dr. Sarah Reynolds</p></div>
+    <div class="card mb-16">
+      <h3 style="font-weight:700;margin-bottom:14px">Session type</h3>
+      <div class="radio-group">
+        <label class="radio-card"><input type="radio" name="stype" checked><div><div class="radio-card-label">Initial Consultation &#65533; $120</div><div class="radio-card-desc">First session &middot; 50 min</div></div></label>
+        <label class="radio-card"><input type="radio" name="stype"><div><div class="radio-card-label">Follow-up Session &#65533; $120</div><div class="radio-card-desc">Continued therapy &middot; 50 min</div></div></label>
+      </div>
+    </div>
+    <div class="card mb-16">
+      <h3 style="font-weight:700;margin-bottom:16px">Select a date</h3>
+      <div class="cal-header">
+        <button class="btn btn-ghost btn-sm">&#65533; &#65533; May</button>
+        <span style="font-weight:600">June 2025</span>
+        <button class="btn btn-ghost btn-sm">Jul &#65533; </button>
+      </div>
+      <div class="cal-grid" id="cal-booking"></div>
+      <div id="slots-wrap" style="display:none;margin-top:20px">
+        <h4 style="font-weight:700;font-size:14px;margin-bottom:10px">Times on <span id="slot-date-label"></span></h4>
+        <div class="time-slots">
+          <div class="time-slot" onclick="pickSlot(this)">9:00 AM</div>
+          <div class="time-slot" onclick="pickSlot(this)">10:00 AM</div>
+          <div class="time-slot booked">11:00 AM</div>
+          <div class="time-slot" onclick="pickSlot(this)">2:00 PM</div>
+          <div class="time-slot" onclick="pickSlot(this)">3:00 PM</div>
+          <div class="time-slot" onclick="pickSlot(this)">4:00 PM</div>
+          <div class="time-slot booked">5:00 PM</div>
+          <div class="time-slot" onclick="pickSlot(this)">6:00 PM</div>
+        </div>
+      </div>
+    </div>
+    <div class="card mb-16">
+      <h3 style="font-weight:700;margin-bottom:14px">Notes <span style="font-size:13px;font-weight:400;color:var(--text-muted)">(optional)</span></h3>
+      <textarea class="form-textarea" placeholder="Anything you'd like Dr. Reynolds to know beforehand&#11046;"></textarea>
+    </div>
+    <div class="alert alert-warn mb-16">&#65533;a&#65533;&#65039; Cancellation: full refund if cancelled 24h+ before the session.</div>
+    <div class="flex-between">
+      <button class="btn btn-outline" onclick="goScreen('profile')">Cancel</button>
+      <button class="btn btn-primary btn-lg" onclick="goScreen('payment')">Proceed to Payment &#65533; </button>
+    </div>
+  </div>
+</section>
+
+<!-- CLIENT: Payment -->
+<section class="screen" id="screen-payment">
+  <nav class="topnav" id="nav-payment"></nav>
+  <div class="page-wrap narrow">
+    <button class="btn btn-ghost mb-16" onclick="goScreen('booking')">&#65533; &#65533; Back</button>
+    <div class="page-header"><h1>Complete Payment</h1></div>
+    <div class="grid-2" style="align-items:start;gap:24px">
+      <div>
+        <div class="card mb-16">
+          <h3 style="font-weight:700;margin-bottom:16px">Card details</h3>
+          <div class="form-group"><label class="form-label">Name on card</label><input class="form-input" placeholder="Jane Smith"></div>
+          <div class="form-group"><label class="form-label">Card number</label><input class="form-input" placeholder="1234 5678 9012 3456"></div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Expiry</label><input class="form-input" placeholder="MM / YY"></div>
+            <div class="form-group"><label class="form-label">CVV</label><input class="form-input" placeholder="&#11042;&#11042;&#11042;"></div>
+          </div>
+          <div class="alert alert-info" style="font-size:13px;margin-top:8px">&#65533;x Encrypted & secure. Card details never stored.</div>
+        </div>
+      </div>
+      <div>
+        <div class="card mb-16">
+          <h3 style="font-weight:700;margin-bottom:16px">Summary</h3>
+          <div class="flex-between mb-8"><span class="text-sm">Initial Consultation &#65533; Dr. Reynolds</span><span class="text-sm font-bold">$120.00</span></div>
+          <div class="flex-between mb-8"><span class="text-sm text-muted">Jun 12 &middot; 10:00 AM &middot; 50 min</span></div>
+          <hr class="divider">
+          <div class="flex-between mb-16"><span style="font-weight:700">Total</span><span style="font-weight:700;font-size:18px">$120.00</span></div>
+          <button class="btn btn-primary btn-block btn-lg" onclick="showSuccess()">Pay $120.00</button>
+        </div>
+        <div class="card">
+          <h4 style="font-weight:700;font-size:13px;margin-bottom:8px">Refund Policy</h4>
+          <p class="text-sm text-muted">Full refund if cancelled 24h+ before. Cancellations within 24h are non-refundable.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CLIENT: Dashboard -->
+<section class="screen" id="screen-client-dash">
+  <nav class="topnav" id="nav-client-dash"></nav>
+  <div class="page-wrap">
+    <div class="page-header"><h1>Welcome back, Jane &#65533;x9</h1><p>Here's what's happening with your care.</p></div>
+    <div class="card mb-24" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark));color:#fff">
+      <div class="flex-between">
+        <div>
+          <div style="font-size:12px;opacity:.8;margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Upcoming Session</div>
+          <div style="font-size:20px;font-weight:700;margin-bottom:4px">Dr. Sarah Reynolds</div>
+          <div style="opacity:.85">Thursday, June 12 &middot; 10:00 AM &middot; 50 min &middot; Video</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+          <button class="btn" style="background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.4)" onclick="goScreen('video')">Join Session</button>
+          <button class="btn btn-sm" style="background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.3)" onclick="goScreen('booking')">Reschedule</button>
+        </div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h2 style="font-size:16px;font-weight:700;margin-bottom:12px">Session History</h2>
+        <div class="card">
+          <div style="display:flex;flex-direction:column;gap:0">
+            <div style="display:flex;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)">
+              <div style="width:40px;text-align:center;font-size:12px;font-weight:700;color:var(--primary)">JUN<br>12</div>
+              <div style="flex:1"><div style="font-weight:600;font-size:14px">Dr. Sarah Reynolds</div><div class="text-sm text-muted">10:00 AM &middot; Initial Consultation</div></div>
+              <span class="badge badge-blue">Upcoming</span>
+            </div>
+            <div style="display:flex;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)">
+              <div style="width:40px;text-align:center;font-size:12px;font-weight:700;color:var(--text-muted)">MAY<br>28</div>
+              <div style="flex:1"><div style="font-weight:600;font-size:14px">Dr. Sarah Reynolds</div><div class="text-sm text-muted">2:00 PM &middot; Follow-up</div></div>
+              <div style="display:flex;gap:6px;align-items:center"><span class="badge badge-green">Completed</span><button class="btn btn-ghost btn-sm" title="Download invoice">&#65533;x&#65533;&#65533;</button></div>
+            </div>
+            <div style="display:flex;gap:14px;align-items:center;padding:12px 0">
+              <div style="width:40px;text-align:center;font-size:12px;font-weight:700;color:var(--text-muted)">MAY<br>14</div>
+              <div style="flex:1"><div style="font-weight:600;font-size:14px">Dr. Sarah Reynolds</div><div class="text-sm text-muted">10:00 AM &middot; Follow-up</div></div>
+              <div style="display:flex;gap:6px;align-items:center"><span class="badge badge-green">Completed</span><button class="btn btn-ghost btn-sm" title="Download invoice">&#65533;x&#65533;&#65533;</button></div>
+            </div>
+          </div>
+          <div style="padding-top:12px;border-top:1px solid var(--border);margin-top:4px">
+            <button class="btn btn-primary btn-sm" onclick="goScreen('booking')">+ Book New Session</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <h2 style="font-size:16px;font-weight:700;margin-bottom:12px">Messages</h2>
+        <div class="card mb-16" style="cursor:pointer" onclick="goScreen('client-messages')">
+          <div style="display:flex;gap:12px;align-items:center;padding-bottom:12px;border-bottom:1px solid var(--border)">
+            <div class="avatar avatar-md">SR</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;font-size:14px">Dr. Sarah Reynolds</div>
+              <div class="text-sm text-muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Looking forward to our session on Thursday!</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+              <span class="text-xs text-muted">2h ago</span>
+              <span style="width:18px;height:18px;background:var(--primary);color:#fff;border-radius:50%;font-size:10px;display:grid;place-items:center;font-weight:700">1</span>
+            </div>
+          </div>
+          <div style="padding-top:12px;text-align:center"><button class="btn btn-outline btn-sm">Open Messages</button></div>
+        </div>
+        <h2 style="font-size:16px;font-weight:700;margin-bottom:12px">My Therapist</h2>
+        <div class="card">
+          <div style="display:flex;gap:12px;align-items:center;margin-bottom:14px">
+            <div class="avatar avatar-md">SR</div>
+            <div><div style="font-weight:600">Dr. Sarah Reynolds</div><span class="badge badge-green mt-4">&#65533;&#65533; Active match</span></div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" onclick="goScreen('booking')">Book Follow-up</button>
+            <button class="btn btn-ghost btn-sm" onclick="goScreen('browse')">Switch Therapist</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CLIENT: Messages -->
+<section class="screen" id="screen-client-messages">
+  <nav class="topnav" id="nav-client-messages"></nav>
+  <div class="msg-layout">
+    <div class="msg-list">
+      <div class="msg-list-header">Messages</div>
+      <div class="msg-item active">
+        <div class="avatar avatar-sm">SR</div>
+        <div style="flex:1;min-width:0">
+          <div class="flex-between"><span style="font-weight:600;font-size:14px">Dr. Sarah Reynolds</span><span class="text-xs text-muted">2h</span></div>
+          <div class="text-sm text-muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Looking forward to our session!</div>
+        </div>
+      </div>
+    </div>
+    <div class="msg-thread">
+      <div class="msg-thread-header">
+        <div class="avatar avatar-md">SR</div>
+        <div><h3 style="font-size:15px;font-weight:700">Dr. Sarah Reynolds</h3><div class="text-xs text-muted">Responds within 24 hours</div></div>
+        <div style="margin-left:auto"><button class="btn btn-outline btn-sm" onclick="goScreen('booking')">Book Session</button></div>
+      </div>
+      <div class="msg-bubbles">
+        <div style="text-align:center;font-size:12px;color:var(--text-muted);padding:8px 0">May 30, 2025</div>
+        <div class="bubble-wrap"><div class="avatar avatar-sm">SR</div><div><div class="bubble theirs">Hi Jane, great session today. Try the breathing exercise we discussed when you feel anxious.</div><div class="bubble-time">2:15 PM</div></div></div>
+        <div class="bubble-wrap mine"><div><div class="bubble mine">Thank you Dr. Reynolds! I tried it once and it really helped.</div><div class="bubble-time" style="text-align:right">3:02 PM</div></div></div>
+        <div style="text-align:center;font-size:12px;color:var(--text-muted);padding:8px 0">Today</div>
+        <div class="bubble-wrap"><div class="avatar avatar-sm">SR</div><div><div class="bubble theirs">Looking forward to our session on Thursday! Feel free to jot down anything you'd like to discuss.</div><div class="bubble-time">10:24 AM</div></div></div>
+      </div>
+      <div class="msg-compose">
+        <input type="text" placeholder="Write a message&#11046;">
+        <button class="btn btn-primary">Send</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- VIDEO ROOM (shared) -->
+<section class="screen" id="screen-video">
+  <div class="video-room">
+    <div style="background:#1e2132;padding:12px 20px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #2a2f45">
+      <span style="color:#fff;font-weight:700;font-size:15px">Session with Dr. Sarah Reynolds</span>
+      <span class="badge badge-green" style="font-size:11px">&#65533;&#65533; Live</span>
+      <span style="color:#9CA3AF;font-size:13px;margin-left:8px">&#9201; 23:47 remaining</span>
+      <div style="flex:1"></div>
+      <button class="btn btn-ghost btn-sm" style="color:#9CA3AF" id="video-back-btn">Leave &#65533; </button>
+    </div>
+    <div class="video-main">
+      <div class="video-stage">
+        <div class="video-tile" style="flex:1;min-height:340px;position:relative">
+          <span style="color:#fff;font-size:52px;opacity:.3">&#65533;x&#65533;</span>
+          <div class="video-label">Dr. Sarah Reynolds</div>
+          <div class="video-tile" style="width:180px;height:120px;position:absolute;bottom:24px;right:24px">
+            <span style="color:#fff;font-size:24px;opacity:.4">&#65533;x&#65533;</span>
+            <div class="video-label" style="font-size:10px">You</div>
+          </div>
+        </div>
+      </div>
+      <div class="video-sidebar-chat">
+        <div class="video-chat-header">Session Chat</div>
+        <div class="video-chat-msgs">
+          <div><div class="chat-msg-name them">Dr. Reynolds</div><div class="chat-msg-text">Hi Jane, can you hear me okay?</div></div>
+          <div><div class="chat-msg-name">You</div><div class="chat-msg-text">Yes, perfectly! Thanks.</div></div>
+          <div><div class="chat-msg-name them">Dr. Reynolds</div><div class="chat-msg-text">Let's start &#65533; how have you been feeling since we last spoke?</div></div>
+        </div>
+        <div class="video-chat-input">
+          <input type="text" placeholder="Type a message&#11046;">
+          <button class="btn btn-primary btn-sm">&#65533; </button>
+        </div>
+      </div>
+    </div>
+    <div class="video-controls">
+      <button class="vid-btn vid-btn-normal" title="Mute">&#65533;x}"&#65039;</button>
+      <button class="vid-btn vid-btn-normal" title="Camera">&#65533;x&#65533;</button>
+      <button class="vid-btn vid-btn-normal" title="Share screen">&#65533;x&#65533;&#65039;</button>
+      <button class="vid-btn vid-btn-normal" title="Chat">&#65533;x&#65533;</button>
+      <button class="vid-btn vid-btn-danger" id="video-leave-btn" title="Leave">&#65533;x~</button>
+    </div>
+  </div>
+</section>
+
+<!-- &#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533; THERAPIST SCREENS &#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533; -->
+
+<!-- THERAPIST: Dashboard -->
+<section class="screen" id="screen-therapist-dash">
+  <nav class="topnav" id="nav-therapist-dash"></nav>
+  <div class="page-wrap wide">
+    <div class="page-header"><h1>Good morning, Dr. Reynolds &#65533;&#1836;&#65039;</h1><p>You have 3 sessions today.</p></div>
+    <div class="grid-4 mb-24">
+      <div class="stat-card"><div class="stat-label">Today's Sessions</div><div class="stat-value">3</div><div class="stat-sub">Next at 9:00 AM</div></div>
+      <div class="stat-card"><div class="stat-label">Active Clients</div><div class="stat-value">18</div><div class="stat-sub">2 new this month</div></div>
+      <div class="stat-card"><div class="stat-label">Month Earnings</div><div class="stat-value">$2,160</div><div class="stat-sub">After 15% commission</div></div>
+      <div class="stat-card"><div class="stat-label">Avg. Rating</div><div class="stat-value">4.9 &#11088;</div><div class="stat-sub">84 reviews</div></div>
+    </div>
+    <div class="grid-2" style="align-items:start">
+      <div>
+        <h2 style="font-size:16px;font-weight:700;margin-bottom:12px">Today's Schedule</h2>
+        <div class="card mb-16">
+          <div style="display:flex;flex-direction:column">
+            <div style="display:flex;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--border)">
+              <div style="width:56px;text-align:center;font-size:12px;font-weight:700;color:var(--primary)">9:00<br>AM</div>
+              <div class="avatar avatar-sm">JD</div>
+              <div style="flex:1"><div style="font-weight:600;font-size:14px">James Davidson</div><div class="text-sm text-muted">Initial Consultation &middot; 50 min</div></div>
+              <button class="btn btn-primary btn-sm" onclick="goScreen('video')">Start Session</button>
+            </div>
+            <div style="display:flex;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--border)">
+              <div style="width:56px;text-align:center;font-size:12px;font-weight:700;color:var(--primary)">11:00<br>AM</div>
+              <div class="avatar avatar-sm" style="background:linear-gradient(135deg,var(--accent),var(--primary))">JS</div>
+              <div style="flex:1"><div style="font-weight:600;font-size:14px">Jane Smith</div><div class="text-sm text-muted">Follow-up Session &middot; 50 min</div></div>
+              <button class="btn btn-outline btn-sm" onclick="goScreen('video')">Join Room</button>
+            </div>
+            <div style="display:flex;gap:14px;align-items:center;padding:14px 0">
+              <div style="width:56px;text-align:center;font-size:12px;font-weight:700;color:var(--primary)">2:00<br>PM</div>
+              <div class="avatar avatar-sm" style="background:linear-gradient(135deg,#F59E0B,#E05252)">MK</div>
+              <div style="flex:1"><div style="font-weight:600;font-size:14px">Maria Kowalski</div><div class="text-sm text-muted">Follow-up Session &middot; 50 min</div></div>
+              <button class="btn btn-outline btn-sm" onclick="goScreen('video')">Join Room</button>
+            </div>
+          </div>
+        </div>
+        <h2 style="font-size:16px;font-weight:700;margin-bottom:12px">Earnings</h2>
+        <div class="card">
+          <div class="table-wrap" style="border-radius:8px">
+            <table>
+              <thead><tr><th>Date</th><th>Client</th><th>Gross</th><th>Commission</th><th>Net</th></tr></thead>
+              <tbody>
+                <tr><td>Jun 10</td><td>Jane Smith</td><td>$120</td><td>-$18</td><td style="font-weight:700;color:var(--accent)">$102</td></tr>
+                <tr><td>Jun 8</td><td>James Davidson</td><td>$120</td><td>-$18</td><td style="font-weight:700;color:var(--accent)">$102</td></tr>
+                <tr><td>Jun 5</td><td>Maria Kowalski</td><td>$120</td><td>-$18</td><td style="font-weight:700;color:var(--accent)">$102</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="padding-top:12px;border-top:1px solid var(--border);margin-top:4px"><button class="btn btn-outline btn-sm">Export CSV</button></div>
+        </div>
+      </div>
+      <div>
+        <h2 style="font-size:16px;font-weight:700;margin-bottom:12px">Messages</h2>
+        <div class="card mb-16" style="cursor:pointer" onclick="goScreen('therapist-messages')">
+          <div style="display:flex;gap:12px;align-items:center;padding-bottom:12px;border-bottom:1px solid var(--border)">
+            <div class="avatar avatar-sm" style="background:linear-gradient(135deg,var(--accent),var(--primary))">JS</div>
+            <div style="flex:1;min-width:0"><div style="font-weight:600;font-size:14px">Jane Smith</div><div class="text-sm text-muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Thank you! The breathing exercise helped.</div></div>
+            <span class="text-xs text-muted">3h</span>
+          </div>
+          <div style="padding-top:12px;text-align:center"><button class="btn btn-outline btn-sm">View All Messages</button></div>
+        </div>
+        <h2 style="font-size:16px;font-weight:700;margin-bottom:12px">Profile & Availability</h2>
+        <div class="card">
+          <div class="flex-between mb-12">
+            <span style="font-size:14px;font-weight:600">Accepting new clients</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div id="avail-toggle" onclick="toggleAvail()" style="width:40px;height:22px;background:var(--accent);border-radius:99px;cursor:pointer;position:relative;transition:.2s">
+                <div id="avail-knob" style="width:18px;height:18px;background:#fff;border-radius:50%;position:absolute;top:2px;right:2px;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)"></div>
+              </div>
+              <span class="text-sm text-muted" id="avail-label">On</span>
+            </div>
+          </div>
+          <button class="btn btn-outline btn-block btn-sm mb-8">Manage Availability</button>
+          <button class="btn btn-outline btn-block btn-sm">Edit Profile</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- THERAPIST: Messages -->
+<section class="screen" id="screen-therapist-messages">
+  <nav class="topnav" id="nav-therapist-messages"></nav>
+  <div class="msg-layout">
+    <div class="msg-list">
+      <div class="msg-list-header">Client Messages</div>
+      <div class="msg-item active">
+        <div class="avatar avatar-sm" style="background:linear-gradient(135deg,var(--accent),var(--primary))">JS</div>
+        <div style="flex:1;min-width:0">
+          <div class="flex-between"><span style="font-weight:600;font-size:14px">Jane Smith</span><span class="text-xs text-muted">3h</span></div>
+          <div class="text-sm text-muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Thank you! The breathing exercise really helped.</div>
+        </div>
+      </div>
+      <div class="msg-item">
+        <div class="avatar avatar-sm">JD</div>
+        <div style="flex:1;min-width:0">
+          <div class="flex-between"><span style="font-weight:600;font-size:14px">James Davidson</span><span class="text-xs text-muted">1d</span></div>
+          <div class="text-sm text-muted" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">See you Thursday!</div>
+        </div>
+      </div>
+    </div>
+    <div class="msg-thread">
+      <div class="msg-thread-header">
+        <div class="avatar avatar-md" style="background:linear-gradient(135deg,var(--accent),var(--primary))">JS</div>
+        <div><h3 style="font-size:15px;font-weight:700">Jane Smith</h3><div class="text-xs text-muted">Client since April 2025</div></div>
+        <div style="margin-left:auto"><button class="btn btn-outline btn-sm" onclick="goScreen('video')">Start Session</button></div>
+      </div>
+      <div class="msg-bubbles">
+        <div style="text-align:center;font-size:12px;color:var(--text-muted);padding:8px 0">May 30, 2025</div>
+        <div class="bubble-wrap mine"><div><div class="bubble mine">Hi Jane, great session today. Try the breathing exercise we discussed when you feel anxious.</div><div class="bubble-time" style="text-align:right">2:15 PM</div></div></div>
+        <div class="bubble-wrap"><div class="avatar avatar-sm" style="background:linear-gradient(135deg,var(--accent),var(--primary))">JS</div><div><div class="bubble theirs">Thank you! I tried it once and it really helped.</div><div class="bubble-time">3:02 PM</div></div></div>
+        <div style="text-align:center;font-size:12px;color:var(--text-muted);padding:8px 0">Today</div>
+        <div class="bubble-wrap mine"><div><div class="bubble mine">Looking forward to our session on Thursday! Feel free to jot down anything you'd like to discuss.</div><div class="bubble-time" style="text-align:right">10:24 AM</div></div></div>
+      </div>
+      <div class="msg-compose">
+        <input type="text" placeholder="Write a message&#11046;">
+        <button class="btn btn-primary">Send</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- &#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533; ADMIN SCREENS &#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533;&#65533;"&#65533; -->
+
+<!-- ADMIN: Dashboard -->
+<section class="screen" id="screen-admin-dash">
+  <nav class="topnav" id="nav-admin-dash"></nav>
+  <div class="page-wrap wide" style="display:grid;grid-template-columns:200px 1fr;gap:24px;align-items:start;padding-top:24px">
+    <div class="sidebar">
+      <div class="sidebar-section">Management</div>
+      <button class="sidebar-link active" id="alink-users" onclick="adminTab('users')">&#65533;x&#65533; Users</button>
+      <button class="sidebar-link" id="alink-sessions" onclick="adminTab('sessions')">&#65533;x& Sessions</button>
+      <button class="sidebar-link" id="alink-payments" onclick="adminTab('payments')">&#65533;x&#65533; Payments</button>
+      <button class="sidebar-link" id="alink-approvals" onclick="adminTab('approvals')">&#65533;S& Approvals <span class="badge badge-yellow" style="margin-left:auto;font-size:11px">3</span></button>
+      <div class="sidebar-section">Config</div>
+      <button class="sidebar-link" id="alink-settings" onclick="adminTab('settings')">&#65533;a"&#65039; Settings</button>
+    </div>
+    <div>
+      <div id="admin-users" class="admin-panel">
+        <div class="flex-between mb-20"><h1 style="font-size:22px;font-weight:700">User Management</h1>
+          <div style="display:flex;gap:8px"><input class="form-input" style="width:220px" placeholder="Search name or email&#11046;"><select class="form-select" style="width:130px"><option>All Roles</option><option>Clients</option><option>Therapists</option></select></div>
+        </div>
+        <div class="grid-4 mb-20">
+          <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value">1,248</div></div>
+          <div class="stat-card"><div class="stat-label">Clients</div><div class="stat-value">1,054</div></div>
+          <div class="stat-card"><div class="stat-label">Therapists</div><div class="stat-value">194</div></div>
+          <div class="stat-card"><div class="stat-label">Suspended</div><div class="stat-value" style="color:var(--danger)">7</div></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
+            <tbody>
+              <tr><td><div class="flex-center gap-8"><div class="avatar avatar-sm">JS</div>Jane Smith</div></td><td>jane@example.com</td><td><span class="badge badge-blue">Client</span></td><td><span class="badge badge-green">Active</span></td><td>Apr 2025</td><td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm">View</button><button class="btn btn-ghost btn-sm" style="color:var(--danger)">Suspend</button></div></td></tr>
+              <tr><td><div class="flex-center gap-8"><div class="avatar avatar-sm" style="background:var(--accent)">SR</div>Dr. Sarah Reynolds</div></td><td>sarah.r@clinic.com</td><td><span class="badge badge-green">Therapist</span></td><td><span class="badge badge-green">Active</span></td><td>Jan 2024</td><td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm">View</button><button class="btn btn-ghost btn-sm" style="color:var(--danger)">Suspend</button></div></td></tr>
+              <tr><td><div class="flex-center gap-8"><div class="avatar avatar-sm" style="background:#E05252">TX</div>Tom Xavier</div></td><td>tom.x@email.com</td><td><span class="badge badge-blue">Client</span></td><td><span class="badge badge-red">Suspended</span></td><td>Mar 2025</td><td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm">View</button><button class="btn btn-ghost btn-sm" style="color:var(--accent)">Reactivate</button></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div id="admin-sessions" class="admin-panel" style="display:none">
+        <div class="flex-between mb-20"><h1 style="font-size:22px;font-weight:700">Sessions</h1><select class="form-select" style="width:160px"><option>All Statuses</option><option>Upcoming</option><option>Completed</option><option>Cancelled</option><option>Disputed</option></select></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Client</th><th>Therapist</th><th>Type</th><th>Payment</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+              <tr><td>Jun 12 10:00</td><td>Jane Smith</td><td>Dr. Reynolds</td><td>Initial</td><td><span class="badge badge-green">Paid $120</span></td><td><span class="badge badge-blue">Upcoming</span></td><td><button class="btn btn-ghost btn-sm" style="color:var(--danger)">Cancel</button></td></tr>
+              <tr><td>Jun 10 09:00</td><td>James Davidson</td><td>Dr. Reynolds</td><td>Follow-up</td><td><span class="badge badge-green">Paid $120</span></td><td><span class="badge badge-green">Completed</span></td><td><button class="btn btn-ghost btn-sm">Detail</button></td></tr>
+              <tr><td>Jun 8 14:00</td><td>Maria Kowalski</td><td>Dr. Reynolds</td><td>Initial</td><td><span class="badge badge-yellow">Refund Req.</span></td><td><span class="badge badge-red">Disputed</span></td><td><div style="display:flex;gap:4px"><button class="btn btn-ghost btn-sm">Detail</button><button class="btn btn-primary btn-sm">Resolve</button></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div id="admin-payments" class="admin-panel" style="display:none">
+        <div class="flex-between mb-20"><h1 style="font-size:22px;font-weight:700">Payments & Revenue</h1><div style="display:flex;gap:8px"><input class="form-input" type="date" style="width:150px"><input class="form-input" type="date" style="width:150px"><button class="btn btn-outline btn-sm">Export</button></div></div>
+        <div class="grid-4 mb-20">
+          <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value">$48,200</div><div class="stat-sub">This month</div></div>
+          <div class="stat-card"><div class="stat-label">Commission (15%)</div><div class="stat-value">$7,230</div></div>
+          <div class="stat-card"><div class="stat-label">Refunds Issued</div><div class="stat-value">$360</div></div>
+          <div class="stat-card"><div class="stat-label">Pending Payouts</div><div class="stat-value">$12,100</div></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Client</th><th>Session</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr><td>Jun 12</td><td>Jane Smith</td><td>Initial</td><td>$120.00</td><td><span class="badge badge-green">Paid</span></td><td><button class="btn btn-ghost btn-sm">Refund</button></td></tr>
+              <tr><td>Jun 10</td><td>James Davidson</td><td>Follow-up</td><td>$120.00</td><td><span class="badge badge-green">Paid</span></td><td><button class="btn btn-ghost btn-sm">Refund</button></td></tr>
+              <tr><td>Jun 8</td><td>Maria Kowalski</td><td>Initial</td><td>$120.00</td><td><span class="badge badge-yellow">Refund Pending</span></td><td><button class="btn btn-primary btn-sm">Process Refund</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div id="admin-approvals" class="admin-panel" style="display:none">
+        <div class="flex-between mb-20"><h1 style="font-size:22px;font-weight:700">Therapist Approvals <span class="badge badge-yellow">3 pending</span></h1></div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div style="display:flex;gap:16px;align-items:flex-start">
+              <div class="avatar avatar-lg">NK</div>
+              <div style="flex:1">
+                <div class="flex-between mb-4"><h3 style="font-size:16px;font-weight:700">Dr. Nadia Khalil</h3><span class="badge badge-yellow">Pending</span></div>
+                <p class="text-muted text-sm mb-8">Applied Jun 9 &middot; PhD Clinical Psychology &middot; 6 yrs &middot; EN, AR</p>
+                <div class="tags mb-12"><span class="tag">Anxiety</span><span class="tag">OCD</span><span class="tag">CBT</span></div>
+                <div style="background:var(--bg);border-radius:8px;padding:12px;font-size:13px;color:var(--text-muted);margin-bottom:12px"><strong>Credentials:</strong> PhD Certificate, Licence PSY-40221, Liability Insurance</div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-primary btn-sm">&#65533;S Approve</button>
+                  <button class="btn btn-outline btn-sm">Request Info</button>
+                  <button class="btn btn-danger btn-sm">&#65533;S" Reject</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div style="display:flex;gap:16px;align-items:flex-start">
+              <div class="avatar avatar-lg" style="background:linear-gradient(135deg,var(--accent),var(--primary))">BL</div>
+              <div style="flex:1">
+                <div class="flex-between mb-4"><h3 style="font-size:16px;font-weight:700">Ben Larson, LMFT</h3><span class="badge badge-yellow">Pending</span></div>
+                <p class="text-muted text-sm mb-8">Applied Jun 10 &middot; LMFT &middot; 4 yrs &middot; EN, ES</p>
+                <div class="tags mb-12"><span class="tag">Couples</span><span class="tag">Family</span><span class="tag">Relationships</span></div>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-primary btn-sm">&#65533;S Approve</button>
+                  <button class="btn btn-outline btn-sm">Request Info</button>
+                  <button class="btn btn-danger btn-sm">&#65533;S" Reject</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="admin-settings" class="admin-panel" style="display:none">
+        <h1 style="font-size:22px;font-weight:700;margin-bottom:24px">Platform Settings</h1>
+        <div class="grid-2" style="align-items:start;gap:20px">
+          <div class="card"><h3 style="font-weight:700;margin-bottom:16px">Booking & Cancellation</h3>
+            <div class="form-group"><label class="form-label">Cancellation window (hours)</label><input class="form-input" value="24"></div>
+            <div class="form-group"><label class="form-label">Max reschedules per session</label><input class="form-input" value="2"></div>
+            <div class="form-group"><label class="form-label">Session duration (min)</label><input class="form-input" value="50"></div>
+          </div>
+          <div class="card"><h3 style="font-weight:700;margin-bottom:16px">Revenue</h3>
+            <div class="form-group"><label class="form-label">Platform commission (%)</label><input class="form-input" value="15"></div>
+            <div class="form-group"><label class="form-label">Payout frequency</label><select class="form-select"><option>Weekly</option><option>Bi-weekly</option><option>Monthly</option></select></div>
+          </div>
+          <div class="card"><h3 style="font-weight:700;margin-bottom:16px">Matching Weights</h3>
+            <div class="form-group"><label class="form-label">Specialisation (%)</label><input class="form-input" value="40"></div>
+            <div class="form-group"><label class="form-label">Language (%)</label><input class="form-input" value="30"></div>
+            <div class="form-group"><label class="form-label">Availability overlap (%)</label><input class="form-input" value="30"></div>
+          </div>
+          <div class="card"><h3 style="font-weight:700;margin-bottom:16px">Therapist Onboarding</h3>
+            <div class="form-group"><label class="form-label">Profile approval mode</label><select class="form-select"><option>Manual (admin review)</option><option>Automatic</option></select></div>
+          </div>
+        </div>
+        <div class="flex-between mt-20">
+          <button class="btn btn-outline">View Change History</button>
+          <button class="btn btn-primary">Save Settings</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PAYMENT SUCCESS MODAL -->
+<div class="modal-overlay" id="modal-success" style="display:none">
+  <div class="modal-box">
+    <div style="font-size:52px;margin-bottom:12px">&#65533;S&</div>
+    <h2 style="font-size:20px;font-weight:700;margin-bottom:8px">Booking Confirmed!</h2>
+    <p style="color:var(--text-muted);font-size:14px;margin-bottom:24px">Your session with <strong>Dr. Sarah Reynolds</strong> is booked for <strong>Thursday, June 12 at 10:00 AM</strong>. A confirmation and receipt have been sent to your email.</p>
+    <button class="btn btn-primary btn-block btn-lg" onclick="document.getElementById('modal-success').style.display='none';goScreen('client-dash')">Go to Dashboard</button>
+  </div>
+</div>
+
+<script>
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; State
+let currentRole = 'client';
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Role selection on login screen
+function selectRole(role) {
+  currentRole = role;
+  document.querySelectorAll('.role-option').forEach(el => el.classList.remove('selected'));
+  document.getElementById('role-' + role).classList.add('selected');
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Login &#65533;  go to the right dashboard
+function doLogin() {
+  const destinations = { client: 'client-dash', therapist: 'therapist-dash', admin: 'admin-dash' };
+  goScreen(destinations[currentRole]);
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Nav configs per role
+const NAV_CONFIG = {
+  client: {
+    links: [
+      { label: 'Dashboard', screen: 'client-dash' },
+      { label: 'Find Therapist', screen: 'browse' },
+      { label: 'Messages', screen: 'client-messages' },
+    ],
+    badge: 'Client',
+    badgeClass: '',
+    initials: 'JS',
+    avatarStyle: '',
+  },
+  therapist: {
+    links: [
+      { label: 'Dashboard', screen: 'therapist-dash' },
+      { label: 'Messages', screen: 'therapist-messages' },
+    ],
+    badge: 'Therapist',
+    badgeClass: 'therapist',
+    initials: 'SR',
+    avatarStyle: 'background:var(--accent)',
+  },
+  admin: {
+    links: [
+      { label: 'Admin Panel', screen: 'admin-dash' },
+    ],
+    badge: 'Admin',
+    badgeClass: 'admin',
+    initials: 'AD',
+    avatarStyle: 'background:#1A1D2E',
+  },
+};
+
+function buildNav(containerId, activeScreen) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const cfg = NAV_CONFIG[currentRole];
+  const linksHtml = cfg.links.map(l =>
+    `<button class="nav-link${activeScreen === l.screen ? ' active' : ''}" onclick="goScreen('${l.screen}')">${l.label}</button>`
+  ).join('');
+  el.innerHTML = `
+    <a class="nav-logo" onclick="goScreen('login')">Alive</a>
+    ${linksHtml}
+    <div style="flex:1"></div>
+    <span class="nav-role-badge ${cfg.badgeClass}">${cfg.badge}</span>
+    <div class="nav-avatar" style="${cfg.avatarStyle}" title="Sign out" onclick="signOut()">${cfg.initials}</div>
+  `;
+}
+
+function signOut() {
+  if (confirm('Sign out?')) goScreen('login');
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Screen navigation
+const SCREEN_NAV_MAP = {
+  'browse': 'nav-browse',
+  'profile': 'nav-profile',
+  'booking': 'nav-booking',
+  'payment': 'nav-payment',
+  'client-dash': 'nav-client-dash',
+  'client-messages': 'nav-client-messages',
+  'therapist-dash': 'nav-therapist-dash',
+  'therapist-messages': 'nav-therapist-messages',
+  'admin-dash': 'nav-admin-dash',
+};
+
+function goScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('screen-' + id);
+  if (!el) return;
+  el.classList.add('active');
+  window.scrollTo(0, 0);
+  const navId = SCREEN_NAV_MAP[id];
+  if (navId) buildNav(navId, id);
+  // wire video back button
+  const backBtn = document.getElementById('video-back-btn');
+  const leaveBtn = document.getElementById('video-leave-btn');
+  const dest = currentRole === 'therapist' ? 'therapist-dash' : 'client-dash';
+  if (backBtn) { backBtn.onclick = () => goScreen(dest); }
+  if (leaveBtn) { leaveBtn.onclick = () => goScreen(dest); }
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Onboarding steps
+function obStep(n) {
+  document.querySelectorAll('.ob-step').forEach(s => s.classList.remove('active'));
+  document.getElementById('ob' + n).classList.add('active');
+  for (let i = 1; i <= 4; i++) {
+    const dot = document.getElementById('sd' + i);
+    const line = document.getElementById('sl' + i);
+    if (!dot) continue;
+    if (i < n) { dot.className = 'step-dot done'; dot.textContent = '&#65533;S'; }
+    else if (i === n) { dot.className = 'step-dot current'; dot.textContent = i; }
+    else { dot.className = 'step-dot'; dot.textContent = i; }
+    if (line) line.className = 'step-line' + (i < n ? ' done' : '');
+  }
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Profile tabs
+function switchTab(id) {
+  const panels = { about: 'tab-about', availability: 'tab-availability', reviews: 'tab-reviews' };
+  Object.values(panels).forEach(p => { const el = document.getElementById(p); if (el) el.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const target = document.getElementById(panels[id]);
+  if (target) target.classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => { if (b.getAttribute('onclick') === `switchTab('${id}')`) b.classList.add('active'); });
+  if (id === 'availability') renderCal('cal-profile', null);
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Admin tabs
+function adminTab(id) {
+  document.querySelectorAll('.admin-panel').forEach(p => p.style.display = 'none');
+  const el = document.getElementById('admin-' + id);
+  if (el) el.style.display = '';
+  document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+  const link = document.getElementById('alink-' + id);
+  if (link) link.classList.add('active');
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Calendar
+function renderCal(containerId, onDayClick) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  while (container.children.length > 7) container.removeChild(container.lastChild);
+  const available = [3,4,5,9,10,11,12,16,17,18,19,23,24,25,26];
+  const firstDay = new Date(2025, 5, 1).getDay();
+  const days = new Date(2025, 6, 0).getDate();
+  for (let i = 0; i < firstDay; i++) {
+    const d = document.createElement('div'); d.className = 'cal-day empty'; container.appendChild(d);
+  }
+  for (let d = 1; d <= days; d++) {
+    const el = document.createElement('div');
+    const avail = available.includes(d);
+    el.className = 'cal-day ' + (avail ? 'available' : 'past');
+    el.textContent = d;
+    if (avail && onDayClick) el.addEventListener('click', () => onDayClick(d, el));
+    container.appendChild(el);
+  }
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Booking calendar
+renderCal('cal-booking', (day, el) => {
+  document.querySelectorAll('#cal-booking .cal-day').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('slot-date-label').textContent = 'June ' + day;
+  document.getElementById('slots-wrap').style.display = '';
+});
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Slot selection
+function pickSlot(el) {
+  if (el.classList.contains('booked')) return;
+  document.querySelectorAll('.time-slot').forEach(s => s.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Payment success
+function showSuccess() {
+  document.getElementById('modal-success').style.display = 'grid';
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Therapist availability toggle
+function toggleAvail() {
+  const t = document.getElementById('avail-toggle');
+  const k = document.getElementById('avail-knob');
+  const l = document.getElementById('avail-label');
+  const on = l.textContent === 'On';
+  t.style.background = on ? 'var(--border)' : 'var(--accent)';
+  k.style.right = on ? 'auto' : '2px';
+  k.style.left = on ? '2px' : 'auto';
+  l.textContent = on ? 'Off' : 'On';
+}
+
+// &#65533;&#65533;&#65533;&#65533;&#65533;&#65533; Init onboarding at step 2
+obStep(2);
+</script>
+</body>
+</html>
+
