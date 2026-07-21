@@ -821,6 +821,7 @@ const CKEYS = {
   thoughts: "calm:thoughtRecords",
   sessions: "calm:sessions",
   settings: "calm:settings",
+  plan: "calm:planDone", // { [date]: { [itemId]: true } } — supportive-plan daily check-off
 };
 
 const BREATH_PATTERNS = [
@@ -860,7 +861,7 @@ async function collectCalmExport() {
   const d = await loadCalmData();
   const recovery = {};
   for (const [k, key] of Object.entries(RECKEYS)) recovery[k] = await store.get(key, null);
-  return { fears: d.fears, thoughts: d.thoughts, sessions: d.sessions, settings: d.settings, recovery };
+  return { fears: d.fears, thoughts: d.thoughts, sessions: d.sessions, settings: d.settings, recovery, plan: await store.get(CKEYS.plan, {}) };
 }
 async function clearCalmData() {
   for (const k of Object.values(CKEYS)) await store.remove(k);
@@ -5323,6 +5324,112 @@ function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
   );
 }
 
+/* ---------- Supportive daily plan for living with GAD ---------- */
+const CALM_PLAN_DAILY = [
+  { id: "morning", emoji: "🌅", title: "Ранкове заземлення", when: "щойно прокинулась", what: "2–3 хв дихання або вправа 5-4-3-2-1", why: "почати день у тілі, а не в потоці тривожних думок", go: "breath" },
+  { id: "move", emoji: "🚶‍♀️", title: "Рух", when: "будь-коли вдень", what: "20–30 хв ходьби (чи будь-який рух, що подобається)", why: "регулярний рух знижує базовий рівень тривоги — це доведено" },
+  { id: "worry", emoji: "⏳", title: "«Час для тривоги»", when: "пополудні, НЕ перед сном", what: "10–15 хв випиши всі «а що як», а тоді свідомо стоп", why: "збирає хвилювання в одне вікно, щоб воно не текло на весь день", go: "worry" },
+  { id: "journal", emoji: "📓", title: "Вечірній розбір", when: "перед сном", what: "розбери 1 тривожну думку (факти за/проти) + запиши 3 хороші речі дня", why: "тренує реалістичне мислення й перемикає фокус із загрози на ресурс", go: "thought" },
+  { id: "sleep", emoji: "😴", title: "Сон за розкладом", when: "щовечора", what: "лягай і вставай в той самий час; екран убік за 30 хв до сну", why: "недосип напряму підсилює тривогу — це фундамент усього" },
+];
+const CALM_PLAN_WEEKLY = [
+  { emoji: "🪜", text: "Одна сходинка драбини страху — маленький крок назустріч тому, чого уникаєш." },
+  { emoji: "🔎", text: "Тижневий огляд: що цього тижня заспокоювало, а що розганяло тривогу." },
+  { emoji: "☕", text: "Тримай кофеїн і алкоголь у межах — обидва фізично підсилюють тривожність." },
+  { emoji: "💬", text: "Хоча б одна тепла розмова чи зустріч — ізоляція годує тривогу." },
+];
+const CALM_PLAN_PILLARS = [
+  { emoji: "😴", label: "Сон", note: "7–9 год, стабільно" },
+  { emoji: "🏃‍♀️", label: "Рух", note: "щодня потроху" },
+  { emoji: "☕", label: "Кофеїн", note: "менше = спокійніше" },
+  { emoji: "💬", label: "Зв'язок", note: "люди, не ізоляція" },
+];
+
+function CalmPlan({ onExit, onGo }) {
+  const [done, setDone] = useState({});
+  const today = dateKey(Date.now());
+  useEffect(() => { let on = true; store.get(CKEYS.plan, {}).then((v) => { if (on) setDone(v || {}); }); return () => { on = false; }; }, []);
+  const todayMap = done[today] || {};
+  const toggle = (id) => setDone((prev) => {
+    const day = { ...(prev[today] || {}) };
+    if (day[id]) delete day[id]; else day[id] = true;
+    const next = { ...prev, [today]: day };
+    store.set(CKEYS.plan, next);
+    return next;
+  });
+  const doneCount = Object.values(todayMap).filter(Boolean).length;
+  let streak = 0;
+  for (let i = 0; i < 400; i++) {
+    const c = Object.values(done[dateKey(Date.now() - i * DAY)] || {}).filter(Boolean).length;
+    if (c >= 3) streak++; else if (i === 0) continue; else break;
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <CalmHeader title="Мій план спокою" onExit={onExit} />
+
+      <div className="rounded-3xl bg-gradient-to-br from-teal-400 to-sky-400 p-5 text-white shadow-sm">
+        <div className="text-sm font-semibold text-white/90">Підтримувальний план при тривозі (ГТР)</div>
+        <div className="mt-1 flex items-end gap-3">
+          <div><div className="text-3xl font-extrabold tabular-nums">{doneCount}/{CALM_PLAN_DAILY.length}</div><div className="text-xs text-white/80">сьогодні</div></div>
+          <div className="ml-auto text-right"><div className="text-3xl font-extrabold tabular-nums">🔥 {streak}</div><div className="text-xs text-white/80">днів поспіль</div></div>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-white/90">Не мусиш робити все ідеально. Навіть 3 пункти на день — це вже турбота про себе. Пропустила день — просто повернись завтра, без провини. 💛</p>
+      </div>
+
+      {/* daily */}
+      <div className="mt-4 mb-2 text-sm font-bold text-slate-700">Щодня</div>
+      <div className="space-y-2">
+        {CALM_PLAN_DAILY.map((it) => {
+          const on = !!todayMap[it.id];
+          return (
+            <div key={it.id} className={`rounded-2xl p-4 shadow-sm ring-1 transition ${on ? "bg-teal-50 ring-teal-200" : "bg-white ring-teal-50"}`}>
+              <div className="flex items-start gap-3">
+                <button onClick={() => toggle(it.id)} className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 transition ${on ? "border-transparent bg-teal-500 text-white" : "border-slate-300 hover:border-teal-400"}`}>{on && <Check className="h-4 w-4" />}</button>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2"><span>{it.emoji}</span><span className={`font-bold ${on ? "text-slate-500" : "text-slate-800"}`}>{it.title}</span><span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{it.when}</span></div>
+                  <div className="mt-1 text-sm text-slate-600"><b className="font-semibold text-slate-700">Що робити:</b> {it.what}</div>
+                  <div className="mt-0.5 text-xs text-slate-400">чому: {it.why}</div>
+                  {it.go && onGo && <button onClick={() => onGo(it.go)} className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700">Відкрити вправу <ArrowRight className="h-3 w-3" /></button>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* weekly */}
+      <div className="mt-5 mb-2 text-sm font-bold text-slate-700">Щотижня</div>
+      <div className="space-y-2">
+        {CALM_PLAN_WEEKLY.map((it, i) => (
+          <div key={i} className="flex items-start gap-3 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-teal-50"><span className="text-lg">{it.emoji}</span><span className="text-sm text-slate-600">{it.text}</span></div>
+        ))}
+      </div>
+
+      {/* foundation pillars */}
+      <div className="mt-5 mb-2 text-sm font-bold text-slate-700">Фундамент (на ньому все тримається)</div>
+      <div className="grid grid-cols-4 gap-2">
+        {CALM_PLAN_PILLARS.map((p) => (
+          <div key={p.label} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-50"><div className="text-2xl">{p.emoji}</div><div className="mt-1 text-xs font-bold text-slate-700">{p.label}</div><div className="text-[10px] text-slate-400">{p.note}</div></div>
+        ))}
+      </div>
+
+      {/* how it helps */}
+      <div className="mt-5 rounded-2xl bg-teal-50/70 p-4 text-sm leading-relaxed text-teal-900 ring-1 ring-teal-100">
+        <div className="mb-1 font-bold">Чому саме так</div>
+        При ГТР мозок «застрягає» в режимі загрози. Цей план не «прибирає» тривогу силою, а щодня потроху вчить нервову систему, що можна бути в безпеці: рух і сон знижують фізичний фон, «час для тривоги» й журнал розбирають думки, а маленькі кроки назустріч страху показують мозку, що небезпеки нема. Працює саме <b>сталість</b>, а не інтенсивність.
+      </div>
+
+      {/* safety */}
+      <div className="mt-3 rounded-2xl bg-amber-50 p-4 text-xs leading-relaxed text-amber-900 ring-1 ring-amber-100">
+        <div className="mb-1 flex items-center gap-1.5 font-bold"><ShieldAlert className="h-4 w-4" /> Важливо</div>
+        <p>Це підтримка для щодення, а <b>не заміна</b> терапії. Найкраще працює <b>разом</b> із психотерапевтом (КПТ) і, якщо призначив лікар, медикаментами. Ліки не починай і не відміняй сама — тільки з лікарем.</p>
+        <p className="mt-2">Звернись по допомогу швидше, якщо: тривога зриває сон/їжу тижнями, накрила паніка, що не минає, або з'являються думки нашкодити собі. В Україні цілодобово й безкоштовно — <b>Lifeline Ukraine 7333</b> (лінія емоційної підтримки та запобігання суїцидам). Ти не сама. 💛</p>
+      </div>
+    </div>
+  );
+}
+
 /* ================================================================== */
 /* CALM — section UI                                                  */
 /* ================================================================== */
@@ -5420,10 +5527,16 @@ function CalmSection({ name, onRename }) {
           </button>
 
           {/* before work */}
-          <button onClick={() => setCview("beforework")} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-teal-400 to-sky-400 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:from-teal-500 hover:to-sky-500">
+          <button onClick={() => setCview("beforework")} className="mb-3 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-teal-400 to-sky-400 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:from-teal-500 hover:to-sky-500">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20"><Sparkle className="h-6 w-6" /></span>
             <span className="flex-1"><span className="block text-lg font-bold">Перед роботою</span><span className="block text-sm text-white/90">2 хв дихання → заземлення. Одне натискання — і ти в ресурсі.</span></span>
             <ArrowRight className="h-5 w-5" />
+          </button>
+
+          <button onClick={() => setCview("plan")} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-teal-100 transition hover:shadow-md hover:ring-teal-200">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-teal-100 text-teal-600"><ListChecks className="h-6 w-6" /></span>
+            <span className="flex-1"><span className="block text-lg font-bold text-slate-800">Мій план спокою</span><span className="block text-sm text-slate-400">Щоденні кроки при тривозі (ГТР) — що, скільки й коли робити.</span></span>
+            <ArrowRight className="h-5 w-5 text-slate-300" />
           </button>
 
           {/* stat strip */}
@@ -5482,6 +5595,7 @@ function CalmSection({ name, onRename }) {
       {cview === "worry" && <WorryTimer onExit={back} onDone={done("worry")} />}
       {cview === "beforework" && <BeforeWork onExit={back} onDone={(sec) => { log("beforework", sec); flash("Готово — у тебе все вийде ✨"); back(); }} />}
       {cview === "stats" && <CalmStats sessions={sessions} onExit={back} />}
+      {cview === "plan" && <CalmPlan onExit={back} onGo={(v) => setCview(v)} />}
       {cview === "recovery" && <RecoveryView onExit={back} onQuickCalm={(v) => setCview(v)} />}
 
       {toast && <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
@@ -6432,6 +6546,26 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
   }
   const paceOk = perWeek > 0 && perWeek <= 1;
 
+  // ---- КБЖУ + activity calculator (Mifflin-St Jeor BMR → TDEE → deficit) ----
+  const h = goals.heightCm, age = goals.age, sex = goals.sex || "f";
+  const activity = goals.activity || 1.375;
+  const w = currentW ?? startW;
+  const canKcal = w != null && h != null && age != null;
+  const bmr = canKcal ? Math.round(10 * w + 6.25 * h - 5 * age + (sex === "m" ? 5 : -161)) : null;
+  const tdee = bmr != null ? Math.round(bmr * activity) : null;
+  const dailyDeficit = ready ? Math.round((perWeek * 7700) / 7) : 0; // 1 кг жиру ≈ 7700 ккал
+  const floorKcal = sex === "m" ? 1500 : 1200;
+  const rawTarget = tdee != null ? tdee - dailyDeficit : null;
+  const kcalTarget = rawTarget != null ? Math.max(floorKcal, rawTarget) : null;
+  const belowFloor = rawTarget != null && rawTarget < floorKcal;
+  const refW = targetW || w; // білок/жир рахуємо від цільової ваги
+  const proteinG = refW != null ? Math.round(1.8 * refW) : null;
+  const fatG = refW != null ? Math.max(40, Math.round(0.8 * refW)) : null;
+  const carbsG = (kcalTarget != null && proteinG != null && fatG != null) ? Math.max(30, Math.round((kcalTarget - proteinG * 4 - fatG * 9) / 4)) : null;
+  const waterL = w != null ? Math.round((w * 33) / 100) / 10 : null;
+  const macro = (g, kcalPer) => (kcalTarget ? Math.round((g * kcalPer / kcalTarget) * 100) : 0);
+  const ACTS = [[1.2, "Сидячий"], [1.375, "Легкий (1–3 трен.)"], [1.55, "Помірний (3–5)"], [1.725, "Активний (6+)"]];
+
   const TIPS = [
     { emoji: "⚖️", title: "Темп", body: "≈0.5–0.7 кг/тиждень — стало й безпечно. Швидше = більше втрати м'язів і гірше підтягується шкіра. Повільніше — краще для тіла й шкіри." },
     { emoji: "🔥", title: "Голодування", body: "Піднімайся драбиною протоколів поступово (16:8 → 18:6 …), без форсування. Щоденне 16:8 уже добре працює — сталість важливіша за екстрим." },
@@ -6455,6 +6589,58 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
         <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Ціль, кг</span><input type="number" step="0.1" value={goals.targetWeight ?? ""} onChange={(e) => onSaveGoals({ targetWeight: num(e.target.value) })} placeholder={startW != null ? String(Math.round(startW - 30)) : ""} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
         <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Місяців</span><input type="number" min={3} max={24} value={months} onChange={(e) => onSaveGoals({ planMonths: Math.max(3, Math.min(24, +e.target.value || 12)) })} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
       </div>
+
+      {/* personal data for the calorie calc */}
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50">
+        <div className="mb-2 text-sm font-bold text-slate-700">Твої дані <span className="font-normal text-slate-400">— щоб порахувати КБЖУ</span></div>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="block"><span className="mb-1 block text-[11px] text-slate-400">Зріст, см</span><input type="number" value={goals.heightCm ?? ""} onChange={(e) => onSaveGoals({ heightCm: num(e.target.value) })} placeholder="напр. 165" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-[11px] text-slate-400">Вік</span><input type="number" value={goals.age ?? ""} onChange={(e) => onSaveGoals({ age: num(e.target.value) })} placeholder="напр. 30" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+          <div><span className="mb-1 block text-[11px] text-slate-400">Стать</span><div className="flex gap-1">{[["f", "Ж"], ["m", "Ч"]].map(([v, l]) => <button key={v} onClick={() => onSaveGoals({ sex: v })} className={`flex-1 rounded-lg py-1.5 text-sm font-semibold transition ${sex === v ? "bg-orange-500 text-white" : "bg-slate-100 text-slate-500"}`}>{l}</button>)}</div></div>
+        </div>
+        <div className="mt-2"><span className="mb-1 block text-[11px] text-slate-400">Активність</span><div className="flex flex-wrap gap-1.5">{ACTS.map(([v, l]) => <button key={v} onClick={() => onSaveGoals({ activity: v })} className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 transition ${Math.abs(activity - v) < 0.01 ? "bg-orange-500 text-white ring-orange-500" : "bg-white text-slate-500 ring-slate-200"}`}>{l}</button>)}</div></div>
+      </div>
+
+      {/* КБЖУ per day */}
+      {canKcal && ready ? (
+        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
+          <div className="flex items-end justify-between">
+            <div><div className="text-sm font-bold text-slate-700">Скільки їсти щодня</div><div className="text-[11px] text-slate-400">щоб втрачати ≈ {perWeek.toFixed(2)} кг/тиждень</div></div>
+            <div className="text-right"><div className="text-3xl font-extrabold tabular-nums text-orange-600">{kcalTarget}</div><div className="text-[11px] text-slate-400">ккал / день</div></div>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            {[["Білки", proteinG, macro(proteinG, 4), "bg-rose-50 text-rose-600"], ["Жири", fatG, macro(fatG, 9), "bg-amber-50 text-amber-600"], ["Вуглеводи", carbsG, macro(carbsG, 4), "bg-sky-50 text-sky-600"]].map(([l, g, pct, cls]) => (
+              <div key={l} className={`rounded-2xl p-3 ${cls}`}><div className="text-[11px] font-medium opacity-80">{l}</div><div className="text-lg font-extrabold tabular-nums">{g} г</div><div className="text-[10px] opacity-70">{pct}%</div></div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">BMR ≈ {bmr}</span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">Витрата ≈ {tdee}</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">Дефіцит −{dailyDeficit}</span>
+            <span className="rounded-full bg-sky-50 px-2.5 py-1 font-semibold text-sky-700">💧 вода ≈ {waterL} л</span>
+          </div>
+          {belowFloor && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">⚠️ Для такого темпу калорій вийшло б менше безпечного мінімуму ({floorKcal} ккал), тож я підняла до {floorKcal}. Щоб не голодувати — краще розтягнути план на більше місяців (втрата буде трохи повільніша, але здоровіша).</p>}
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-400">Білок високий, щоб зберегти м'язи; решта калорій — вуглеводи й жири. Овочі та клітковина — понад норму, їх не рахуємо жорстко.</p>
+        </div>
+      ) : ready ? (
+        <div className="mt-3 rounded-2xl bg-orange-50/70 p-4 text-center text-sm text-orange-700 ring-1 ring-orange-100">Впиши зріст, вік і стать вище — і я порахую твої калорії та БЖУ на день. 🍽️</div>
+      ) : null}
+
+      {/* activity targets */}
+      {ready && (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50 text-center"><div className="text-2xl">🚶‍♀️</div><div className="mt-1 text-xl font-extrabold text-slate-800">8–10 тис</div><div className="text-[11px] text-slate-400">кроків на день</div></div>
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50 text-center"><div className="text-2xl">💪</div><div className="mt-1 text-xl font-extrabold text-slate-800">2–3</div><div className="text-[11px] text-slate-400">силові / тиждень (+ ходьба)</div></div>
+        </div>
+      )}
+
+      {/* fasting integration */}
+      {ready && (
+        <div className="mt-3 rounded-2xl bg-gradient-to-br from-orange-50 to-white p-4 shadow-sm ring-1 ring-orange-100">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-800"><Hourglass className="h-4 w-4 text-orange-500" /> Як вписати в голодування</div>
+          <p className="mt-1 text-sm leading-relaxed text-slate-600">На 16:8 усі {kcalTarget || "твої"} ккал з'їдай у вікні 8 год — зазвичай 2–3 прийоми. Почни їжу з білка й овочів (ситніше). Поза вікном — вода, чай, кава без цукру. Дефіцит створюєш калоріями, а голодування лише допомагає легше в нього вкластись — не «голодуй + майже не їж», це забагато.</p>
+        </div>
+      )}
 
       {ready && (
         <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
