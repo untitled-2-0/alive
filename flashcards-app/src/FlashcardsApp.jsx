@@ -1074,6 +1074,7 @@ export default function FlashcardsApp() {
   const [toolkitName, setToolkitName] = useState("Toolkit");
   const [budgetName, setBudgetName] = useState("Budget");
   const [inventoryName, setInventoryName] = useState("Inventory");
+  const [financeName, setFinanceName] = useState("Finance");
   const [cloudState, setCloudState] = useState({ signedIn: false, email: null, syncing: false });
   const [toast, setToast] = useState(null);
   const [deckEditor, setDeckEditor] = useState(null); // null | { deck } (deck=null → create)
@@ -1096,12 +1097,13 @@ export default function FlashcardsApp() {
       const toolkitSettings = await store.get(TKEYS.settings, { name: "Toolkit" });
       const budgetSettings = await store.get(BKEYS.settings, { name: "Budget" });
       const inventorySettings = await store.get(IKEYS.settings, { name: "Inventory" });
+      const financeSettings = await store.get(FNKEYS.settings, { name: "Finance" });
       const st = await store.get("stats", {
         history: {},
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["review", "routine", "calm", "fasting", "management", "toolkit", "budget", "inventory"].includes(ui.section) ? ui.section : "studying");
+      setSection(["review", "routine", "calm", "fasting", "management", "toolkit", "budget", "inventory", "finance"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
       setFastingName(fastingSettings?.name || "Fasting");
@@ -1109,6 +1111,7 @@ export default function FlashcardsApp() {
       setToolkitName(toolkitSettings?.name || "Toolkit");
       setBudgetName(budgetSettings?.name || "Budget");
       setInventoryName(inventorySettings?.name || "Inventory");
+      setFinanceName(financeSettings?.name || "Finance");
       setStats(st);
       setGroups(gi.groups || []);
       setDecks(idx.decks || []);
@@ -1206,6 +1209,13 @@ export default function FlashcardsApp() {
     setInventoryName(clean);
     const prev = await store.get(IKEYS.settings, { name: "Inventory" });
     await store.set(IKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameFinance = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Finance";
+    setFinanceName(clean);
+    const prev = await store.get(FNKEYS.settings, { name: "Finance" });
+    await store.set(FNKEYS.settings, { ...prev, name: clean });
   }, []);
 
   /* ---------- derived: per-deck due summary ---------- */
@@ -1548,6 +1558,7 @@ export default function FlashcardsApp() {
     await clearBudgetData();
     await clearInventoryData();
     await clearReviewData();
+    await clearFinanceData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
@@ -1559,6 +1570,7 @@ export default function FlashcardsApp() {
     setToolkitName("Toolkit");
     setBudgetName("Budget");
     setInventoryName("Inventory");
+    setFinanceName("Finance");
     flash("All data reset");
     window.dispatchEvent(new CustomEvent("routine-reset"));
     window.dispatchEvent(new CustomEvent("calm-reset"));
@@ -1567,6 +1579,7 @@ export default function FlashcardsApp() {
     window.dispatchEvent(new CustomEvent("budget-reset"));
     window.dispatchEvent(new CustomEvent("inventory-reset"));
     window.dispatchEvent(new CustomEvent("review-reset"));
+    window.dispatchEvent(new CustomEvent("finance-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
@@ -1578,9 +1591,10 @@ export default function FlashcardsApp() {
     const budget = await collectBudgetExport();
     const inventory = await collectInventoryExport();
     const review = await collectReviewExport();
+    const finance = await collectFinanceExport();
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 9,
+      version: 10,
       decks,
       groups,
       cards: cardsByDeck,
@@ -1593,6 +1607,7 @@ export default function FlashcardsApp() {
       budget,
       inventory,
       review,
+      finance,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1808,6 +1823,7 @@ export default function FlashcardsApp() {
         toolkitName={toolkitName}
         budgetName={budgetName}
         inventoryName={inventoryName}
+        financeName={financeName}
         cloud={cloudState}
         onSyncNow={doSyncNow}
       />
@@ -1829,6 +1845,8 @@ export default function FlashcardsApp() {
           <BudgetSection name={budgetName} onRename={renameBudget} />
         ) : section === "inventory" ? (
           <InventorySection name={inventoryName} onRename={renameInventory} />
+        ) : section === "finance" ? (
+          <FinanceSection name={financeName} onRename={renameFinance} onGo={changeSection} />
         ) : (
         <>
       {/* studying top bar */}
@@ -1954,6 +1972,7 @@ export default function FlashcardsApp() {
         toolkitName={toolkitName}
         budgetName={budgetName}
         inventoryName={inventoryName}
+        financeName={financeName}
         cloud={cloudState}
         onSyncNow={doSyncNow}
       />
@@ -2009,7 +2028,7 @@ export default function FlashcardsApp() {
 /* Nav button                                                          */
 /* ------------------------------------------------------------------ */
 /* Mobile bottom tab bar — shown below lg, replaces the left rail on phones */
-function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, cloud, onSyncNow }) {
+function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, financeName, cloud, onSyncNow }) {
   const items = [
     { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
     { id: "studying", label: "Навчання", icon: GraduationCap, badge: studyingDue },
@@ -2020,6 +2039,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
     { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
     { id: "budget", label: budgetName || "Budget", icon: ShoppingCart, badge: 0 },
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
+    { id: "finance", label: financeName || "Finance", icon: Wallet, badge: 0 },
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -2030,7 +2050,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
           <span>{cloud.syncing ? "Синхронізація…" : cloud.signedIn ? "Синхронізовано" : "Офлайн"}</span>
         </button>
       )}
-      <div className="grid grid-cols-9">
+      <div className="grid grid-cols-10">
         {items.map((it) => {
           const active = section === it.id;
           return (
@@ -2066,7 +2086,7 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 /* ------------------------------------------------------------------ */
 /* Sidebar — top-level section navigation                              */
 /* ------------------------------------------------------------------ */
-function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, cloud, onSyncNow }) {
+function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, financeName, cloud, onSyncNow }) {
   const items = [
     { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
@@ -2077,6 +2097,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
     { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
     { id: "budget", label: budgetName || "Budget", icon: ShoppingCart, badge: 0 },
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
+    { id: "finance", label: financeName || "Finance", icon: Wallet, badge: 0 },
   ];
   const wide = !collapsed;
   return (
@@ -7671,6 +7692,251 @@ function ReviewSection({ onGo }) {
         )}
       </div>
       {toast && <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg lg:bottom-6">{toast}</div>}
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* FINANCE — debts + discretionary spending + impulse counter          */
+/* ================================================================== */
+const FNKEYS = {
+  debts: "finance:debts",         // [{id, name, creditor, balance, start, rate, minPayment}]
+  allowance: "finance:allowance", // { amount, period: "day"|"week" }
+  expenses: "finance:expenses",   // [{id, date, amount, note, ts}]
+  impulse: "finance:impulse",     // { since, best, resisted, slips:[dates] }
+  settings: "finance:settings",   // { name, strategy }
+};
+const finFmt = (n) => `${Math.round((Number(n) || 0)).toLocaleString("uk-UA")} ₴`;
+function finWeekStart(ds) { const d = new Date(ds + "T00:00:00"); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return dateKey(d.getTime()); }
+function finDaysBetween(a, b) { return Math.max(0, Math.floor((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000)); }
+
+async function loadFinanceData() {
+  const debts = await store.get(FNKEYS.debts, []);
+  const allowance = await store.get(FNKEYS.allowance, { amount: 0, period: "day" });
+  const expenses = await store.get(FNKEYS.expenses, []);
+  const impulse = await store.get(FNKEYS.impulse, null);
+  const settings = await store.get(FNKEYS.settings, { name: "Finance", strategy: "snowball" });
+  return { debts, allowance, expenses, impulse, settings };
+}
+async function collectFinanceExport() { const d = await loadFinanceData(); return { debts: d.debts, allowance: d.allowance, expenses: d.expenses, impulse: d.impulse, settings: d.settings }; }
+async function clearFinanceData() { for (const k of Object.values(FNKEYS)) await store.remove(k); }
+
+function FinanceSection({ name, onRename, onGo }) {
+  const today = dateKey(Date.now());
+  const [loading, setLoading] = useState(true);
+  const [fview, setFview] = useState("debts"); // debts | spend | impulse
+  const [debts, setDebts] = useState([]);
+  const [allowance, setAllowance] = useState({ amount: 0, period: "day" });
+  const [expenses, setExpenses] = useState([]);
+  const [impulse, setImpulse] = useState({ since: today, best: 0, resisted: 0, slips: [] });
+  const [strategy, setStrategy] = useState("snowball");
+  const [debtEditor, setDebtEditor] = useState(null);
+  const [payFor, setPayFor] = useState(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [expAmt, setExpAmt] = useState("");
+  const [expNote, setExpNote] = useState("");
+  const [toast, setToast] = useState(null);
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2000); }, []);
+
+  const reload = useCallback(async () => {
+    const d = await loadFinanceData();
+    setDebts(d.debts || []); setAllowance(d.allowance || { amount: 0, period: "day" }); setExpenses(d.expenses || []);
+    setImpulse(d.impulse || { since: today, best: 0, resisted: 0, slips: [] });
+    setStrategy(d.settings?.strategy || "snowball");
+    if (!d.impulse) await store.set(FNKEYS.impulse, { since: today, best: 0, resisted: 0, slips: [] });
+    setLoading(false);
+  }, [today]);
+  useEffect(() => { reload(); const onR = () => reload(); window.addEventListener("finance-reset", onR); return () => window.removeEventListener("finance-reset", onR); }, [reload]);
+
+  const saveDebts = useCallback((n) => { setDebts(n); store.set(FNKEYS.debts, n); }, []);
+  const saveAllowance = useCallback((n) => { setAllowance(n); store.set(FNKEYS.allowance, n); }, []);
+  const saveExpenses = useCallback((n) => { setExpenses(n); store.set(FNKEYS.expenses, n); }, []);
+  const saveImpulse = useCallback((n) => { setImpulse(n); store.set(FNKEYS.impulse, n); }, []);
+  const saveStrategy = useCallback(async (st) => { setStrategy(st); const prev = await store.get(FNKEYS.settings, { name: "Finance" }); store.set(FNKEYS.settings, { ...prev, strategy: st }); }, []);
+
+  // debts
+  const upsertDebt = (meta, id) => { if (id) saveDebts(debts.map((x) => (x.id === id ? { ...x, ...meta } : x))); else saveDebts([...debts, { id: ruid("fd"), start: meta.balance, ...meta }]); };
+  const deleteDebt = (id) => saveDebts(debts.filter((x) => x.id !== id));
+  const logPayment = (id, amt) => saveDebts(debts.map((x) => (x.id === id ? { ...x, balance: Math.max(0, (Number(x.balance) || 0) - amt) } : x)));
+
+  const totalDebt = debts.reduce((s, x) => s + (Number(x.balance) || 0), 0);
+  const totalStart = debts.reduce((s, x) => s + (Number(x.start) || Number(x.balance) || 0), 0);
+  const totalPaid = totalStart - totalDebt;
+  const ordered = [...debts].sort((a, b) => strategy === "snowball" ? (a.balance - b.balance) : (b.rate - a.rate)).sort((a, b) => (a.balance <= 0) - (b.balance <= 0));
+  const focus = ordered.find((x) => x.balance > 0);
+
+  // allowance / expenses
+  const periodStart = allowance.period === "week" ? finWeekStart(today) : today;
+  const periodExp = expenses.filter((e) => e.date >= periodStart);
+  const periodSpent = periodExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const periodRemaining = (Number(allowance.amount) || 0) - periodSpent;
+  const logExpense = () => { const a = Number(expAmt); if (!a) return; saveExpenses([{ id: ruid("fe"), date: today, amount: a, note: expNote.trim(), ts: Date.now() }, ...expenses]); setExpAmt(""); setExpNote(""); flash("Записано"); };
+  const delExpense = (id) => saveExpenses(expenses.filter((e) => e.id !== id));
+
+  // impulse
+  const impDays = finDaysBetween(impulse.since, today);
+  const resisted = () => { saveImpulse({ ...impulse, resisted: (impulse.resisted || 0) + 1 }); flash("Молодець — це перемога 💪"); };
+  const slipped = () => { saveImpulse({ ...impulse, since: today, best: Math.max(impulse.best || 0, impDays), slips: [...(impulse.slips || []), today] }); flash("Це трапляється. Завтра — новий день 💛"); };
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-emerald-500"><div className="flex flex-col items-center gap-3"><Wallet className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-emerald-50/40 to-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-emerald-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-5">
+        <p className="mb-3 rounded-2xl bg-emerald-50/70 px-3 py-2 text-xs leading-relaxed text-emerald-800">Гроші й тривога часто ходять поруч. Тут — спокійно, крок за кроком, без осуду. Мета не «ідеально», а трохи ясніше.</p>
+
+        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-emerald-100">
+          {[["debts", "Борги", TrendingDown], ["spend", "Кишеня", Coffee], ["impulse", "Стійкість", ShieldAlert]].map(([k, label, Icon]) => (
+            <button key={k} onClick={() => setFview(k)} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${fview === k ? "bg-emerald-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4" /> {label}</button>
+          ))}
+        </div>
+
+        {fview === "debts" && (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100">
+              <div className="text-sm text-slate-400">Загальний борг</div>
+              <div className="text-3xl font-extrabold tabular-nums text-slate-900">{finFmt(totalDebt)}</div>
+              {totalStart > 0 && <>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-emerald-50"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.min(100, (totalPaid / totalStart) * 100)}%` }} /></div>
+                <div className="mt-1 text-xs text-slate-400">погашено {finFmt(totalPaid)} з {finFmt(totalStart)}</div>
+              </>}
+            </div>
+
+            {debts.length > 0 && (
+              <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-50">
+                <div className="mb-1.5 text-xs font-semibold text-slate-500">Стратегія погашення</div>
+                <div className="flex gap-2">
+                  {[["snowball", "Сніжинка", "спершу найменший борг — швидкі перемоги"], ["avalanche", "Лавина", "спершу найдорожчий % — менше переплати"]].map(([k, label, desc]) => (
+                    <button key={k} onClick={() => saveStrategy(k)} className={`flex-1 rounded-xl p-2 text-left ring-1 transition ${strategy === k ? "bg-emerald-50 ring-emerald-300" : "bg-white ring-slate-200"}`}><div className="text-sm font-bold text-slate-800">{label}</div><div className="text-[11px] leading-tight text-slate-400">{desc}</div></button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {ordered.map((d) => { const paid = (Number(d.start) || d.balance) - d.balance; const pct = d.start > 0 ? Math.min(1, paid / d.start) : 0; const done = d.balance <= 0; const isFocus = focus && d.id === focus.id; return (
+              <div key={d.id} className={`rounded-2xl bg-white p-4 shadow-sm ring-1 ${isFocus ? "ring-2 ring-emerald-300" : "ring-emerald-50"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2"><span className="truncate font-bold text-slate-800">{d.name}</span>{isFocus && <span className="shrink-0 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">фокус зараз</span>}{done && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">погашено 🎉</span>}</div>
+                    {d.creditor && <div className="text-xs text-slate-400">кому: {d.creditor}</div>}
+                  </div>
+                  <div className="shrink-0 text-right"><div className="font-extrabold tabular-nums text-slate-900">{finFmt(d.balance)}</div>{d.rate > 0 && <div className="text-[11px] text-slate-400">{d.rate}% · мін {finFmt(d.minPayment)}</div>}</div>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${pct * 100}%` }} /></div>
+                <div className="mt-2 flex items-center gap-2">
+                  {!done && <button onClick={() => setPayFor(d)} className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600">Внести оплату</button>}
+                  <button onClick={() => setDebtEditor({ debt: d })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50">Редагувати</button>
+                  <button onClick={() => { if (confirm("Видалити борг?")) deleteDebt(d.id); }} className="ml-auto rounded-md p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+                </div>
+                {isFocus && !done && <div className="mt-2 rounded-lg bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-700">Плати мінімум по всіх, а <b>сюди</b> — усе, що зможеш зверху. Один фокус за раз.</div>}
+              </div>
+            ); })}
+
+            <button onClick={() => setDebtEditor({ debt: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-emerald-300 py-3 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Додати борг</button>
+          </div>
+        )}
+
+        {fview === "spend" && (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-600">Ліміт на дрібні витрати</span>
+                <div className="flex gap-1 rounded-full bg-slate-100 p-0.5">
+                  {[["day", "день"], ["week", "тиждень"]].map(([k, l]) => <button key={k} onClick={() => saveAllowance({ ...allowance, period: k })} className={`rounded-full px-2.5 py-1 text-xs font-bold ${allowance.period === k ? "bg-emerald-500 text-white" : "text-slate-500"}`}>{l}</button>)}
+                </div>
+              </div>
+              <div className="flex items-center gap-2"><input type="number" min={0} value={allowance.amount || ""} onChange={(e) => saveAllowance({ ...allowance, amount: Math.max(0, +e.target.value || 0) })} placeholder="0" className="w-28 rounded-lg border border-emerald-200 px-2 py-1 text-right text-sm font-bold tabular-nums focus:border-emerald-400 focus:outline-none" /><span className="text-sm font-bold text-emerald-700">₴ / {allowance.period === "week" ? "тиждень" : "день"}</span></div>
+              <div className={`mt-3 rounded-2xl p-3 text-center ${periodRemaining < 0 ? "bg-amber-50" : "bg-emerald-50"}`}>
+                <div className={`text-[11px] font-medium ${periodRemaining < 0 ? "text-amber-600" : "text-emerald-600"}`}>{periodRemaining < 0 ? "перевитрата" : "лишилось"} на {allowance.period === "week" ? "цей тиждень" : "сьогодні"}</div>
+                <div className={`text-2xl font-extrabold tabular-nums ${periodRemaining < 0 ? "text-amber-600" : "text-emerald-600"}`}>{finFmt(Math.abs(periodRemaining))}</div>
+                <div className="text-[11px] text-slate-400">витрачено {finFmt(periodSpent)}</div>
+              </div>
+            </div>
+            <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-50">
+              <div className="flex gap-2"><input type="number" min={0} value={expAmt} onChange={(e) => setExpAmt(e.target.value)} placeholder="Сума ₴" className="w-24 rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-emerald-400 focus:outline-none" /><input value={expNote} onChange={(e) => setExpNote(e.target.value)} placeholder="На що? (необов'язково)" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-emerald-400 focus:outline-none" onKeyDown={(e) => { if (e.key === "Enter") logExpense(); }} /><button onClick={logExpense} className="shrink-0 rounded-lg bg-emerald-500 px-3 text-sm font-semibold text-white hover:bg-emerald-600">+</button></div>
+            </div>
+            {periodExp.length > 0 && (
+              <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-50">
+                <div className="mb-1.5 text-xs font-semibold text-slate-500">Витрати за період</div>
+                <div className="space-y-1">{periodExp.map((e) => <div key={e.id} className="group flex items-center gap-2 text-sm"><span className="tabular-nums font-semibold text-slate-700">{finFmt(e.amount)}</span><span className="min-w-0 flex-1 truncate text-slate-400">{e.note || "—"}</span><span className="text-[11px] text-slate-300">{e.date.slice(5)}</span><button onClick={() => delExpense(e.id)} className="text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>)}</div>
+              </div>
+            )}
+            <button onClick={() => onGo && onGo("budget")} className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200 hover:ring-emerald-200"><ShoppingCart className="h-4 w-4" /> Щомісячні покупки — у вкладці Budget</button>
+          </div>
+        )}
+
+        {fview === "impulse" && (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-gradient-to-br from-emerald-400 to-teal-400 p-6 text-center text-white shadow-sm">
+              <div className="text-5xl">🛡️</div>
+              <div className="mt-2 text-5xl font-black tabular-nums">{impDays}</div>
+              <div className="text-sm font-semibold text-white/90">{impDays === 1 ? "день" : "днів"} без імпульсивної покупки</div>
+              {impulse.best > 0 && <div className="mt-1 text-xs text-white/70">рекорд: {impulse.best} дн</div>}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={resisted} className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-emerald-100 hover:ring-emerald-300"><div className="text-2xl">💪</div><div className="mt-1 text-sm font-bold text-slate-700">Я втрималась</div><div className="text-[11px] text-slate-400">втримань: {impulse.resisted || 0}</div></button>
+              <button onClick={() => { if (confirm("Позначити зрив? Стрік почнеться заново — без осуду.")) slipped(); }} className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-slate-100 hover:ring-slate-300"><div className="text-2xl">🌱</div><div className="mt-1 text-sm font-bold text-slate-700">Був зрив</div><div className="text-[11px] text-slate-400">почати заново</div></button>
+            </div>
+            <p className="rounded-2xl bg-slate-50 px-4 py-3 text-center text-xs leading-relaxed text-slate-500">Зрив — не провал, а дані. Поміть, що передувало пориву (втома? нудьга? стрес?), і наступного разу буде легше. Ти вчишся, а не «не впоралась».</p>
+          </div>
+        )}
+      </main>
+
+      {debtEditor && <FinDebtEditor debt={debtEditor.debt} onClose={() => setDebtEditor(null)} onDelete={debtEditor.debt ? () => { deleteDebt(debtEditor.debt.id); setDebtEditor(null); } : null} onSave={(meta) => { upsertDebt(meta, debtEditor.debt?.id); setDebtEditor(null); }} />}
+      {payFor && <FinPayModal debt={payFor} onClose={() => setPayFor(null)} onPay={(amt) => { logPayment(payFor.id, amt); setPayFor(null); flash("Оплату записано 👏"); }} />}
+
+      {toast && <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg lg:bottom-6">{toast}</div>}
+    </div>
+  );
+}
+
+function FinDebtEditor({ debt, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(debt?.name || "");
+  const [creditor, setCreditor] = useState(debt?.creditor || "");
+  const [balance, setBalance] = useState(debt?.balance ?? "");
+  const [rate, setRate] = useState(debt?.rate ?? "");
+  const [minPayment, setMin] = useState(debt?.minPayment ?? "");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{debt ? "Редагувати борг" : "Новий борг"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва (напр. кредитка, позика від мами)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-emerald-400 focus:outline-none" />
+        <input value={creditor} onChange={(e) => setCreditor(e.target.value)} placeholder="Кому винна (необов'язково)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+        <div className="mb-3 grid grid-cols-3 gap-2">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Баланс ₴</span><input type="number" min={0} value={balance} onChange={(e) => setBalance(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Ставка %</span><input type="number" min={0} step="any" value={rate} onChange={(e) => setRate(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Мін. платіж ₴</span><input type="number" min={0} value={minPayment} onChange={(e) => setMin(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), creditor: creditor.trim(), balance: Number(balance) || 0, rate: Number(rate) || 0, minPayment: Number(minPayment) || 0 }); }} className="flex-1 rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Зберегти</button>
+          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-rose-50 px-4 py-3 font-semibold text-rose-500 hover:bg-rose-100"><Trash2 className="h-5 w-5" /></button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinPayModal({ debt, onClose, onPay }) {
+  const [amt, setAmt] = useState(debt.minPayment || "");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-1 text-lg font-bold text-slate-900">Оплата боргу</h3>
+        <p className="mb-3 text-sm text-slate-500">«{debt.name}» · зараз {finFmt(debt.balance)}</p>
+        <input autoFocus type="number" min={0} value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="Сума ₴" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-emerald-400 focus:outline-none" onKeyDown={(e) => { if (e.key === "Enter" && Number(amt) > 0) onPay(Number(amt)); }} />
+        <button onClick={() => { if (Number(amt) > 0) onPay(Number(amt)); }} className="w-full rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Записати оплату</button>
+      </div>
     </div>
   );
 }
