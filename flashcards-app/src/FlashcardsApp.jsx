@@ -1106,6 +1106,24 @@ export default function FlashcardsApp() {
     (async () => {
       const idx = await store.get("decks:index", { decks: [] });
       const gi = await store.get("groups:index", { groups: [] });
+      // one-time: seed FR/PL/ES starter decks under a "Мови" group
+      if (!(await store.get("langs:seeded", false))) {
+        try {
+          const seed = await (await fetch("/lang-starters.json")).json();
+          const gid = uid("g");
+          const newDecks = [];
+          for (const d of seed.decks) {
+            const did = uid("d");
+            newDecks.push({ id: did, name: d.name, created: Date.now(), topic: "", description: "", emoji: d.emoji, color: d.color || "blue", groupId: gid, language: d.language, autoPlay: false, goal: "longterm", deadline: null });
+            await store.set(`cards:${did}`, d.cards.map(([f, b]) => makeCard(f, b)));
+          }
+          gi.groups = [...(gi.groups || []), { id: gid, name: "Мови", emoji: "🌍", color: "blue", collapsed: false }];
+          idx.decks = [...(idx.decks || []), ...newDecks];
+          await store.set("groups:index", { groups: gi.groups });
+          await store.set("decks:index", { decks: idx.decks });
+          await store.set("langs:seeded", true);
+        } catch (e) { /* offline: skip seeding */ }
+      }
       const ui = await store.get("ui:prefs", { section: "review", sidebarCollapsed: false });
       const calmSettings = await store.get(CKEYS.settings, { name: "Спокій" });
       const fastingSettings = await store.get(FKEYS.settings, { name: "Fasting" });
@@ -1565,6 +1583,7 @@ export default function FlashcardsApp() {
     }
     await store.remove("decks:index");
     await store.remove("groups:index");
+    await store.remove("langs:seeded");
     await store.remove("stats");
     await clearRoutineData();
     await clearCalmData();
@@ -6069,6 +6088,7 @@ function FastingSection({ name, onRename }) {
   const NAV = [
     { id: "timer", label: "Таймер", icon: Timer },
     { id: "ladder", label: "Драбина", icon: TrendingUp },
+    { id: "plan", label: "План", icon: Target },
     { id: "diary", label: "Щоденник", icon: NotebookPen },
     { id: "overview", label: "Огляд", icon: Scale },
     { id: "reference", label: "Довідник", icon: Info },
@@ -6090,6 +6110,7 @@ function FastingSection({ name, onRename }) {
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
         {fview === "timer" && <FastTimer current={current} now={now} protocol={protocol} onStart={startFast} onEnd={endFast} onSetStart={setStartTs} onChangeProtocol={() => setFview("ladder")} />}
         {fview === "ladder" && <ProtocolLadder goals={goals} diary={diary} onSaveGoals={saveGoals} onSet={(id) => { saveGoals({ protocol: id, protocolSince: dateKey(Date.now()), stepUpDismissed: null }); flash(`Протокол: ${getProtocol(id).label}`); setFview("timer"); }} />}
+        {fview === "plan" && <FastPlan goals={goals} diary={diary} onSaveGoals={saveGoals} onGoLog={() => setDiaryEditor({ entry: null })} />}
         {fview === "diary" && <FastDiary diary={diary} onNew={() => setDiaryEditor({ entry: null })} onEdit={(e) => setDiaryEditor({ entry: e })} onDelete={deleteEntry} />}
         {fview === "overview" && <FastOverview goals={goals} diary={diary} onSaveGoals={saveGoals} />}
         {fview === "reference" && <FastReference />}
@@ -6268,6 +6289,100 @@ function ProtocolLadder({ goals, diary, onSet, onSaveGoals }) {
 }
 
 /* ---------- Overview: goals + metrics + charts ---------- */
+/* ---------- Fasting: gradual weight-loss plan ---------- */
+function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
+  const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  const months = goals.planMonths || 12;
+  const startW = goals.startWeight;
+  const targetW = goals.targetWeight;
+  const startDate = goals.planStart || goals.startDate || dateKey(Date.now());
+  const weighed = (diary || []).filter((r) => r.weight != null).sort((a, b) => a.date.localeCompare(b.date));
+  const currentW = weighed.length ? weighed[weighed.length - 1].weight : startW;
+
+  const ready = startW != null && targetW != null && startW > targetW;
+  const totalLoss = ready ? startW - targetW : 0;
+  const perMonth = ready ? totalLoss / months : 0;
+  const perWeek = ready ? totalLoss / (months * 4.345) : 0;
+  const lostSoFar = (startW != null && currentW != null) ? Math.round((startW - currentW) * 10) / 10 : 0;
+  const pctDone = totalLoss > 0 ? Math.max(0, Math.min(1, lostSoFar / totalLoss)) : 0;
+
+  // elapsed months since start → expected weight now
+  const elapsedMs = Date.now() - new Date(startDate + "T00:00:00").getTime();
+  const elapsedMonths = Math.max(0, elapsedMs / (30.44 * 86400000));
+  const expectedNow = ready ? Math.max(targetW, startW - perMonth * elapsedMonths) : null;
+  const delta = (ready && currentW != null && expectedNow != null) ? Math.round((currentW - expectedNow) * 10) / 10 : null; // >0 = behind plan
+
+  const milestones = [];
+  if (ready) {
+    const d0 = new Date(startDate + "T00:00:00");
+    for (let i = 1; i <= months; i++) { const d = new Date(d0); d.setMonth(d.getMonth() + i); milestones.push({ i, w: Math.round((startW - perMonth * i) * 10) / 10, date: `${d.getMonth() + 1}.${d.getFullYear()}` }); }
+    if (milestones.length) milestones[milestones.length - 1].w = targetW;
+  }
+  const paceOk = perWeek > 0 && perWeek <= 1;
+
+  const TIPS = [
+    { emoji: "⚖️", title: "Темп", body: "≈0.5–0.7 кг/тиждень — стало й безпечно. Швидше = більше втрати м'язів і гірше підтягується шкіра. Повільніше — краще для тіла й шкіри." },
+    { emoji: "🔥", title: "Голодування", body: "Піднімайся драбиною протоколів поступово (16:8 → 18:6 …), без форсування. Щоденне 16:8 уже добре працює — сталість важливіша за екстрим." },
+    { emoji: "💪", title: "Рух — головне для тонусу", body: "Силові 2–3 рази/тиждень — саме вони дають підкачане тіло й допомагають шкірі підтягнутись (м'язи заповнюють об'єм). Плюс 8–10 тис кроків на день." },
+    { emoji: "🍽️", title: "Харчування", body: "Достатньо білка (≈1.6–2 г на кг ваги — зберігає м'язи), овочі, вода 2+ л. Дефіцит помірний, не «голод до нуля» — інакше тіло їсть м'язи." },
+    { emoji: "🧴", title: "Щоб шкіра втягнулась", body: "Повільна втрата + білок + силові + вода + сон + час. Колаген/вітамін C. Нікотин руйнує колаген — це ще одна причина кидати (див. Відновлення). Еластичність повертається місяцями." },
+  ];
+
+  return (
+    <div>
+      <div className="rounded-3xl bg-gradient-to-br from-orange-400 to-rose-400 p-5 text-white shadow-sm">
+        <div className="text-sm font-semibold text-white/90">План — плавно й надовго</div>
+        <div className="text-2xl font-extrabold">−{totalLoss || 30} кг за {months} міс</div>
+        {ready ? <div className="text-sm text-white/90">≈ {perMonth.toFixed(1)} кг/міс · {perWeek.toFixed(2)} кг/тиждень {paceOk ? "✓ безпечний темп" : "⚠️ швидкувато"}</div>
+          : <div className="text-sm text-white/90">Впиши стартову й цільову вагу нижче — і зʼявиться графік по місяцях.</div>}
+      </div>
+
+      {/* weight goals */}
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Старт, кг</span><input type="number" step="0.1" value={goals.startWeight ?? ""} onChange={(e) => onSaveGoals({ startWeight: num(e.target.value) })} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Ціль, кг</span><input type="number" step="0.1" value={goals.targetWeight ?? ""} onChange={(e) => onSaveGoals({ targetWeight: num(e.target.value) })} placeholder={startW != null ? String(Math.round(startW - 30)) : ""} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Місяців</span><input type="number" min={3} max={24} value={months} onChange={(e) => onSaveGoals({ planMonths: Math.max(3, Math.min(24, +e.target.value || 12)) })} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+      </div>
+
+      {ready && (
+        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
+          <div className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">Зараз {currentW} кг · скинуто {lostSoFar} кг з {totalLoss}</span>{delta != null && <span className={`font-bold ${delta <= 0.5 ? "text-green-600" : "text-amber-600"}`}>{delta <= 0.5 ? "у графіку ✓" : `+${delta} кг до плану`}</span>}</div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-orange-50"><div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-rose-400 transition-all" style={{ width: `${pctDone * 100}%` }} /></div>
+          <button onClick={onGoLog} className="mt-2 text-xs font-semibold text-orange-600">+ записати вагу сьогодні</button>
+        </div>
+      )}
+
+      {ready && milestones.length > 0 && (
+        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
+          <div className="mb-2 text-sm font-bold text-slate-700">Орієнтири по місяцях</div>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            {milestones.map((m) => { const hit = currentW != null && currentW <= m.w; return (
+              <div key={m.i} className={`rounded-xl px-3 py-2 text-center ${hit ? "bg-green-50 ring-1 ring-green-200" : "bg-slate-50"}`}>
+                <div className="text-[10px] text-slate-400">міс {m.i} · {m.date}</div>
+                <div className={`text-sm font-extrabold tabular-nums ${hit ? "text-green-600" : "text-slate-700"}`}>{m.w} кг</div>
+              </div>
+            ); })}
+          </div>
+        </div>
+      )}
+
+      {/* guidance */}
+      <div className="mt-3 space-y-2">
+        {TIPS.map((t) => (
+          <div key={t.title} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50">
+            <div className="flex items-center gap-2 text-sm font-bold text-slate-800"><span className="text-lg">{t.emoji}</span> {t.title}</div>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">{t.body}</p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+        ⚠️ Це загальні орієнтири, а не медична порада. 30 кг — суттєва зміна, тож варто йти під наглядом лікаря чи дієтолога, особливо з голодуванням. Слухай тіло: запаморочення, слабкість, випадіння волосся — сигнал сповільнитись. Ціль не «швидко», а щоб було стало, здорово й із гарним самопочуттям. 💛
+      </p>
+    </div>
+  );
+}
+
 function FastOverview({ goals, diary, onSaveGoals }) {
   const m = fastingMetrics(goals, diary);
   const rows = diarySorted(diary);
@@ -8614,7 +8729,7 @@ function TaperEditor({ med, onClose, onSave }) {
 /* ---------- Block 7: Career growth (inside Management) ---------- */
 const CAREERKEYS = { skills: "career:skills", achievements: "career:achievements", reviews: "career:reviews" };
 async function collectCareerExport() { return { skills: await store.get(CAREERKEYS.skills, []), achievements: await store.get(CAREERKEYS.achievements, []), reviews: await store.get(CAREERKEYS.reviews, []) }; }
-async function clearCareerData() { for (const k of Object.values(CAREERKEYS)) await store.remove(k); }
+async function clearCareerData() { for (const k of Object.values(CAREERKEYS)) await store.remove(k); await store.remove("career:seeded"); }
 
 function CareerView() {
   const today = dateKey(Date.now());
@@ -8628,7 +8743,22 @@ function CareerView() {
   const [reviewText, setReviewText] = useState("");
 
   useEffect(() => { (async () => {
-    setSkills(await store.get(CAREERKEYS.skills, []));
+    let sk = await store.get(CAREERKEYS.skills, []);
+    if (!sk.length && !(await store.get("career:seeded", false))) {
+      const D = (days) => dateKey(Date.now() + days * 86400000);
+      sk = [
+        { id: ruid("sk"), name: "Продуктові основи PM", target: "Roadmap, PRD, discovery, пріоритизація (RICE/MoSCoW), user stories", deadline: D(42), progress: 0 },
+        { id: ruid("sk"), name: "Технічна глибина", target: "System design, API/REST, бази даних, як влаштований веб — щоб говорити з інженерами", deadline: D(90), progress: 0 },
+        { id: ruid("sk"), name: "AI-грамотність", target: "LLM і токени, промпт-інжиніринг, embeddings, RAG, оцінка якості (evals), обмеження й безпека", deadline: D(120), progress: 0 },
+        { id: ruid("sk"), name: "Будувати з AI", target: "OpenAI/Anthropic API, зібрати й показати одну AI-фічу (no-code + трохи коду)", deadline: D(150), progress: 0 },
+        { id: ruid("sk"), name: "Аналітика й метрики", target: "SQL, north-star метрика, воронки, A/B-експерименти, читати дашборди", deadline: D(180), progress: 0 },
+        { id: ruid("sk"), name: "Стейкхолдери й комунікація", target: "Презентувати roadmap, вирівнювати founder/eng/design, писати чіткі специфікації", deadline: "", progress: 0 },
+        { id: ruid("sk"), name: "Портфоліо AI-PM", target: "2 pet-проєкти з AI + оформлені кейси (проблема → рішення → метрика)", deadline: D(270), progress: 0 },
+        { id: ruid("sk"), name: "Підготовка до співбесід", target: "Product sense, system design для PM, AI-кейси, метрики, поведінкові — і подавати заявки", deadline: D(300), progress: 0 },
+      ];
+      await store.set(CAREERKEYS.skills, sk); await store.set("career:seeded", true);
+    }
+    setSkills(sk);
     setWins(await store.get(CAREERKEYS.achievements, []));
     const rv = await store.get(CAREERKEYS.reviews, []); setReviews(rv);
     setReviewText((rv.find((r) => r.week === week) || {}).text || "");
