@@ -23,7 +23,7 @@ import {
   HandHeart, ShoppingCart, Wallet, ShoppingBasket, Search,
   Package, Lock, HelpCircle,
 } from "lucide-react";
-import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signOutCloud, refreshSession, syncNow } from "./cloud.js";
+import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signInWithLink, signOutCloud, refreshSession, syncNow } from "./cloud.js";
 
 /* ------------------------------------------------------------------ */
 /* Constants + tiny utils                                              */
@@ -4060,6 +4060,7 @@ function CloudSyncPanel() {
   const [step, setStep] = useState("idle"); // idle | email | code
   const [input, setInput] = useState("");
   const [code, setCode] = useState("");
+  const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -4080,6 +4081,12 @@ function CloudSyncPanel() {
       else setErr(msg || "Невірний або застарілий код.");
       setBusy(false);
     }
+  };
+  const doLink = async () => {
+    setErr(""); if (!link.trim()) return;
+    setBusy(true);
+    try { await signInWithLink(link); location.reload(); }
+    catch (e) { setErr(e?.message || "Не вдалося увійти за посиланням."); setBusy(false); }
   };
   const doSignOut = async () => { setBusy(true); await signOutCloud(); setSigned(false); setEmail(null); setStep("idle"); setBusy(false); };
 
@@ -4111,9 +4118,18 @@ function CloudSyncPanel() {
               <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={(e) => { if (e.key === "Enter") doVerify(); }} placeholder="6-значний код" inputMode="numeric" className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm tracking-widest focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
               <button onClick={doVerify} disabled={busy || code.length < 6} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:bg-slate-300">{busy ? "…" : "Підтвердити й синхронізувати"}</button>
               <button onClick={() => { setStep("idle"); setCode(""); setErr(""); }} className="text-sm font-medium text-slate-400 hover:text-slate-600">Змінити пошту</button>
-              <span className="w-full text-xs text-slate-400">Лист надіслано на {input} (перевір і спам). Введи код — або просто клікни посилання в листі, воно поверне тебе сюди вже залогіненою.</span>
+              <span className="w-full text-xs text-slate-400">Лист надіслано на {input} (перевір і спам). Введи код — або скористайся посиланням нижче.</span>
             </div>
           )}
+
+          <details className="mt-3 rounded-lg bg-slate-50 p-3">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-600">Прийшло тільки посилання, без коду? Натисни сюди 👇</summary>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">1) Клікни посилання в листі. 2) Куди б воно не привело — <b>скопіюй увесь URL зі стрічки адреси браузера</b> (там усередині є «access_token=…»). 3) Встав його сюди:</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…#access_token=…" className="min-w-[200px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
+              <button onClick={doLink} disabled={busy || !link.trim()} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:bg-slate-300">{busy ? "…" : "Увійти за посиланням"}</button>
+            </div>
+          </details>
           {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
         </>
       )}

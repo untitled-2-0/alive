@@ -184,6 +184,37 @@ export async function verifyCode(email, token) {
   return { email: user.email, merged: r.pulled ? "merged" : "pushed" };
 }
 
+// Fallback sign-in: the user pastes the magic-link URL (or its hash) from the
+// email. We extract the token and set the session directly — this works even
+// when the link redirected to the wrong site, because we never rely on the
+// redirect destination, only on the token it carries.
+export async function signInWithLink(urlOrHash) {
+  if (!supabase) initCloud();
+  const raw = String(urlOrHash || "").trim();
+  if (!raw) throw new Error("Встав посилання з листа.");
+  let frag = raw;
+  const h = raw.indexOf("#"), q = raw.indexOf("?");
+  if (h >= 0) frag = raw.slice(h + 1);
+  else if (q >= 0) frag = raw.slice(q + 1);
+  const params = new URLSearchParams(frag);
+  const access_token = params.get("access_token");
+  const refresh_token = params.get("refresh_token");
+  const code = params.get("code");
+  let res;
+  if (access_token && refresh_token) {
+    res = await supabase.auth.setSession({ access_token, refresh_token });
+  } else if (code) {
+    res = await supabase.auth.exchangeCodeForSession(code);
+  } else {
+    throw new Error("У посиланні немає токена. Скопіюй увесь URL зі стрічки адреси браузера (після кліку на посилання) — там має бути «access_token=…».");
+  }
+  if (res.error) throw res.error;
+  user = res.data.user;
+  accessToken = res.data.session?.access_token || access_token || accessToken;
+  const r = await mergeCloud();
+  return { email: user.email, merged: r.pulled ? "merged" : "pushed" };
+}
+
 export async function signOutCloud() {
   if (!supabase) return;
   try { await supabase.auth.signOut(); } catch { /* ignore */ }
