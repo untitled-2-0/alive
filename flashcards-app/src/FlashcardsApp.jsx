@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import Papa from "papaparse";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
+  LineChart, Line,
 } from "recharts";
 import {
   Brain, Upload, BarChart3, Layers, Plus, Trash2, Download, RotateCcw,
@@ -15,6 +16,8 @@ import {
   Trophy, Smile, Menu, GripVertical, ArrowRight, Sunrise,
   Wind, Waves, Anchor, HeartPulse, TrendingUp, NotebookPen, Hourglass,
   Leaf, Pause, SkipForward, ListTree, Heart, Sparkle,
+  Coffee, Droplet, Scale, ShieldAlert, Info, Square, TrendingDown,
+  Utensils, GlassWater, LineChart as LineChartIcon,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -797,6 +800,93 @@ function calmStreak(sessions, today = dateKey(Date.now())) {
 const calmMinutes = (sessions) => Math.round(sessions.reduce((s, x) => s + (x.durationSec || 0), 0) / 60);
 const fmtClock = (sec) => `${Math.floor(sec / 60)}:${String(Math.max(0, Math.round(sec % 60))).padStart(2, "0")}`;
 
+/* ================================================================== */
+/* FASTING — Dr. Fung intermittent-fasting tracker (calm:*→fasting:*) */
+/* ================================================================== */
+const FKEYS = {
+  goals: "fasting:goals",
+  diary: "fasting:diary",
+  current: "fasting:currentFast",
+  settings: "fasting:settings",
+};
+
+// Protocol ladder, gentlest → hardest (level drives intensity color)
+const PROTOCOLS = [
+  { id: "16:8", label: "16:8", hrs: 16, window: 8, freq: "Щодня", level: 1, note: "Старт для початківців. Пропускаєш сніданок, їси з 12:00 до 20:00. М'яко і стало." },
+  { id: "18:6", label: "18:6", hrs: 18, window: 6, freq: "Щодня", level: 2, note: "Наступний крок після 16:8. Вужче вікно їжі, сильніший ефект." },
+  { id: "20:4", label: "20:4", hrs: 20, window: 4, freq: "Щодня", level: 3, note: "«Дієта воїна». Один-два прийоми їжі у 4-годинному вікні." },
+  { id: "OMAD", label: "OMAD (23:1)", hrs: 23, window: 1, freq: "Щодня / кілька разів на тиждень", level: 4, note: "Один прийом їжі на день. Простий графік, вимагає повноцінного прийому." },
+  { id: "24h", label: "24 год", hrs: 24, window: 0, freq: "2–3 рази/тиждень", level: 5, note: "Від вечері до вечері. Один день без їжі, наступний — звичайно." },
+  { id: "36h", label: "36 год", hrs: 36, window: 0, freq: "Через день", level: 6, note: "Сильніший вплив на інсулін і вагу. Часто в програмах Фанга при діабеті 2 типу." },
+  { id: "42h", label: "42 год", hrs: 42, window: 0, freq: "2–3 рази/тиждень", level: 7, note: "Пропускаєш вечерю, весь наступний день і снідаєш через день." },
+  { id: "48h+", label: "Тривале (>48 год)", hrs: 48, window: 0, freq: "Рідко / під наглядом", level: 8, note: "3–7+ днів. Лише з електролітами й бажано під наглядом лікаря." },
+];
+const getProtocol = (id) => PROTOCOLS.find((p) => p.id === id) || PROTOCOLS[0];
+const protocolColor = (level) => (level <= 1 ? "#22c55e" : level <= 2 ? "#84cc16" : level <= 3 ? "#eab308" : level <= 4 ? "#f59e0b" : level <= 5 ? "#f97316" : level <= 6 ? "#ef4444" : "#dc2626");
+
+// Gentle, educational stage timeline (not medical claims)
+const FAST_STAGES = [
+  { from: 0, to: 4, title: "Ситість", desc: "Тіло перетравлює їжу, цукор у крові зростає.", color: "#f59e0b" },
+  { from: 4, to: 12, title: "Цукор спадає", desc: "Рівень цукру стабілізується, витрачається запас глікогену.", color: "#f97316" },
+  { from: 12, to: 16, title: "Перехід на жир", desc: "Глікоген вичерпується — тіло починає брати енергію з жиру.", color: "#14b8a6" },
+  { from: 16, to: 24, title: "Спалювання жиру", desc: "Кетоз зростає, запускається рання автофагія — м'яке очищення клітин.", color: "#0ea5e9" },
+  { from: 24, to: 999, title: "Глибша автофагія", desc: "Довше голодування — глибші відновні процеси в клітинах.", color: "#6366f1" },
+];
+const stageForHours = (h) => FAST_STAGES.find((s) => h >= s.from && h < s.to) || FAST_STAGES[FAST_STAGES.length - 1];
+
+const WD_UA = ["Нд", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+
+async function loadFastingData() {
+  const goals = await store.get(FKEYS.goals, { startWeight: null, targetWeight: null, protocol: "16:8", startDate: dateKey(Date.now()) });
+  const diary = await store.get(FKEYS.diary, []);
+  const current = await store.get(FKEYS.current, null);
+  const settings = await store.get(FKEYS.settings, { name: "Fasting" });
+  return { goals, diary, current, settings };
+}
+async function collectFastingExport() {
+  const d = await loadFastingData();
+  return { goals: d.goals, diary: d.diary, current: d.current, settings: d.settings };
+}
+async function clearFastingData() {
+  for (const k of Object.values(FKEYS)) await store.remove(k);
+}
+
+// diary sorted by date asc, with auto weightChange vs previous weighed entry
+function diarySorted(diary) {
+  const rows = [...diary].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.ts || 0) - (b.ts || 0)));
+  let prevW = null;
+  return rows.map((r) => {
+    const change = r.weight != null && prevW != null ? Math.round((r.weight - prevW) * 10) / 10 : null;
+    if (r.weight != null) prevW = r.weight;
+    return { ...r, weightChange: change };
+  });
+}
+function fastingMetrics(goals, diary) {
+  const rows = diarySorted(diary);
+  const weighed = rows.filter((r) => r.weight != null);
+  const currentWeight = weighed.length ? weighed[weighed.length - 1].weight : (goals.startWeight ?? null);
+  const start = goals.startWeight ?? currentWeight;
+  const withHrs = diary.filter((r) => r.actualHrs != null && r.actualHrs > 0);
+  const totalHrs = withHrs.reduce((s, r) => s + r.actualHrs, 0);
+  return {
+    currentWeight,
+    weightChange: start != null && currentWeight != null ? Math.round((currentWeight - start) * 10) / 10 : null,
+    remaining: currentWeight != null && goals.targetWeight != null ? Math.round((currentWeight - goals.targetWeight) * 10) / 10 : null,
+    totalFasts: withHrs.length,
+    avgHrs: withHrs.length ? Math.round((totalHrs / withHrs.length) * 10) / 10 : 0,
+    longestHrs: withHrs.length ? Math.max(...withHrs.map((r) => r.actualHrs)) : 0,
+    totalHrs: Math.round(totalHrs),
+  };
+}
+function fastingStreak(diary, today = dateKey(Date.now())) {
+  const met = new Set(diary.filter((r) => r.goalMet).map((r) => r.date));
+  let cur = 0; const d = new Date(today + "T00:00:00");
+  if (!met.has(today)) d.setDate(d.getDate() - 1);
+  for (let i = 0; i < 800; i++) { if (met.has(dateKey(d.getTime()))) { cur += 1; d.setDate(d.getDate() - 1); } else break; }
+  return cur;
+}
+const fmtHM = (ms) => { const m = Math.max(0, Math.floor(ms / 60000)); return `${Math.floor(m / 60)}г ${m % 60}хв`; };
+
 /* ------------------------------------------------------------------ */
 /* Small presentational pieces                                         */
 /* ------------------------------------------------------------------ */
@@ -833,9 +923,10 @@ export default function FlashcardsApp() {
   const [cardsByDeck, setCardsByDeck] = useState({}); // {deckId: [cards]}
   const [stats, setStats] = useState({ history: {}, settings: { newPerDay: DEFAULT_NEW_PER_DAY } });
   const [view, setView] = useState("home"); // home | deck | study | setup | import | stats
-  const [section, setSection] = useState("studying"); // studying | routine | calm
+  const [section, setSection] = useState("studying"); // studying | routine | calm | fasting
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [calmName, setCalmName] = useState("Calm");
+  const [fastingName, setFastingName] = useState("Fasting");
   const [toast, setToast] = useState(null);
   const [deckEditor, setDeckEditor] = useState(null); // null | { deck } (deck=null → create)
   const [groupEditor, setGroupEditor] = useState(null); // null | { group } (group=null → create)
@@ -852,14 +943,16 @@ export default function FlashcardsApp() {
       const gi = await store.get("groups:index", { groups: [] });
       const ui = await store.get("ui:prefs", { section: "studying", sidebarCollapsed: false });
       const calmSettings = await store.get(CKEYS.settings, { name: "Calm" });
+      const fastingSettings = await store.get(FKEYS.settings, { name: "Fasting" });
       const st = await store.get("stats", {
         history: {},
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["routine", "calm"].includes(ui.section) ? ui.section : "studying");
+      setSection(["routine", "calm", "fasting"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name || "Calm");
+      setFastingName(fastingSettings?.name || "Fasting");
       setStats(st);
       setGroups(gi.groups || []);
       setDecks(idx.decks || []);
@@ -910,6 +1003,13 @@ export default function FlashcardsApp() {
     setCalmName(clean);
     const prev = await store.get(CKEYS.settings, { name: "Calm" });
     await store.set(CKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameFasting = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Fasting";
+    setFastingName(clean);
+    const prev = await store.get(FKEYS.settings, { name: "Fasting" });
+    await store.set(FKEYS.settings, { ...prev, name: clean });
   }, []);
 
   /* ---------- derived: per-deck due summary ---------- */
@@ -1248,29 +1348,34 @@ export default function FlashcardsApp() {
     await store.remove("stats");
     await clearRoutineData();
     await clearCalmData();
+    await clearFastingData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
     setStats({ history: {}, settings: { newPerDay: DEFAULT_NEW_PER_DAY } });
     setView("home");
     setCalmName("Calm");
+    setFastingName("Fasting");
     flash("All data reset");
     window.dispatchEvent(new CustomEvent("routine-reset"));
     window.dispatchEvent(new CustomEvent("calm-reset"));
+    window.dispatchEvent(new CustomEvent("fasting-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
     const routine = await collectRoutineExport();
     const calm = await collectCalmExport();
+    const fasting = await collectFastingExport();
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 3,
+      version: 4,
       decks,
       groups,
       cards: cardsByDeck,
       stats,
       routine,
       calm,
+      fasting,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1463,6 +1568,7 @@ export default function FlashcardsApp() {
         onToggle={toggleSidebar}
         studyingDue={totalDue}
         calmName={calmName}
+        fastingName={fastingName}
       />
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
@@ -1470,6 +1576,8 @@ export default function FlashcardsApp() {
           <RoutineSection />
         ) : section === "calm" ? (
           <CalmSection name={calmName} onRename={renameCalm} />
+        ) : section === "fasting" ? (
+          <FastingSection name={fastingName} onRename={renameFasting} />
         ) : (
         <>
       {/* studying top bar */}
@@ -1653,11 +1761,12 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 /* ------------------------------------------------------------------ */
 /* Sidebar — top-level section navigation                              */
 /* ------------------------------------------------------------------ */
-function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName }) {
+function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName }) {
   const items = [
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
     { id: "calm", label: calmName || "Calm", icon: Leaf, badge: 0 },
+    { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
   ];
   const wide = !collapsed;
   return (
@@ -4928,6 +5037,504 @@ function CalmStats({ sessions, onExit }) {
       </div>
 
       <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Self-help tools, not a replacement for professional support. If things feel heavy, reaching out to someone can help. 💛</p>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* FASTING — section UI                                               */
+/* ================================================================== */
+function FastingSection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [fview, setFview] = useState("timer"); // timer | ladder | diary | overview | reference
+  const [goals, setGoals] = useState({ startWeight: null, targetWeight: null, protocol: "16:8", startDate: dateKey(Date.now()) });
+  const [diary, setDiary] = useState([]);
+  const [current, setCurrent] = useState(null);
+  const [diaryEditor, setDiaryEditor] = useState(null); // {entry} | {entry:null}
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [toast, setToast] = useState(null);
+  const [now, setNow] = useState(Date.now());
+
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2400); }, []);
+
+  const reload = useCallback(async () => {
+    const d = await loadFastingData();
+    setGoals(d.goals); setDiary(d.diary); setCurrent(d.current); setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => { setGoals({ startWeight: null, targetWeight: null, protocol: "16:8", startDate: dateKey(Date.now()) }); setDiary([]); setCurrent(null); setFview("timer"); };
+    window.addEventListener("fasting-reset", onReset);
+    return () => window.removeEventListener("fasting-reset", onReset);
+  }, [reload]);
+
+  // tick while a fast is running
+  useEffect(() => {
+    if (!current) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    setNow(Date.now());
+    return () => clearInterval(t);
+  }, [current]);
+
+  const saveGoals = useCallback(async (patch) => { const next = { ...goals, ...patch }; setGoals(next); await store.set(FKEYS.goals, next); }, [goals]);
+  const saveDiary = useCallback(async (next) => { setDiary(next); await store.set(FKEYS.diary, next); }, []);
+  const saveCurrent = useCallback(async (val) => { setCurrent(val); await store.set(FKEYS.current, val); }, []);
+
+  const protocol = getProtocol(goals.protocol);
+
+  const startFast = useCallback(async () => {
+    await saveCurrent({ startTs: Date.now(), targetHrs: protocol.hrs, protocol: protocol.id });
+    flash(`Пішов відлік — ціль ${protocol.hrs} год 💪`);
+  }, [saveCurrent, protocol, flash]);
+
+  const setStartTs = useCallback(async (ts) => { if (current) await saveCurrent({ ...current, startTs: ts }); }, [current, saveCurrent]);
+
+  const endFast = useCallback(async () => {
+    if (!current) return;
+    const actualHrs = Math.round(((Date.now() - current.startTs) / 3600000) * 10) / 10;
+    const entry = {
+      id: ruid("d"), date: dateKey(current.startTs), ts: current.startTs,
+      protocol: current.protocol, targetHrs: current.targetHrs, actualHrs,
+      goalMet: actualHrs + 0.05 >= current.targetHrs,
+      weight: null, waist: null, energy: null, hunger: null, wellbeing: "", notes: "",
+    };
+    await saveDiary([...diary, entry]);
+    await saveCurrent(null);
+    setDiaryEditor({ entry });
+    setFview("diary");
+    flash(entry.goalMet ? "Ціль досягнута! Запис у щоденнику ✓" : "Голодування записано. Будь-який крок — це прогрес.");
+  }, [current, diary, saveDiary, saveCurrent, flash]);
+
+  const saveEntry = useCallback(async (entry, id) => {
+    if (id) await saveDiary(diary.map((r) => (r.id === id ? { ...r, ...entry } : r)));
+    else await saveDiary([...diary, { id: ruid("d"), ts: Date.now(), ...entry }]);
+    setDiaryEditor(null); flash("Збережено");
+  }, [diary, saveDiary, flash]);
+  const deleteEntry = useCallback(async (id) => { await saveDiary(diary.filter((r) => r.id !== id)); flash("Видалено"); }, [diary, saveDiary, flash]);
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-orange-400"><div className="flex flex-col items-center gap-3"><Hourglass className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  const NAV = [
+    { id: "timer", label: "Таймер", icon: Timer },
+    { id: "ladder", label: "Драбина", icon: TrendingUp },
+    { id: "diary", label: "Щоденник", icon: NotebookPen },
+    { id: "overview", label: "Огляд", icon: Scale },
+    { id: "reference", label: "Довідник", icon: Info },
+  ];
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-amber-50 via-orange-50/40 to-white">
+      <header className="sticky top-0 z-20 border-b border-amber-100 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-1 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-amber-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          {NAV.map((n) => <NavButton key={n.id} active={fview === n.id} onClick={() => setFview(n.id)} icon={n.icon}>{n.label}</NavButton>)}
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-6">
+        {fview === "timer" && <FastTimer current={current} now={now} protocol={protocol} onStart={startFast} onEnd={endFast} onSetStart={setStartTs} onChangeProtocol={() => setFview("ladder")} />}
+        {fview === "ladder" && <ProtocolLadder goals={goals} diary={diary} onSet={(id) => { saveGoals({ protocol: id }); flash(`Протокол: ${getProtocol(id).label}`); setFview("timer"); }} />}
+        {fview === "diary" && <FastDiary diary={diary} onNew={() => setDiaryEditor({ entry: null })} onEdit={(e) => setDiaryEditor({ entry: e })} onDelete={deleteEntry} />}
+        {fview === "overview" && <FastOverview goals={goals} diary={diary} onSaveGoals={saveGoals} />}
+        {fview === "reference" && <FastReference />}
+      </main>
+
+      {diaryEditor && <DiaryForm entry={diaryEditor.entry} defaultProtocol={goals.protocol} onClose={() => setDiaryEditor(null)} onSave={(e) => saveEntry(e, diaryEditor.entry?.id)} />}
+      {toast && <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+/* ---------- Live timer ---------- */
+function FastRing({ pct, size = 240, stroke = 16, color = "#f97316", children }) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r, off = c * (1 - Math.max(0, Math.min(1, pct)));
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#fdead1" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" style={{ transition: "stroke-dashoffset .8s ease" }} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">{children}</div>
+    </div>
+  );
+}
+function FastTimer({ current, now, protocol, onStart, onEnd, onSetStart, onChangeProtocol }) {
+  const [editing, setEditing] = useState(false);
+  const elapsedMs = current ? now - current.startTs : 0;
+  const elapsedH = elapsedMs / 3600000;
+  const targetH = current ? current.targetHrs : protocol.hrs;
+  const pct = current ? elapsedMs / (targetH * 3600000) : 0;
+  const stage = stageForHours(elapsedH);
+  const projEnd = current ? new Date(current.startTs + targetH * 3600000) : null;
+  const startDate = current ? new Date(current.startTs) : null;
+  const p = current ? getProtocol(current.protocol) : protocol;
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="rounded-full px-3 py-1 text-sm font-bold text-white" style={{ backgroundColor: protocolColor(p.level) }}>{p.label}</span>
+        <button onClick={onChangeProtocol} className="rounded-full bg-white px-3 py-1 text-sm font-medium text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50">змінити</button>
+      </div>
+
+      <FastRing pct={pct} color={current ? stage.color : "#fb923c"}>
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">{current ? "Голодування" : "Готова почати"}</div>
+        <div className="text-4xl font-extrabold tabular-nums text-slate-900">{fmtHM(elapsedMs)}</div>
+        <div className="mt-1 text-sm text-slate-400">ціль {targetH} год{current ? ` · ${Math.round(pct * 100)}%` : ""}</div>
+      </FastRing>
+
+      {current ? (
+        <>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm text-slate-500">
+            <span>Старт: {startDate.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+            <span className="text-slate-300">·</span>
+            <span>Ціль: {projEnd.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+            <button onClick={() => setEditing((v) => !v)} className="text-orange-500 hover:text-orange-600"><Pencil className="h-3.5 w-3.5" /></button>
+          </div>
+          {editing && (
+            <div className="mt-2 flex items-center gap-2 rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-amber-100">
+              <span className="text-xs text-slate-500">Час старту</span>
+              <input type="datetime-local" value={toLocalInput(current.startTs)} onChange={(e) => { const t = new Date(e.target.value).getTime(); if (!isNaN(t)) onSetStart(t); }} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+            </div>
+          )}
+          <button onClick={onEnd} className="mt-6 rounded-2xl bg-slate-800 px-10 py-3.5 font-bold text-white shadow-lg transition hover:bg-slate-900">Завершити голодування</button>
+        </>
+      ) : (
+        <button onClick={onStart} className="mt-6 rounded-2xl bg-orange-500 px-12 py-3.5 font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600">Почати голодування</button>
+      )}
+
+      {/* stage timeline */}
+      <div className="mt-8 w-full">
+        <div className="mb-2 text-sm font-semibold text-slate-600">Що відбувається в тілі</div>
+        <div className="space-y-2">
+          {FAST_STAGES.map((s) => {
+            const active = current && elapsedH >= s.from && elapsedH < s.to;
+            const past = current && elapsedH >= s.to;
+            const label = s.to >= 999 ? `${s.from}+ год` : `${s.from}–${s.to} год`;
+            return (
+              <div key={s.title} className={`flex items-center gap-3 rounded-2xl border p-3 transition ${active ? "border-transparent shadow-md" : "border-slate-100 bg-white"}`} style={active ? { backgroundColor: s.color + "18", borderColor: s.color } : {}}>
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white" style={{ backgroundColor: past ? "#cbd5e1" : s.color }}>{past ? <Check className="h-4 w-4" /> : <span className="text-[11px] font-bold">{s.from}</span>}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2"><span className="font-bold text-slate-800">{s.title}</span><span className="text-[11px] font-medium text-slate-400">{label}</span>{active && <span className="rounded-full bg-white/70 px-2 text-[10px] font-bold" style={{ color: s.color }}>зараз</span>}</div>
+                  <div className="text-xs text-slate-500">{s.desc}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-center text-[11px] text-slate-400">Орієнтовні етапи для розуміння процесу — не медичні твердження. Час індивідуальний.</p>
+      </div>
+    </div>
+  );
+}
+function toLocalInput(ts) { const d = new Date(ts - new Date().getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); }
+
+/* ---------- Protocol ladder ---------- */
+function ProtocolLadder({ goals, diary, onSet }) {
+  const cur = getProtocol(goals.protocol);
+  const doneAtCurrent = diary.filter((r) => r.protocol === goals.protocol && r.goalMet).length;
+  const nextP = PROTOCOLS.find((p) => p.level === cur.level + 1);
+  const readyToStep = doneAtCurrent >= 5 && nextP;
+
+  return (
+    <div>
+      <h1 className="text-xl font-extrabold text-slate-900">Драбина протоколів</h1>
+      <p className="mt-1 rounded-2xl bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-800">
+        Починай з найм'якшого щабля й піднімайся <b>поступово</b> — тільки коли поточний рівень дається легко й приємно. Немає «єдино правильного» рівня; сталість важливіша за інтенсивність. Жодного поспіху.
+      </p>
+
+      {readyToStep && (
+        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
+          <Sparkle className="h-5 w-5 shrink-0 text-green-500" />
+          <p className="text-sm text-green-800">Ти комфортно витримала <b>{cur.label}</b> вже {doneAtCurrent} разів. Якщо почуваєшся добре — можна спробувати <b>{nextP.label}</b>. Але без тиску, коли сама відчуєш готовність.</p>
+        </div>
+      )}
+
+      <div className="mt-4 space-y-2">
+        {[...PROTOCOLS].reverse().map((p) => {
+          const active = p.id === goals.protocol;
+          const color = protocolColor(p.level);
+          return (
+            <div key={p.id} className={`flex items-start gap-3 rounded-2xl border p-4 transition ${active ? "shadow-md" : "border-slate-100 bg-white"}`} style={active ? { borderColor: color, backgroundColor: color + "12" } : {}}>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-sm font-extrabold text-white" style={{ backgroundColor: color }}>{p.hrs}г</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold text-slate-900">{p.label}</span>
+                  <span className="text-xs text-slate-400">вікно {p.window} год · {p.freq}</span>
+                  {active && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white" style={{ backgroundColor: color }}>мій зараз</span>}
+                </div>
+                <p className="mt-0.5 text-sm text-slate-500">{p.note}</p>
+              </div>
+              {!active && <button onClick={() => onSet(p.id)} className="shrink-0 rounded-full bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900">Обрати</button>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Overview: goals + metrics + charts ---------- */
+function FastOverview({ goals, diary, onSaveGoals }) {
+  const m = fastingMetrics(goals, diary);
+  const rows = diarySorted(diary);
+  const weightData = rows.filter((r) => r.weight != null).map((r) => ({ date: r.date.slice(5), weight: r.weight }));
+  const hoursData = rows.filter((r) => r.actualHrs != null).slice(-14).map((r) => ({ date: r.date.slice(5), hrs: r.actualHrs, met: r.goalMet }));
+  const streak = fastingStreak(diary);
+
+  const start = goals.startWeight, target = goals.targetWeight, cur = m.currentWeight;
+  let pct = 0;
+  if (start != null && target != null && cur != null && start !== target) pct = Math.max(0, Math.min(1, (start - cur) / (start - target)));
+
+  const num = (v) => (v == null || v === "" ? null : parseFloat(v));
+
+  return (
+    <div className="space-y-5">
+      <h1 className="text-xl font-extrabold text-slate-900">Огляд</h1>
+
+      {/* goals setup */}
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+        <div className="mb-3 text-sm font-bold text-slate-700">🎯 Мої цілі</div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Стартова вага, кг</span><input type="number" step="0.1" value={goals.startWeight ?? ""} onChange={(e) => onSaveGoals({ startWeight: num(e.target.value) })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Цільова вага, кг</span><input type="number" step="0.1" value={goals.targetWeight ?? ""} onChange={(e) => onSaveGoals({ targetWeight: num(e.target.value) })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Основний протокол</span>
+            <select value={goals.protocol} onChange={(e) => onSaveGoals({ protocol: e.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none">{PROTOCOLS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select>
+          </label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Дата старту</span><input type="date" value={goals.startDate || ""} onChange={(e) => onSaveGoals({ startDate: e.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none" /></label>
+        </div>
+        {start != null && target != null && (
+          <div className="mt-4">
+            <div className="mb-1 flex justify-between text-xs text-slate-500"><span>{start} кг</span><span className="font-semibold text-orange-600">{cur ?? start} кг</span><span>{target} кг</span></div>
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-green-400 transition-all" style={{ width: `${pct * 100}%` }} /></div>
+            <div className="mt-1 text-center text-xs text-slate-400">{Math.round(pct * 100)}% шляху до цілі</div>
+          </div>
+        )}
+      </div>
+
+      {/* metric cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Metric label="Поточна вага" value={m.currentWeight != null ? `${m.currentWeight}` : "—"} unit="кг" />
+        <Metric label="Зміна ваги" value={m.weightChange != null ? `${m.weightChange > 0 ? "+" : ""}${m.weightChange}` : "—"} unit="кг" tint={m.weightChange != null && m.weightChange < 0 ? "text-green-600" : "text-slate-700"} />
+        <Metric label="До цілі" value={m.remaining != null ? `${m.remaining}` : "—"} unit="кг" />
+        <Metric label="Всього голодувань" value={m.totalFasts} />
+        <Metric label="Середня тривалість" value={m.avgHrs} unit="год" />
+        <Metric label="Найдовше" value={m.longestHrs} unit="год" />
+        <Metric label="Всього годин" value={m.totalHrs} unit="год" />
+        <Metric label="Серія" value={streak} unit="дн" tint="text-orange-500" />
+      </div>
+
+      {/* weight chart */}
+      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-amber-100">
+        <h2 className="mb-3 text-sm font-bold text-slate-700">Вага в часі</h2>
+        {weightData.length < 2 ? <p className="py-8 text-center text-sm text-slate-400">Додай кілька записів ваги у щоденнику.</p> : (
+          <div className="h-56 w-full"><ResponsiveContainer width="100%" height="100%">
+            <LineChart data={weightData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#fef3e2" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#b08968" }} axisLine={false} tickLine={false} />
+              <YAxis domain={["dataMin - 1", "dataMax + 1"]} tick={{ fontSize: 11, fill: "#b08968" }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #fed7aa", fontSize: 12 }} />
+              <Line type="monotone" dataKey="weight" stroke="#f97316" strokeWidth={2.5} dot={{ r: 3, fill: "#f97316" }} />
+            </LineChart>
+          </ResponsiveContainer></div>
+        )}
+      </div>
+
+      {/* hours chart */}
+      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-amber-100">
+        <h2 className="mb-3 text-sm font-bold text-slate-700">Години голодування</h2>
+        {hoursData.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Записів ще немає.</p> : (
+          <div className="h-52 w-full"><ResponsiveContainer width="100%" height="100%">
+            <BarChart data={hoursData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#fef3e2" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#b08968" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: "#b08968" }} axisLine={false} tickLine={false} />
+              <Tooltip cursor={{ fill: "#fff7ed" }} contentStyle={{ borderRadius: 10, border: "1px solid #fed7aa", fontSize: 12 }} formatter={(v) => [`${v} год`, "факт"]} />
+              <Bar dataKey="hrs" radius={[5, 5, 0, 0]}>{hoursData.map((d, i) => <Cell key={i} fill={d.met ? "#22c55e" : "#fb923c"} />)}</Bar>
+            </BarChart>
+          </ResponsiveContainer></div>
+        )}
+      </div>
+
+      <FastHeatmap diary={diary} />
+    </div>
+  );
+}
+function Metric({ label, value, unit, tint = "text-slate-800" }) {
+  return <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-amber-100"><div className={`text-xl font-extrabold tabular-nums ${tint}`}>{value}{unit && <span className="ml-0.5 text-xs font-medium text-slate-400">{unit}</span>}</div><div className="mt-0.5 text-[11px] text-slate-400">{label}</div></div>;
+}
+function FastHeatmap({ diary }) {
+  const [mo, setMo] = useState(0);
+  const now = new Date(); const view = new Date(now.getFullYear(), now.getMonth() + mo, 1);
+  const year = view.getFullYear(), month = view.getMonth();
+  const days = new Date(year, month + 1, 0).getDate();
+  const pad = (new Date(year, month, 1).getDay() + 6) % 7;
+  const byDate = {}; for (const r of diary) if (r.actualHrs) byDate[r.date] = Math.max(byDate[r.date] || 0, r.goalMet ? 2 : 1);
+  const col = (v) => (!v ? "#f5f0e8" : v === 2 ? "#22c55e" : "#fdba74");
+  return (
+    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-amber-100">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-slate-700">{view.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
+        <div className="flex gap-1"><button onClick={() => setMo((x) => x - 1)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" /></button><button onClick={() => setMo(0)} disabled={mo === 0} className="rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-40">Зараз</button><button onClick={() => setMo((x) => Math.min(0, x + 1))} disabled={mo === 0} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-40"><ArrowRight className="h-4 w-4" /></button></div>
+      </div>
+      <div className="grid grid-cols-7 gap-1.5">
+        {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"].map((w, i) => <div key={i} className="pb-1 text-center text-[10px] font-semibold text-slate-400">{w}</div>)}
+        {Array.from({ length: pad }).map((_, i) => <div key={"p" + i} />)}
+        {Array.from({ length: days }).map((_, i) => { const d = i + 1; const ds = dateKey(new Date(year, month, d).getTime()); const v = byDate[ds] || 0; return <div key={ds} className="grid aspect-square place-items-center rounded-lg text-[10px] font-medium" style={{ backgroundColor: col(v), color: v ? "#fff" : "#94a3b8" }} title={ds}>{d}</div>; })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Diary ---------- */
+function FastDiary({ diary, onNew, onEdit, onDelete }) {
+  const rows = diarySorted(diary).reverse();
+  const dow = (ds) => WD_UA[new Date(ds + "T00:00:00").getDay()];
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <h1 className="text-xl font-extrabold text-slate-900">Щоденник</h1>
+        <button onClick={onNew} className="inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"><Plus className="h-4 w-4" /> Запис</button>
+      </div>
+      {rows.length === 0 ? (
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-amber-50">Записів ще немає. Заверши голодування на таймері — і рядок з'явиться сам.</div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r) => (
+            <button key={r.id} onClick={() => onEdit(r)} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left shadow-sm ring-1 ring-amber-50 transition hover:ring-amber-200">
+              <div className="w-14 shrink-0 text-center"><div className="text-xs font-semibold text-slate-400">{dow(r.date)}</div><div className="text-sm font-bold text-slate-700">{r.date.slice(5)}</div></div>
+              <span className="rounded-full px-2 py-0.5 text-[11px] font-bold text-white" style={{ backgroundColor: protocolColor(getProtocol(r.protocol).level) }}>{getProtocol(r.protocol).label}</span>
+              <div className="min-w-0 flex-1 text-sm">
+                <span className="font-semibold text-slate-800">{r.actualHrs ?? "—"}</span><span className="text-slate-400">/{r.targetHrs ?? "—"} год</span>
+                {r.goalMet ? <Check className="ml-1 inline h-4 w-4 text-green-500" /> : <span className="ml-1 text-slate-300">✗</span>}
+                {r.weight != null && <span className="ml-2 text-slate-500">{r.weight} кг{r.weightChange != null ? ` (${r.weightChange > 0 ? "+" : ""}${r.weightChange})` : ""}</span>}
+                {r.notes && <div className="truncate text-xs text-slate-400">{r.notes}</div>}
+              </div>
+              <span onClick={(e) => { e.stopPropagation(); if (confirm("Видалити запис?")) onDelete(r.id); }} className="rounded p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function DiaryForm({ entry, defaultProtocol, onClose, onSave }) {
+  const [f, setF] = useState({
+    date: entry?.date || dateKey(Date.now()), protocol: entry?.protocol || defaultProtocol || "16:8",
+    targetHrs: entry?.targetHrs ?? getProtocol(entry?.protocol || defaultProtocol || "16:8").hrs,
+    actualHrs: entry?.actualHrs ?? "", weight: entry?.weight ?? "", waist: entry?.waist ?? "",
+    energy: entry?.energy ?? "", hunger: entry?.hunger ?? "", wellbeing: entry?.wellbeing || "", notes: entry?.notes || "",
+  });
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const num = (v) => (v === "" || v == null ? null : parseFloat(v));
+  const save = () => {
+    const targetHrs = num(f.targetHrs), actualHrs = num(f.actualHrs);
+    onSave({ date: f.date, protocol: f.protocol, targetHrs, actualHrs, goalMet: actualHrs != null && targetHrs != null && actualHrs + 0.05 >= targetHrs, weight: num(f.weight), waist: num(f.waist), energy: num(f.energy), hunger: num(f.hunger), wellbeing: f.wellbeing.trim(), notes: f.notes.trim() });
+  };
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[94vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">{entry ? "Запис щоденника" : "Новий запис"}</h2><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Дата</span><input type="date" value={f.date} onChange={(e) => set("date", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Протокол</span><select value={f.protocol} onChange={(e) => { set("protocol", e.target.value); set("targetHrs", getProtocol(e.target.value).hrs); }} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{PROTOCOLS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Ціль, год</span><input type="number" step="0.5" value={f.targetHrs} onChange={(e) => set("targetHrs", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Факт, год</span><input type="number" step="0.5" value={f.actualHrs} onChange={(e) => set("actualHrs", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Вага, кг</span><input type="number" step="0.1" value={f.weight} onChange={(e) => set("weight", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Талія, см</span><input type="number" step="0.5" value={f.waist} onChange={(e) => set("waist", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Енергія 1-5</span><input type="number" min="1" max="5" value={f.energy} onChange={(e) => set("energy", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Голод 1-5</span><input type="number" min="1" max="5" value={f.hunger} onChange={(e) => set("hunger", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+        </div>
+        <label className="mt-3 block"><span className="mb-1 block text-xs text-slate-500">Сон / самопочуття</span><input value={f.wellbeing} onChange={(e) => set("wellbeing", e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+        <label className="mt-3 block"><span className="mb-1 block text-xs text-slate-500">Нотатки</span><textarea rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+        <div className="mt-5 flex justify-end gap-3"><button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Скасувати</button><button onClick={save} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-2.5 font-semibold text-white hover:bg-orange-600"><Check className="h-4 w-4" /> Зберегти</button></div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Reference: drinks, tips, safety ---------- */
+const DRINKS = [
+  { t: "Вода (звичайна, газована)", ok: "yes", c: "Основа. Пий багато. Можна дрібку морської солі для електролітів." },
+  { t: "Чорна кава (без цукру)", ok: "yes", c: "Притупляє голод. Без цукру й молока." },
+  { t: "Чай (зелений, чорний, трав'яний)", ok: "yes", c: "Без цукру. Гарячий чай добре відволікає від голоду." },
+  { t: "Кістковий бульйон", ok: "yes", c: "Особливо при довгих голодуваннях — дає сіль і електроліти." },
+  { t: "Морська / гімалайська сіль", ok: "yes", c: "Дрібка у воду проти головного болю й слабкості." },
+  { t: "Трохи вершків / олії в каві", ok: "warn", c: "Технічно перериває «чисте» голодування; ок для довгих фаз, не для строгого." },
+  { t: "Штучні підсолоджувачі", ok: "warn", c: "Можуть провокувати інсулін і апетит. Фанг радить уникати." },
+  { t: "Соки, смузі, молоко", ok: "no", c: "Калорії/цукор — перериває голодування." },
+  { t: "Будь-яка їжа, снек", ok: "no", c: "Навіть маленький перекус зупиняє голодування." },
+];
+const TIPS = [
+  ["Пий воду", "Починай ранок з великої склянки води. Гідратація зменшує відчуття голоду."],
+  ["Будь зайнятим", "Голод приходить хвилями. Зайнятий день відволікає — час минає непомітно."],
+  ["Пий каву", "Чорна кава притупляє апетит і додає бадьорості."],
+  ["Пам'ятай: голод минає", "Голод не наростає нескінченно, а йде хвилями. Перечекай хвилю — і вона спаде."],
+  ["Не всім розповідай", "Менше зайвих порад і тиску оточення — легше дотримуватись плану."],
+  ["Дай собі місяць", "Тілу потрібен час на адаптацію. Перші тижні найважчі, далі легшає."],
+  ["Їж низьковуглеводно", "У вікні їжі менше цукру й рафінованих вуглеводів = стабільніший інсулін і менший голод."],
+  ["Виходь з голоду м'яко", "Не переїдай одразу. Почни з невеликої порції, щоб не навантажити шлунок."],
+  ["Не привід їсти сміття", "Голодування не скасовує якість їжі. Поєднуй його зі здоровим харчуванням."],
+  ["Слухай своє тіло", "Якщо стало по-справжньому погано — зупинись і поїж. Здоров'я важливіше за план."],
+];
+const NO_FAST = [
+  "Вагітні та жінки, що годують груддю",
+  "Діти й підлітки, що ростуть",
+  "Люди з дефіцитом ваги (ІМТ < 18.5)",
+  "Розлади харчової поведінки (анорексія, булімія) в анамнезі",
+  "Діабет 1 типу або прийом інсуліну / цукрознижувальних — лише під наглядом лікаря",
+  "Будь-які хронічні хвороби чи регулярні ліки — спершу консультація лікаря",
+];
+const SIDE_FX = [
+  ["Голод", "Вода, кава або чай. Перечекай хвилю — голод спаде."],
+  ["Головний біль", "Часто через нестачу солі. Дрібка солі у воду + більше пити."],
+  ["Запаморочення, слабкість", "Сіль і вода. Не вставай різко. Якщо не минає — поїж."],
+  ["Судоми м'язів", "Магній (добавка або багата на магній їжа у вікні)."],
+  ["Печія", "Не лягай одразу, пий воду, уникай гострого у вікні їжі."],
+  ["Дратівливість («hangry»)", "Зазвичай минає з адаптацією за 2–4 тижні."],
+  ["Запор", "Більше клітковини й води у вікні їжі."],
+];
+function FastReference() {
+  const okIcon = { yes: "✅", warn: "⚠️", no: "❌" };
+  const okColor = { yes: "bg-green-50", warn: "bg-amber-50", no: "bg-rose-50" };
+  return (
+    <div className="space-y-5">
+      <h1 className="text-xl font-extrabold text-slate-900">Довідник</h1>
+
+      {/* SAFETY — prominent, first */}
+      <div className="rounded-2xl border-2 border-rose-200 bg-rose-50/60 p-4">
+        <div className="mb-2 flex items-center gap-2 text-rose-700"><ShieldAlert className="h-5 w-5" /><h2 className="font-bold">Застереження та безпека</h2></div>
+        <div className="text-sm font-semibold text-slate-700">Кому НЕ можна голодувати (або лише під наглядом лікаря):</div>
+        <ul className="mt-1 space-y-1">{NO_FAST.map((x, i) => <li key={i} className="flex gap-2 text-sm text-slate-600"><span className="text-rose-400">•</span>{x}</li>)}</ul>
+        <div className="mt-4 overflow-hidden rounded-xl ring-1 ring-rose-100">
+          <div className="grid grid-cols-2 bg-rose-100/70 px-3 py-1.5 text-xs font-bold text-rose-700"><span>Симптом</span><span>Що робити</span></div>
+          {SIDE_FX.map(([s, w], i) => <div key={i} className={`grid grid-cols-2 gap-2 px-3 py-2 text-sm ${i % 2 ? "bg-white" : "bg-rose-50/40"}`}><span className="font-semibold text-slate-700">{s}</span><span className="text-slate-600">{w}</span></div>)}
+        </div>
+        <p className="mt-3 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white">❗ Негайно припини голодування і звернись по допомогу при: сильній слабкості, плутанині свідомості, серцебитті, непритомності.</p>
+        <p className="mt-2 text-xs text-slate-500">Це освітній матеріал за книгами д-ра Дж. Фанга, не медична порада. Перед голодуванням порадься з лікарем.</p>
+      </div>
+
+      {/* Drinks */}
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+        <div className="mb-2 flex items-center gap-2 text-slate-700"><GlassWater className="h-5 w-5 text-sky-500" /><h2 className="font-bold">Що можна пити під час голодування</h2></div>
+        <div className="space-y-1.5">{DRINKS.map((d, i) => (
+          <div key={i} className={`flex items-start gap-2 rounded-xl px-3 py-2 ${okColor[d.ok]}`}>
+            <span>{okIcon[d.ok]}</span><div><div className="text-sm font-semibold text-slate-800">{d.t}</div><div className="text-xs text-slate-500">{d.c}</div></div>
+          </div>
+        ))}</div>
+      </div>
+
+      {/* Tips */}
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+        <div className="mb-2 flex items-center gap-2 text-slate-700"><Coffee className="h-5 w-5 text-amber-600" /><h2 className="font-bold">10 порад Фанга, як витримати голодування</h2></div>
+        <div className="space-y-2">{TIPS.map(([t, e], i) => (
+          <div key={i} className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-100 text-sm font-bold text-amber-700">{i + 1}</span><div><div className="text-sm font-semibold text-slate-800">{t}</div><div className="text-xs text-slate-500">{e}</div></div></div>
+        ))}</div>
+      </div>
     </div>
   );
 }
