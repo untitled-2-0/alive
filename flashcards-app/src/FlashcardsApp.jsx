@@ -1119,7 +1119,7 @@ export default function FlashcardsApp() {
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["review", "routine", "calm", "fasting", "management", "toolkit", "budget", "inventory", "finance"].includes(ui.section) ? ui.section : "studying");
+      setSection(["review", "routine", "calm", "fasting", "management", "inventory", "money"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
       setFastingName(fastingSettings?.name || "Fasting");
@@ -1858,14 +1858,10 @@ export default function FlashcardsApp() {
           <FastingSection name={fastingName} onRename={renameFasting} />
         ) : section === "management" ? (
           <ManagementSection name={mgmtName} onRename={renameMgmt} />
-        ) : section === "toolkit" ? (
-          <ToolkitSection name={toolkitName} onRename={renameToolkit} />
-        ) : section === "budget" ? (
-          <BudgetSection name={budgetName} onRename={renameBudget} />
+        ) : section === "money" ? (
+          <MoneySection budgetName={budgetName} renameBudget={renameBudget} financeName={financeName} renameFinance={renameFinance} onGo={changeSection} />
         ) : section === "inventory" ? (
           <InventorySection name={inventoryName} onRename={renameInventory} />
-        ) : section === "finance" ? (
-          <FinanceSection name={financeName} onRename={renameFinance} onGo={changeSection} />
         ) : (
         <>
       {/* studying top bar */}
@@ -2055,10 +2051,8 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
     { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
-    { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
-    { id: "budget", label: budgetName || "Budget", icon: ShoppingCart, badge: 0 },
+    { id: "money", label: "Гроші", icon: Wallet, badge: 0 },
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
-    { id: "finance", label: financeName || "Finance", icon: Wallet, badge: 0 },
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -2069,7 +2063,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
           <span>{cloud.syncing ? "Синхронізація…" : cloud.signedIn ? "Синхронізовано" : "Офлайн"}</span>
         </button>
       )}
-      <div className="grid grid-cols-10">
+      <div className="grid grid-cols-8">
         {items.map((it) => {
           const active = section === it.id;
           return (
@@ -2113,10 +2107,8 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
     { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
-    { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
-    { id: "budget", label: budgetName || "Budget", icon: ShoppingCart, badge: 0 },
+    { id: "money", label: "Гроші", icon: Wallet, badge: 0 },
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
-    { id: "finance", label: financeName || "Finance", icon: Wallet, badge: 0 },
   ];
   const wide = !collapsed;
   return (
@@ -6815,7 +6807,22 @@ function parseBudgetWorkbook(wb) {
   return { cats, items };
 }
 
-function BudgetSection({ name, onRename }) {
+function MoneyToggle({ active, onSet }) {
+  return (
+    <div className="flex gap-1 rounded-full bg-slate-100 p-0.5">
+      <button onClick={() => onSet("budget")} className={`rounded-full px-2.5 py-1 text-xs font-bold transition ${active === "budget" ? "bg-emerald-500 text-white" : "text-slate-500"}`}>🛒 Покупки</button>
+      <button onClick={() => onSet("finance")} className={`rounded-full px-2.5 py-1 text-xs font-bold transition ${active === "finance" ? "bg-emerald-500 text-white" : "text-slate-500"}`}>💳 Фінанси</button>
+    </div>
+  );
+}
+function MoneySection({ budgetName, renameBudget, financeName, renameFinance, onGo }) {
+  const [mv, setMv] = useState("budget");
+  return mv === "budget"
+    ? <BudgetSection name={budgetName} onRename={renameBudget} moneyTab={mv} onMoneyTab={setMv} />
+    : <FinanceSection name={financeName} onRename={renameFinance} onGo={onGo} moneyTab={mv} onMoneyTab={setMv} />;
+}
+
+function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
   const [loading, setLoading] = useState(true);
   const [bview, setBview] = useState("list"); // list | shop | chart
   const [cats, setCats] = useState([]);
@@ -6931,6 +6938,7 @@ function BudgetSection({ name, onRename }) {
           ) : (
             <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
           )}
+          {onMoneyTab && <MoneyToggle active={moneyTab} onSet={onMoneyTab} />}
           <div className="relative">
             <button onClick={() => setMenuOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100"><Settings className="h-4 w-4" /></button>
             {menuOpen && (<>
@@ -7829,7 +7837,7 @@ async function loadFinanceData() {
 async function collectFinanceExport() { const d = await loadFinanceData(); return { debts: d.debts, allowance: d.allowance, expenses: d.expenses, impulse: d.impulse, settings: d.settings }; }
 async function clearFinanceData() { for (const k of Object.values(FNKEYS)) await store.remove(k); }
 
-function FinanceSection({ name, onRename, onGo }) {
+function FinanceSection({ name, onRename, onGo, moneyTab, onMoneyTab }) {
   const today = dateKey(Date.now());
   const [loading, setLoading] = useState(true);
   const [fview, setFview] = useState("debts"); // debts | spend | impulse
@@ -7898,6 +7906,7 @@ function FinanceSection({ name, onRename, onGo }) {
           ) : (
             <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
           )}
+          {onMoneyTab && <MoneyToggle active={moneyTab} onSet={onMoneyTab} />}
         </div>
       </header>
 
