@@ -590,6 +590,13 @@ const RKEYS = {
   xp: "routine:xp",         // { xp: number }
   rewards: "routine:rewards", // [{ id, label, cost, unlockedAt }]
   pomo: "routine:pomo",      // { work, break } Pomodoro settings
+  movement: "routine:movement",      // { [date]: count }
+  movementCfg: "routine:movement:cfg", // { remindersOn, snoozeUntil }
+  meds: "routine:meds",              // [{ id, name, dose, perDay, supply, refillAt, taper:[{date,dose,note}] }]
+  medsLog: "routine:meds:wellbeing", // { [date]: { taken:{medId:bool}, wellbeing, sideEffects, note } }
+  gratitude: "mood:gratitude",       // { [date]: [items] }
+  activation: "mood:activation",     // [{ id, text }]
+  moodNotes: "mood:notes",           // { [date]: { note, factors:[] } }
 };
 const cKey = (date) => `routine:completions:${date}`;
 
@@ -691,7 +698,9 @@ async function loadRoutineData() {
 
 async function collectRoutineExport() {
   const d = await loadRoutineData();
-  return { tasks: d.tasks || [], categories: d.categories || [], completions: d.completions, streak: d.streak, moods: d.moods, xp: d.xp, rewards: d.rewards, pomo: d.pomo };
+  const extra = {};
+  for (const k of ["movement", "movementCfg", "meds", "medsLog", "gratitude", "activation", "moodNotes"]) extra[k] = await store.get(RKEYS[k], null);
+  return { tasks: d.tasks || [], categories: d.categories || [], completions: d.completions, streak: d.streak, moods: d.moods, xp: d.xp, rewards: d.rewards, pomo: d.pomo, ...extra };
 }
 
 async function clearRoutineData() {
@@ -1561,6 +1570,7 @@ export default function FlashcardsApp() {
     await clearCalmData();
     await clearFastingData();
     await store.remove("mgmt:settings");
+    await clearCareerData();
     await clearToolkitData();
     await clearBudgetData();
     await clearInventoryData();
@@ -1594,6 +1604,7 @@ export default function FlashcardsApp() {
     const calm = await collectCalmExport();
     const fasting = await collectFastingExport();
     const mgmt = await store.get("mgmt:settings", { name: "Менеджмент" });
+    const career = await collectCareerExport();
     const toolkit = await collectToolkitExport();
     const budget = await collectBudgetExport();
     const inventory = await collectInventoryExport();
@@ -1601,7 +1612,7 @@ export default function FlashcardsApp() {
     const finance = await collectFinanceExport();
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 10,
+      version: 11,
       decks,
       groups,
       cards: cardsByDeck,
@@ -1610,6 +1621,7 @@ export default function FlashcardsApp() {
       calm,
       fasting,
       mgmt,
+      career,
       toolkit,
       budget,
       inventory,
@@ -4559,6 +4571,8 @@ function RoutineSection() {
                 {menuOpen && (<>
                   <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
                   <div className="absolute right-0 top-11 z-20 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                    <button onClick={() => { setRview("wellbeing"); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><Smile className="h-4 w-4 text-slate-400" /> Настрій і вдячність</button>
+                    <button onClick={() => { setRview("meds"); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><HeartPulse className="h-4 w-4 text-slate-400" /> Ліки й самопочуття</button>
                     <button onClick={() => { setRview("stats"); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><BarChart3 className="h-4 w-4 text-slate-400" /> Stats & profile</button>
                     <button onClick={() => { setCatManager(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><Tag className="h-4 w-4 text-slate-400" /> Manage categories</button>
                   </div>
@@ -4629,6 +4643,9 @@ function RoutineSection() {
             </div>
           )}
 
+          {/* movement (block 5) */}
+          {isToday && <MovementCard flash={flash} />}
+
           {/* task list */}
           <div className="mt-4 space-y-2.5">
             {dayTasks.length === 0 ? (
@@ -4647,6 +4664,8 @@ function RoutineSection() {
       {rview === "stats" && (
         <RoutineStats tasks={tasks} completions={completions} moods={moods} streak={streak} best={Math.max(streakMeta.best || 0, streak.best)} onBack={() => setRview("today")} />
       )}
+      {rview === "wellbeing" && <WellbeingView onExit={() => setRview("today")} moods={moods} onMood={setMood} />}
+      {rview === "meds" && <MedsView onExit={() => setRview("today")} />}
 
       {/* floating add */}
       {rview === "today" && (
@@ -6555,6 +6574,7 @@ function ManagementSection({ name, onRename }) {
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState("");
   const [view, setView] = useState("toc"); // toc | number index
+  const [mtab, setMtab] = useState("book"); // book | career
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(name);
 
@@ -6583,12 +6603,16 @@ function ManagementSection({ name, onRename }) {
           ) : (
             <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
           )}
-          {view !== "toc" && <button onClick={() => setView("toc")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"><ListTree className="h-4 w-4" /> Зміст</button>}
+          {mtab === "book" && view !== "toc" && <button onClick={() => setView("toc")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"><ListTree className="h-4 w-4" /> Зміст</button>}
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
-        {view === "toc" ? (
+        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-indigo-100">
+          <button onClick={() => setMtab("book")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${mtab === "book" ? "bg-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><BookMarked className="h-4 w-4" /> Книга</button>
+          <button onClick={() => setMtab("career")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${mtab === "career" ? "bg-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><TrendingUp className="h-4 w-4" /> Кар'єра</button>
+        </div>
+        {mtab === "career" ? <CareerView /> : view === "toc" ? (
           <>
             {/* book hero from intro */}
             <div className="mb-6 rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm">
@@ -8251,6 +8275,395 @@ function RoutinePomodoro({ task, mode, settings, onClose, onLog, onSaveSettings 
             <button onClick={finish} className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200"><Check className="h-4 w-4" /> Завершити{worked.current >= 60 ? ` (${Math.round(worked.current / 60)} хв)` : ""}</button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Block 6: Wellbeing — mood over time + gratitude + behavioral activation ---------- */
+const ACTIVATION_SEED = ["одна улюблена пісня", "вийти на вулицю на 5 хв", "написати другу пару слів", "склянка води", "розтягнутися 2 хв", "відкрити вікно й подихати"];
+function WellbeingView({ onExit, moods, onMood }) {
+  const today = dateKey(Date.now());
+  const [gratitude, setGratitude] = useState({});
+  const [activation, setActivation] = useState([]);
+  const [notes, setNotes] = useState({});
+  const [gInputs, setGInputs] = useState(["", "", ""]);
+  const [newAct, setNewAct] = useState("");
+  const [picked, setPicked] = useState(null);
+  const [range, setRange] = useState(30);
+
+  useEffect(() => { (async () => {
+    setGratitude(await store.get(RKEYS.gratitude, {}));
+    let a = await store.get(RKEYS.activation, null);
+    if (!a) { a = ACTIVATION_SEED.map((t) => ({ id: ruid("ba"), text: t })); await store.set(RKEYS.activation, a); }
+    setActivation(a);
+    setNotes(await store.get(RKEYS.moodNotes, {}));
+  })(); }, []);
+  useEffect(() => { setGInputs(((gratitude[today]) || ["", "", ""]).concat(["", "", ""]).slice(0, 3)); }, [gratitude, today]);
+
+  const saveGratitude = () => { const items = gInputs.map((s) => s.trim()).filter(Boolean); const next = { ...gratitude, [today]: items }; if (!items.length) delete next[today]; setGratitude(next); store.set(RKEYS.gratitude, next); };
+  const saveActivation = (n) => { setActivation(n); store.set(RKEYS.activation, n); };
+  const saveNote = (patch) => { const next = { ...notes, [today]: { ...(notes[today] || {}), ...patch } }; setNotes(next); store.set(RKEYS.moodNotes, next); };
+  const pickAction = () => { if (!activation.length) return; setPicked(activation[Math.floor(((Date.now() / 1000) % activation.length))] || activation[0]); };
+
+  const chartData = useMemo(() => {
+    const out = []; const now = new Date();
+    for (let i = range - 1; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i); const ds = dateKey(d.getTime()); out.push({ day: `${d.getDate()}.${d.getMonth() + 1}`, score: moods[ds] ?? null }); }
+    return out;
+  }, [moods, range]);
+  const rated = chartData.filter((d) => d.score != null);
+  const avg = rated.length ? (rated.reduce((s, d) => s + d.score, 0) / rated.length) : null;
+  const FACTORS = ["сон", "робота", "стрес", "самотність", "рух", "їжа", "погода", "люди", "здоров'я"];
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
+      <div className="mb-4 flex items-center gap-3">
+        <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-rose-100"><ArrowLeft className="h-4 w-4" /></button>
+        <h1 className="text-xl font-extrabold text-slate-900">Настрій і вдячність</h1>
+      </div>
+
+      {/* mood over time */}
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-sm font-bold text-slate-700">Настрій у часі{avg != null ? ` · середнє ${avg.toFixed(1)}` : ""}</span>
+          <div className="flex gap-1 rounded-full bg-slate-100 p-0.5">{[14, 30, 90].map((r) => <button key={r} onClick={() => setRange(r)} className={`rounded-full px-2 py-0.5 text-xs font-bold ${range === r ? "bg-pink-500 text-white" : "text-slate-500"}`}>{r}д</button>)}</div>
+        </div>
+        {rated.length < 2 ? <p className="py-6 text-center text-sm text-slate-400">Відмічай настрій щодня — тут з'явиться графік, і побачиш, що впливає на кращі й гірші дні.</p> : (
+          <div style={{ height: 180 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ left: -20, right: 8, top: 4, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94a3b8" }} interval="preserveStartEnd" minTickGap={24} />
+                <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                <Tooltip formatter={(v) => MOODS.find((m) => m.score === v)?.label || v} />
+                <Line type="monotone" dataKey="score" stroke="#ec4899" strokeWidth={2.5} dot={{ r: 3, fill: "#ec4899" }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* today mood + tag */}
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+        <div className="mb-2 text-sm font-bold text-slate-700">Сьогодні</div>
+        <div className="flex justify-between">{MOODS.map((m) => <button key={m.score} onClick={() => onMood(m.score)} className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-1.5 transition hover:scale-110 ${moods[today] === m.score ? "bg-pink-50 ring-2 ring-pink-300" : ""}`}><span className="text-2xl">{m.emoji}</span><span className="text-[9px] text-slate-400">{m.label}</span></button>)}</div>
+        <div className="mt-3 text-xs font-semibold text-slate-500">Що вплинуло?</div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">{FACTORS.map((f) => { const on = (notes[today]?.factors || []).includes(f); return <button key={f} onClick={() => { const cur = notes[today]?.factors || []; saveNote({ factors: on ? cur.filter((x) => x !== f) : [...cur, f] }); }} className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${on ? "bg-pink-500 text-white ring-pink-500" : "bg-white text-slate-500 ring-slate-200"}`}>{f}</button>; })}</div>
+        <input value={notes[today]?.note || ""} onChange={(e) => saveNote({ note: e.target.value })} placeholder="Нотатка про день (необов'язково)" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />
+      </div>
+
+      {/* gratitude */}
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+        <div className="mb-2 text-sm font-bold text-slate-700">🙏 3 речі, за які вдячна сьогодні</div>
+        <div className="space-y-2">{[0, 1, 2].map((i) => <input key={i} value={gInputs[i] || ""} onChange={(e) => setGInputs((a) => { const n = [...a]; n[i] = e.target.value; return n; })} onBlur={saveGratitude} placeholder={`${i + 1}…`} className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />)}</div>
+        {Object.keys(gratitude).filter((d) => d !== today).length > 0 && <div className="mt-2 text-[11px] text-slate-400">записів вдячності: {Object.keys(gratitude).length}</div>}
+      </div>
+
+      {/* behavioral activation */}
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+        <div className="mb-1 text-sm font-bold text-slate-700">Маленькі дії на день без сил</div>
+        <p className="mb-2 text-xs text-slate-400">Коли енергії нема, не обирай — хай застосунок підкаже одну маленьку дію.</p>
+        <button onClick={pickAction} className="w-full rounded-2xl bg-gradient-to-r from-pink-400 to-fuchsia-400 py-3 font-bold text-white shadow-sm">🎲 Мало енергії — обери за мене</button>
+        {picked && <div className="mt-2 rounded-2xl bg-pink-50 px-4 py-3 text-center"><div className="text-[11px] font-semibold uppercase tracking-wide text-pink-500">спробуй це</div><div className="mt-0.5 text-lg font-bold text-slate-800">{picked.text}</div></div>}
+        <div className="mt-3 space-y-1.5">
+          {activation.map((a) => (
+            <div key={a.id} className="group flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm text-slate-600"><span className="flex-1">{a.text}</span><button onClick={() => saveActivation(activation.filter((x) => x.id !== a.id))} className="text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-2"><input value={newAct} onChange={(e) => setNewAct(e.target.value)} placeholder="Додати свою дію…" onKeyDown={(e) => { if (e.key === "Enter" && newAct.trim()) { saveActivation([...activation, { id: ruid("ba"), text: newAct.trim() }]); setNewAct(""); } }} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" /><button onClick={() => { if (newAct.trim()) { saveActivation([...activation, { id: ruid("ba"), text: newAct.trim() }]); setNewAct(""); } }} className="rounded-lg bg-slate-800 px-3 text-sm font-semibold text-white">+</button></div>
+      </div>
+      <p className="mt-4 text-center text-xs leading-relaxed text-slate-400">Якщо пригнічений настрій тримається тижнями — це вагома причина поговорити з фахівцем. Ти не маєш давати собі раду наодинці. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Block 5: Movement — counter + hourly nudge (on Today) ---------- */
+const STRETCHES = ["встань і потягнись до стелі", "10 присідань", "пройдись до вікна й назад", "покрути плечима й шиєю", "налий води й випий стоячи", "походи хвилину на місці"];
+function MovementCard({ flash }) {
+  const today = dateKey(Date.now());
+  const [count, setCount] = useState(0);
+  const [cfg, setCfg] = useState({ remindersOn: true, snoozeUntil: 0, lastNudge: 0 });
+  const [nudge, setNudge] = useState(false);
+  const [tip, setTip] = useState(STRETCHES[0]);
+
+  useEffect(() => { (async () => {
+    const mv = await store.get(RKEYS.movement, {}); setCount(mv[today] || 0);
+    setCfg(await store.get(RKEYS.movementCfg, { remindersOn: true, snoozeUntil: 0, lastNudge: 0 }));
+  })(); }, [today]);
+  const saveCount = (n) => { setCount(n); store.get(RKEYS.movement, {}).then((mv) => store.set(RKEYS.movement, { ...mv, [today]: n })); };
+  const saveCfg = (c) => { setCfg(c); store.set(RKEYS.movementCfg, c); };
+
+  useEffect(() => {
+    const check = () => {
+      if (!cfg.remindersOn) { setNudge(false); return; }
+      const now = Date.now(); const h = new Date().getHours();
+      if (h < 9 || h >= 18) { setNudge(false); return; }
+      if (now < (cfg.snoozeUntil || 0)) { setNudge(false); return; }
+      if (now - (cfg.lastNudge || 0) > 55 * 60000) setNudge(true);
+    };
+    check(); const iv = setInterval(check, 60000); return () => clearInterval(iv);
+  }, [cfg]);
+
+  const didMove = () => { saveCount(count + 1); saveCfg({ ...cfg, lastNudge: Date.now() }); setNudge(false); flash && flash("Красуня — тіло дякує 💪"); };
+  const snooze = () => { saveCfg({ ...cfg, snoozeUntil: Date.now() + 15 * 60000 }); setNudge(false); };
+  const turnOff = () => { saveCfg({ ...cfg, remindersOn: false }); setNudge(false); };
+
+  return (
+    <div className="mt-4">
+      {nudge && (
+        <div className="mb-3 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-lime-400 to-emerald-400 p-3 text-white shadow-sm">
+          <span className="text-2xl">🧍</span>
+          <div className="flex-1"><div className="text-sm font-bold">Час встати й порухатись</div><div className="text-xs text-white/90">{tip}</div></div>
+          <div className="flex flex-col gap-1">
+            <button onClick={didMove} className="rounded-full bg-white/25 px-3 py-1 text-xs font-bold">Порухалась</button>
+            <div className="flex gap-1"><button onClick={snooze} className="rounded-full bg-white/15 px-2 py-0.5 text-[10px]">+15хв</button><button onClick={turnOff} className="rounded-full bg-white/15 px-2 py-0.5 text-[10px]">вимк</button></div>
+          </div>
+        </div>
+      )}
+      <div className="flex items-center gap-3 rounded-2xl bg-white/80 p-3 shadow-sm ring-1 ring-rose-100">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-lime-100 text-xl">🚶</span>
+        <div className="flex-1"><div className="text-sm font-bold text-slate-700">Рух сьогодні: {count}</div><div className="text-[11px] text-slate-400">проти сидіння 9–18 · нагадування {cfg.remindersOn ? "увімкнені" : "вимкнені"}</div></div>
+        <button onClick={() => saveCount(count + 1)} className="rounded-full bg-lime-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-lime-600">+ Порухалась</button>
+        <button onClick={() => saveCfg({ ...cfg, remindersOn: !cfg.remindersOn })} title="Нагадування" className={`grid h-8 w-8 place-items-center rounded-full ${cfg.remindersOn ? "bg-lime-100 text-lime-600" : "bg-slate-100 text-slate-400"}`}>{cfg.remindersOn ? <Clock className="h-4 w-4" /> : <Clock className="h-4 w-4 opacity-50" />}</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Block 4: Meds — refill + wellbeing/side-effect log + doctor taper ---------- */
+const MED_SIDE_FX = ["сонливість", "нудота", "головний біль", "безсоння", "апетит", "тривога", "сухість у роті", "запаморочення"];
+function MedsView({ onExit }) {
+  const today = dateKey(Date.now());
+  const [meds, setMeds] = useState([]);
+  const [log, setLog] = useState({});
+  const [editor, setEditor] = useState(null);
+  const [taperFor, setTaperFor] = useState(null);
+
+  useEffect(() => { (async () => { setMeds(await store.get(RKEYS.meds, [])); setLog(await store.get(RKEYS.medsLog, {})); })(); }, []);
+  const saveMeds = (n) => { setMeds(n); store.set(RKEYS.meds, n); };
+  const saveLog = (n) => { setLog(n); store.set(RKEYS.medsLog, n); };
+  const todayLog = log[today] || {};
+  const setTaken = (medId, v) => { const d = { ...todayLog, taken: { ...(todayLog.taken || {}), [medId]: v } }; saveLog({ ...log, [today]: d }); };
+  const setWell = (patch) => saveLog({ ...log, [today]: { ...todayLog, ...patch } });
+
+  const upsertMed = (m, id) => { if (id) saveMeds(meds.map((x) => (x.id === id ? { ...x, ...m } : x))); else saveMeds([...meds, { id: ruid("med"), taper: [], ...m }]); };
+  const delMed = (id) => saveMeds(meds.filter((x) => x.id !== id));
+  const refill = (id, add) => saveMeds(meds.map((x) => (x.id === id ? { ...x, supply: (Number(x.supply) || 0) + add } : x)));
+
+  const wkData = useMemo(() => { const out = []; const now = new Date(); for (let i = 13; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i); const ds = dateKey(d.getTime()); out.push({ day: `${d.getDate()}.${d.getMonth() + 1}`, w: log[ds]?.wellbeing ?? null }); } return out; }, [log]);
+  const wkRated = wkData.filter((d) => d.w != null);
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
+      <div className="mb-3 flex items-center gap-3">
+        <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-rose-100"><ArrowLeft className="h-4 w-4" /></button>
+        <h1 className="text-xl font-extrabold text-slate-900">Ліки й самопочуття</h1>
+      </div>
+      <p className="mb-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">Зміни дози — лише разом із лікарем. Застосунок нічого не призначає й не радить схем: він лише веде облік того, що призначив лікар, і як ти почуваєшся.</p>
+
+      {/* meds list */}
+      <div className="space-y-2">
+        {meds.length === 0 ? <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-rose-50">Додай ліки, щоб бачити запас і вести журнал самопочуття.</div> : meds.map((m) => {
+          const daysLeft = m.perDay > 0 ? Math.floor((Number(m.supply) || 0) / m.perDay) : null;
+          const low = daysLeft != null && daysLeft <= 5;
+          return (
+            <div key={m.id} className={`rounded-2xl bg-white p-4 shadow-sm ring-1 ${low ? "ring-2 ring-amber-300" : "ring-rose-50"}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0"><div className="font-bold text-slate-800">{m.name}</div><div className="text-xs text-slate-400">{m.dose}{m.perDay ? ` · ${m.perDay}×/день` : ""}</div></div>
+                <button onClick={() => setTaken(m.id, !todayLog.taken?.[m.id])} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${todayLog.taken?.[m.id] ? "bg-green-500 text-white" : "bg-slate-100 text-slate-500"}`}>{todayLog.taken?.[m.id] ? "✓ прийнято" : "прийняти"}</button>
+              </div>
+              {daysLeft != null && (
+                <div className={`mt-2 flex items-center justify-between rounded-xl px-3 py-1.5 text-xs ${low ? "bg-amber-50 text-amber-700" : "bg-slate-50 text-slate-500"}`}>
+                  <span>{low ? "⚠️ " : ""}запас ~{daysLeft} дн ({m.supply} шт)</span>
+                  <span className="flex gap-1"><button onClick={() => refill(m.id, 30)} className="rounded-full bg-white px-2 py-0.5 font-semibold ring-1 ring-slate-200">+30</button><button onClick={() => { const v = prompt("Скільки шт зараз у запасі?", m.supply); if (v != null) upsertMed({ supply: Math.max(0, +v || 0) }, m.id); }} className="rounded-full bg-white px-2 py-0.5 font-semibold ring-1 ring-slate-200">задати</button></span>
+                </div>
+              )}
+              {m.taper?.length > 0 && (
+                <div className="mt-2 rounded-xl bg-sky-50 px-3 py-2">
+                  <div className="text-[11px] font-bold text-sky-700">Схема зниження (за призначенням лікаря)</div>
+                  <div className="mt-1 space-y-0.5">{m.taper.map((t, i) => { const active = t.date <= today; return <div key={i} className={`flex justify-between text-xs ${active ? "text-sky-800 font-semibold" : "text-slate-400"}`}><span>{t.date}</span><span>{t.dose}{t.note ? ` · ${t.note}` : ""}</span></div>; })}</div>
+                </div>
+              )}
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => setEditor({ med: m })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">Редагувати</button>
+                <button onClick={() => setTaperFor(m)} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-sky-600 ring-1 ring-sky-200">Схема лікаря</button>
+                <button onClick={() => { if (confirm("Видалити?")) delMed(m.id); }} className="ml-auto text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            </div>
+          );
+        })}
+        <button onClick={() => setEditor({ med: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-rose-300 py-3 text-sm font-semibold text-rose-500 hover:bg-rose-50"><Plus className="h-4 w-4" /> Додати ліки</button>
+      </div>
+
+      {/* wellbeing log */}
+      <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+        <div className="mb-2 text-sm font-bold text-slate-700">Самопочуття сьогодні</div>
+        <div className="flex justify-between">{MOODS.map((m) => <button key={m.score} onClick={() => setWell({ wellbeing: m.score })} className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-1.5 hover:scale-110 ${todayLog.wellbeing === m.score ? "bg-pink-50 ring-2 ring-pink-300" : ""}`}><span className="text-2xl">{m.emoji}</span></button>)}</div>
+        <div className="mt-2 text-xs font-semibold text-slate-500">Побічні ефекти</div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">{MED_SIDE_FX.map((s) => { const on = (todayLog.sideEffects || []).includes(s); return <button key={s} onClick={() => { const cur = todayLog.sideEffects || []; setWell({ sideEffects: on ? cur.filter((x) => x !== s) : [...cur, s] }); }} className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${on ? "bg-amber-500 text-white ring-amber-500" : "bg-white text-slate-500 ring-slate-200"}`}>{s}</button>; })}</div>
+        <input value={todayLog.note || ""} onChange={(e) => setWell({ note: e.target.value })} placeholder="Нотатка для лікаря (необов'язково)" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />
+        {wkRated.length >= 2 && (
+          <div className="mt-3" style={{ height: 120 }}>
+            <div className="mb-1 text-[11px] font-semibold text-slate-400">Самопочуття за 2 тижні (покажи лікарю)</div>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={wkData} margin={{ left: -28, right: 8, top: 4, bottom: 0 }}>
+                <XAxis dataKey="day" tick={{ fontSize: 9, fill: "#94a3b8" }} interval="preserveStartEnd" /><YAxis domain={[1, 5]} ticks={[1, 3, 5]} tick={{ fontSize: 9, fill: "#94a3b8" }} />
+                <Tooltip /><Line type="monotone" dataKey="w" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {editor && <MedEditor med={editor.med} onClose={() => setEditor(null)} onSave={(m) => { upsertMed(m, editor.med?.id); setEditor(null); }} />}
+      {taperFor && <TaperEditor med={taperFor} onClose={() => setTaperFor(null)} onSave={(taper) => { upsertMed({ taper }, taperFor.id); setTaperFor(null); }} />}
+    </div>
+  );
+}
+
+function MedEditor({ med, onClose, onSave }) {
+  const [name, setName] = useState(med?.name || "");
+  const [dose, setDose] = useState(med?.dose || "");
+  const [perDay, setPerDay] = useState(med?.perDay ?? 1);
+  const [supply, setSupply] = useState(med?.supply ?? "");
+  return (
+    <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{med ? "Редагувати" : "Нові ліки"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400"><X className="h-5 w-5" /></button></div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва (напр. Золофт)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-pink-400 focus:outline-none" />
+        <input value={dose} onChange={(e) => setDose(e.target.value)} placeholder="Доза (напр. 50 мг)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none" />
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Разів на день</span><input type="number" min={0} value={perDay} onChange={(e) => setPerDay(Math.max(0, +e.target.value || 0))} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Запас (шт)</span><input type="number" min={0} value={supply} onChange={(e) => setSupply(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+        </div>
+        <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), dose: dose.trim(), perDay: Number(perDay) || 0, supply: Number(supply) || 0 }); }} className="w-full rounded-2xl bg-pink-500 py-3 font-bold text-white hover:bg-pink-600">Зберегти</button>
+      </div>
+    </div>
+  );
+}
+
+function TaperEditor({ med, onClose, onSave }) {
+  const [rows, setRows] = useState(med.taper?.length ? med.taper.map((t) => ({ ...t })) : [{ date: dateKey(Date.now()), dose: "", note: "" }]);
+  const upd = (i, k, v) => setRows((r) => r.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  return (
+    <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">Схема зниження</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400"><X className="h-5 w-5" /></button></div>
+        <p className="mb-3 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800">Введи саме те, що призначив <b>лікар</b>. Застосунок нічого не вигадує — лише показує й нагадує. Ніколи не змінюй дозу самостійно.</p>
+        <div className="space-y-2">{rows.map((r, i) => (
+          <div key={i} className="flex gap-2">
+            <input type="date" value={r.date} onChange={(e) => upd(i, "date", e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs" />
+            <input value={r.dose} onChange={(e) => upd(i, "dose", e.target.value)} placeholder="доза" className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            <input value={r.note} onChange={(e) => upd(i, "note", e.target.value)} placeholder="нотатка" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            <button onClick={() => setRows((rr) => rr.filter((_, j) => j !== i))} className="text-slate-300 hover:text-rose-500"><X className="h-4 w-4" /></button>
+          </div>
+        ))}</div>
+        <button onClick={() => setRows((r) => [...r, { date: dateKey(Date.now()), dose: "", note: "" }])} className="mt-2 text-sm font-semibold text-sky-600">+ Рядок</button>
+        <button onClick={() => onSave(rows.filter((r) => r.date && r.dose))} className="mt-3 w-full rounded-2xl bg-sky-500 py-3 font-bold text-white hover:bg-sky-600">Зберегти схему</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Block 7: Career growth (inside Management) ---------- */
+const CAREERKEYS = { skills: "career:skills", achievements: "career:achievements", reviews: "career:reviews" };
+async function collectCareerExport() { return { skills: await store.get(CAREERKEYS.skills, []), achievements: await store.get(CAREERKEYS.achievements, []), reviews: await store.get(CAREERKEYS.reviews, []) }; }
+async function clearCareerData() { for (const k of Object.values(CAREERKEYS)) await store.remove(k); }
+
+function CareerView() {
+  const today = dateKey(Date.now());
+  const week = finWeekStart(today);
+  const [tab, setTab] = useState("skills"); // skills | wins | review
+  const [skills, setSkills] = useState([]);
+  const [wins, setWins] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [skillEd, setSkillEd] = useState(null);
+  const [winText, setWinText] = useState("");
+  const [reviewText, setReviewText] = useState("");
+
+  useEffect(() => { (async () => {
+    setSkills(await store.get(CAREERKEYS.skills, []));
+    setWins(await store.get(CAREERKEYS.achievements, []));
+    const rv = await store.get(CAREERKEYS.reviews, []); setReviews(rv);
+    setReviewText((rv.find((r) => r.week === week) || {}).text || "");
+  })(); }, [week]);
+  const saveSkills = (n) => { setSkills(n); store.set(CAREERKEYS.skills, n); };
+  const saveWins = (n) => { setWins(n); store.set(CAREERKEYS.achievements, n); };
+  const saveReviews = (n) => { setReviews(n); store.set(CAREERKEYS.reviews, n); };
+
+  const upsertSkill = (m, id) => { if (id) saveSkills(skills.map((x) => (x.id === id ? { ...x, ...m } : x))); else saveSkills([...skills, { id: ruid("sk"), progress: 0, ...m }]); };
+  const setProgress = (id, p) => saveSkills(skills.map((x) => (x.id === id ? { ...x, progress: p } : x)));
+  const addWin = () => { if (!winText.trim()) return; saveWins([{ id: ruid("win"), date: today, text: winText.trim() }, ...wins]); setWinText(""); };
+  const saveReview = () => { const others = reviews.filter((r) => r.week !== week); const next = reviewText.trim() ? [...others, { week, text: reviewText.trim(), ts: Date.now() }] : others; saveReviews(next.sort((a, b) => a.week.localeCompare(b.week))); };
+
+  return (
+    <div>
+      <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-indigo-100">
+        {[["skills", "Навички та цілі", Target], ["wins", "Досягнення", Trophy], ["review", "Тижневий огляд", CalendarDays]].map(([k, label, Icon]) => (
+          <button key={k} onClick={() => setTab(k)} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition sm:text-sm ${tab === k ? "bg-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4" /> {label}</button>
+        ))}
+      </div>
+
+      {tab === "skills" && (
+        <div className="space-y-2">
+          {skills.length === 0 && <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-indigo-50">Що вчиш чи прокачуєш? Додай ціль із дедлайном і відстежуй прогрес.</div>}
+          {skills.map((s) => (
+            <div key={s.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-50">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0"><div className="font-bold text-slate-800">{s.name}</div>{(s.target || s.deadline) && <div className="text-xs text-slate-400">{s.target}{s.deadline ? ` · до ${s.deadline}` : ""}</div>}</div>
+                <span className="shrink-0 text-sm font-bold tabular-nums text-indigo-600">{s.progress || 0}%</span>
+              </div>
+              <input type="range" min={0} max={100} step={5} value={s.progress || 0} onChange={(e) => setProgress(s.id, +e.target.value)} className="mt-2 w-full accent-indigo-500" />
+              <div className="mt-1 flex gap-2"><button onClick={() => setSkillEd({ skill: s })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">Редагувати</button><button onClick={() => { if (confirm("Видалити ціль?")) saveSkills(skills.filter((x) => x.id !== s.id)); }} className="ml-auto text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button></div>
+            </div>
+          ))}
+          <button onClick={() => setSkillEd({ skill: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-indigo-300 py-3 text-sm font-semibold text-indigo-600 hover:bg-indigo-50"><Plus className="h-4 w-4" /> Ціль / навичка</button>
+        </div>
+      )}
+
+      {tab === "wins" && (
+        <div className="space-y-3">
+          <div className="rounded-2xl bg-indigo-50/60 px-4 py-3 text-xs leading-relaxed text-indigo-800">Занотовуй робочі перемоги — великі й малі. Це і для резюме, і щоб на важкий день згадати: ти багато можеш.</div>
+          <div className="flex gap-2"><input value={winText} onChange={(e) => setWinText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addWin(); }} placeholder="Що вдалося? (напр. закрила складний баг)" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" /><button onClick={addWin} className="shrink-0 rounded-xl bg-indigo-500 px-4 text-sm font-bold text-white hover:bg-indigo-600">+</button></div>
+          {wins.length === 0 ? <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-indigo-50">Ще порожньо. Перша перемога вже сьогодні? 🏆</div> : (
+            <div className="space-y-2">{wins.map((w) => <div key={w.id} className="group flex items-start gap-2 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-indigo-50"><span className="text-lg">🏆</span><span className="min-w-0 flex-1"><span className="block text-sm text-slate-700">{w.text}</span><span className="text-[11px] text-slate-400">{w.date}</span></span><button onClick={() => saveWins(wins.filter((x) => x.id !== w.id))} className="text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-4 w-4" /></button></div>)}</div>
+          )}
+        </div>
+      )}
+
+      {tab === "review" && (
+        <div className="space-y-3">
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-100">
+            <div className="mb-1 text-sm font-bold text-slate-700">Тиждень від {week}</div>
+            <p className="mb-2 text-xs text-slate-400">Що вдалося на роботі цього тижня? Навіть одне речення рахується.</p>
+            <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} onBlur={saveReview} rows={3} placeholder="Три речі, якими пишаюся цього тижня…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+          </div>
+          {reviews.filter((r) => r.week !== week).length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Минулі тижні</div>
+              {reviews.filter((r) => r.week !== week).slice().reverse().map((r) => <div key={r.week} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-indigo-50"><div className="text-[11px] font-semibold text-slate-400">від {r.week}</div><div className="mt-0.5 whitespace-pre-wrap text-sm text-slate-600">{r.text}</div></div>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {skillEd && <SkillEditor skill={skillEd.skill} onClose={() => setSkillEd(null)} onSave={(m) => { upsertSkill(m, skillEd.skill?.id); setSkillEd(null); }} />}
+    </div>
+  );
+}
+
+function SkillEditor({ skill, onClose, onSave }) {
+  const [name, setName] = useState(skill?.name || "");
+  const [target, setTarget] = useState(skill?.target || "");
+  const [deadline, setDeadline] = useState(skill?.deadline || "");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{skill ? "Редагувати ціль" : "Нова ціль"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400"><X className="h-5 w-5" /></button></div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Що вчу / прокачую (напр. System Design)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-indigo-400 focus:outline-none" />
+        <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Ціль (напр. пройти курс, зробити pet-проєкт)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+        <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Дедлайн (необов'язково)</span><input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+        <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), target: target.trim(), deadline }); }} className="w-full rounded-2xl bg-indigo-500 py-3 font-bold text-white hover:bg-indigo-600">Зберегти</button>
       </div>
     </div>
   );
