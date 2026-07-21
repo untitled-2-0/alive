@@ -20,7 +20,7 @@ import {
   Utensils, GlassWater, LineChart as LineChartIcon, Cloud, CloudOff, LogOut, Mail,
   Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft, RefreshCw,
   Wrench, Star, Users, Sparkles as SparklesIcon, Scale as ScaleIcon, ArrowLeftRight, Home,
-  Search, HandHeart, LifeBuoy, Pin, Flower2,
+  HandHeart,
 } from "lucide-react";
 import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signOutCloud, refreshSession, syncNow } from "./cloud.js";
 
@@ -737,9 +737,6 @@ const CKEYS = {
   thoughts: "calm:thoughtRecords",
   sessions: "calm:sessions",
   settings: "calm:settings",
-  techFav: "calm:tech:favorites", // array of technique numbers ♥
-  techTried: "calm:tech:tried",   // { [num]: "YYYY-MM-DD" }
-  techWeek: "calm:tech:week",     // array of 1–2 pinned technique numbers
 };
 
 const BREATH_PATTERNS = [
@@ -771,42 +768,15 @@ async function loadCalmData() {
   const thoughts = await store.get(CKEYS.thoughts, []);
   const sessions = await store.get(CKEYS.sessions, []);
   const settings = await store.get(CKEYS.settings, { name: "Спокій" });
-  const techFav = await store.get(CKEYS.techFav, []);
-  const techTried = await store.get(CKEYS.techTried, {});
-  const techWeek = await store.get(CKEYS.techWeek, []);
-  return { fears, thoughts, sessions, settings, techFav, techTried, techWeek };
+  return { fears, thoughts, sessions, settings };
 }
 async function collectCalmExport() {
   const d = await loadCalmData();
-  return { fears: d.fears, thoughts: d.thoughts, sessions: d.sessions, settings: d.settings,
-    techFav: d.techFav, techTried: d.techTried, techWeek: d.techWeek };
+  return { fears: d.fears, thoughts: d.thoughts, sessions: d.sessions, settings: d.settings };
 }
 async function clearCalmData() {
   for (const k of Object.values(CKEYS)) await store.remove(k);
 }
-
-/* ---- 101 anti-anxiety techniques (Таня Пітерсон), loaded from /anxiety-101.json ---- */
-let _anx101 = null;
-async function loadAnx101() {
-  if (_anx101) return _anx101;
-  const res = await fetch("/anxiety-101.json");
-  _anx101 = await res.json();
-  return _anx101;
-}
-// Deterministic "technique of the day": stable per calendar day.
-function techniqueOfDay(techniques, today = dateKey(Date.now())) {
-  if (!techniques || !techniques.length) return null;
-  let h = 0;
-  for (let i = 0; i < today.length; i++) h = (h * 31 + today.charCodeAt(i)) >>> 0;
-  return techniques[h % techniques.length];
-}
-const PART_STYLES = [
-  { accent: "#0ea5e9", soft: "#e0f2fe", icon: Brain },     // 1 thoughts
-  { accent: "#14b8a6", soft: "#ccfbf1", icon: Briefcase }, // 2 work/study
-  { accent: "#f472b6", soft: "#fce7f3", icon: Heart },     // 3 relationships
-  { accent: "#8b5cf6", soft: "#ede9fe", icon: Waves },     // 4 daily/nightly
-  { accent: "#10b981", soft: "#d1fae5", icon: Flower2 },   // 5 free long-term
-];
 
 // soft optional tick using Web Audio (no asset, no storage)
 let _actx = null;
@@ -1736,7 +1706,7 @@ export default function FlashcardsApp() {
         onSyncNow={doSyncNow}
       />
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-16 lg:pb-0">
         {section === "routine" ? (
           <RoutineSection />
         ) : section === "calm" ? (
@@ -1752,9 +1722,6 @@ export default function FlashcardsApp() {
       {/* studying top bar */}
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4">
-          <button onClick={toggleSidebar} className="mr-1 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 lg:hidden" title="Menu">
-            <Menu className="h-5 w-5" />
-          </button>
           <button
             onClick={() => { setView("home"); setSession(null); }}
             className="mr-auto flex items-center gap-2 font-semibold tracking-tight text-slate-900"
@@ -1865,6 +1832,18 @@ export default function FlashcardsApp() {
         )}
       </div>
 
+      <MobileNav
+        section={section}
+        onSection={changeSection}
+        studyingDue={totalDue}
+        calmName={calmName}
+        fastingName={fastingName}
+        mgmtName={mgmtName}
+        toolkitName={toolkitName}
+        cloud={cloudState}
+        onSyncNow={doSyncNow}
+      />
+
       {deckEditor && (
         <DeckEditor
           deck={deckEditor.deck}
@@ -1915,6 +1894,44 @@ export default function FlashcardsApp() {
 /* ------------------------------------------------------------------ */
 /* Nav button                                                          */
 /* ------------------------------------------------------------------ */
+/* Mobile bottom tab bar — shown below lg, replaces the left rail on phones */
+function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, cloud, onSyncNow }) {
+  const items = [
+    { id: "studying", label: "Навчання", icon: GraduationCap, badge: studyingDue },
+    { id: "routine", label: "Рутина", icon: Sun, badge: 0 },
+    { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
+    { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
+    { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
+    { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
+  ];
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      {cloud && (
+        <button onClick={onSyncNow} disabled={cloud.syncing}
+          className={`flex w-full items-center justify-center gap-1.5 border-b border-slate-100 py-1 text-[11px] font-medium ${cloud.signedIn ? "text-green-600" : "text-slate-400"}`}>
+          {cloud.syncing ? <RefreshCw className="h-3 w-3 animate-spin" /> : cloud.signedIn ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
+          <span>{cloud.syncing ? "Синхронізація…" : cloud.signedIn ? "Синхронізовано" : "Офлайн"}</span>
+        </button>
+      )}
+      <div className="grid grid-cols-6">
+        {items.map((it) => {
+          const active = section === it.id;
+          return (
+            <button key={it.id} onClick={() => onSection(it.id)} title={it.label}
+              className={`relative flex flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium transition ${active ? "text-indigo-600" : "text-slate-400"}`}>
+              <span className="relative">
+                <it.icon className="h-5 w-5" />
+                {it.badge > 0 && <span className="absolute -right-1.5 -top-1 min-w-[14px] rounded-full bg-indigo-500 px-1 text-center text-[9px] font-bold leading-[14px] text-white">{it.badge > 99 ? "99+" : it.badge}</span>}
+              </span>
+              <span className="max-w-full truncate px-0.5">{it.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
 function NavButton({ active, onClick, icon: Icon, children }) {
   return (
     <button
@@ -1943,7 +1960,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
   ];
   const wide = !collapsed;
   return (
-    <aside className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-all ${collapsed ? "w-16" : "w-16 lg:w-60"}`}>
+    <aside className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-all lg:flex ${collapsed ? "lg:w-16" : "lg:w-60"}`}>
       <div className="flex h-14 items-center gap-2 px-4">
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-600 text-white">
           <Brain className="h-4 w-4" />
@@ -4674,17 +4691,11 @@ function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
 function CalmSection({ name, onRename }) {
   const [loading, setLoading] = useState(true);
   const [cview, setCview] = useState("hub");
-  const [tab, setTab] = useState("tools");     // tools | library
   const [anxOpen, setAnxOpen] = useState(false);
-  const [focusTod, setFocusTod] = useState(0); // bump to scroll library to technique-of-day
   const [fears, setFears] = useState([]);
   const [thoughts, setThoughts] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [settings, setSettings] = useState({ name: "Спокій", tick: true, pattern: "box" });
-  const [techData, setTechData] = useState(null);
-  const [techFav, setTechFav] = useState([]);
-  const [techTried, setTechTried] = useState({});
-  const [techWeek, setTechWeek] = useState([]);
   const [toast, setToast] = useState(null);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(name);
@@ -4696,30 +4707,14 @@ function CalmSection({ name, onRename }) {
     const d = await loadCalmData();
     setFears(d.fears); setThoughts(d.thoughts); setSessions(d.sessions);
     setSettings({ tick: true, pattern: "box", ...d.settings });
-    setTechFav(d.techFav || []); setTechTried(d.techTried || {}); setTechWeek(d.techWeek || []);
     setLoading(false);
-    try { setTechData(await loadAnx101()); } catch (e) { /* offline: library shows loader */ }
   }, []);
   useEffect(() => {
     reload();
-    const onReset = () => { setFears([]); setThoughts([]); setSessions([]); setTechFav([]); setTechTried({}); setTechWeek([]); setCview("hub"); setTab("tools"); };
+    const onReset = () => { setFears([]); setThoughts([]); setSessions([]); setCview("hub"); };
     window.addEventListener("calm-reset", onReset);
     return () => window.removeEventListener("calm-reset", onReset);
   }, [reload]);
-
-  const saveTechFav = useCallback((n) => {
-    setTechFav((cur) => { const next = cur.includes(n) ? cur.filter((x) => x !== n) : [...cur, n]; store.set(CKEYS.techFav, next); return next; });
-  }, []);
-  const saveTechTried = useCallback((n) => {
-    setTechTried((cur) => { const next = { ...cur }; if (next[n]) { delete next[n]; } else { next[n] = today; flash("Молодець 🌿"); } store.set(CKEYS.techTried, next); return next; });
-  }, [today, flash]);
-  const saveTechWeek = useCallback((n) => {
-    setTechWeek((cur) => {
-      if (cur.includes(n)) { const next = cur.filter((x) => x !== n); store.set(CKEYS.techWeek, next); return next; }
-      if (cur.length >= 2) { flash("Тримай фокус на 1–2 — спершу відкріпи одну 💛"); return cur; }
-      const next = [...cur, n]; store.set(CKEYS.techWeek, next); return next;
-    });
-  }, [flash]);
 
   const saveSettings = useCallback(async (patch) => {
     const next = { ...settings, ...patch };
@@ -4785,44 +4780,29 @@ function CalmSection({ name, onRename }) {
             <ArrowRight className="h-5 w-5" />
           </button>
 
-          {/* internal nav */}
-          <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-teal-100">
-            <button onClick={() => setTab("tools")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${tab === "tools" ? "bg-teal-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Leaf className="h-4 w-4" /> Інструменти</button>
-            <button onClick={() => setTab("library")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${tab === "library" ? "bg-teal-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><BookOpen className="h-4 w-4" /> 101 техніка</button>
+          {/* before work */}
+          <button onClick={() => setCview("beforework")} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-teal-400 to-sky-400 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:from-teal-500 hover:to-sky-500">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20"><Sparkle className="h-6 w-6" /></span>
+            <span className="flex-1"><span className="block text-lg font-bold">Перед роботою</span><span className="block text-sm text-white/90">2 хв дихання → заземлення. Одне натискання — і ти в ресурсі.</span></span>
+            <ArrowRight className="h-5 w-5" />
+          </button>
+
+          {/* stat strip */}
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-teal-600">{minutes}</div><div className="text-[11px] text-slate-400">хвилин</div></div>
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-sky-600">{sessions.length}</div><div className="text-[11px] text-slate-400">сесій</div></div>
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-emerald-500">{streak}</div><div className="text-[11px] text-slate-400">днів поспіль</div></div>
           </div>
 
-          {tab === "tools" && (<>
-            {/* before work */}
-            <button onClick={() => setCview("beforework")} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-teal-400 to-sky-400 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:from-teal-500 hover:to-sky-500">
-              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20"><Sparkle className="h-6 w-6" /></span>
-              <span className="flex-1"><span className="block text-lg font-bold">Перед роботою</span><span className="block text-sm text-white/90">2 хв дихання → заземлення. Одне натискання — і ти в ресурсі.</span></span>
-              <ArrowRight className="h-5 w-5" />
-            </button>
-
-            {/* stat strip */}
-            <div className="mb-4 grid grid-cols-3 gap-3">
-              <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-teal-600">{minutes}</div><div className="text-[11px] text-slate-400">хвилин</div></div>
-              <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-sky-600">{sessions.length}</div><div className="text-[11px] text-slate-400">сесій</div></div>
-              <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-emerald-500">{streak}</div><div className="text-[11px] text-slate-400">днів поспіль</div></div>
-            </div>
-
-            {/* practices */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              {PRACTICES.map((p) => (
-                <button key={p.id} onClick={() => setCview(p.id)} className="flex items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-teal-50 transition hover:shadow-md hover:ring-teal-200">
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ backgroundColor: p.color }}><p.icon className="h-5 w-5" /></span>
-                  <span className="min-w-0"><span className="block font-bold text-slate-800">{p.label}</span><span className="block truncate text-xs text-slate-400">{p.desc}</span></span>
-                </button>
-              ))}
-            </div>
-          </>)}
-
-          {tab === "library" && (
-            techData
-              ? <TechLibrary data={techData} favs={techFav} tried={techTried} week={techWeek}
-                  onFav={saveTechFav} onTried={saveTechTried} onPin={saveTechWeek} focusTod={focusTod} />
-              : <div className="flex items-center justify-center py-16 text-teal-400"><Leaf className="mr-2 h-5 w-5 animate-pulse" /> Завантажую 101 техніку…</div>
-          )}
+          {/* practices */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {PRACTICES.map((p) => (
+              <button key={p.id} onClick={() => setCview(p.id)} className="flex items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-teal-50 transition hover:shadow-md hover:ring-teal-200">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ backgroundColor: p.color }}><p.icon className="h-5 w-5" /></span>
+                <span className="min-w-0"><span className="block font-bold text-slate-800">{p.label}</span><span className="block truncate text-xs text-slate-400">{p.desc}</span></span>
+              </button>
+            ))}
+          </div>
 
           <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">
             Це інструменти самодопомоги, а не заміна професійної підтримки. Якщо тривога сильна або триває довго — розмова з фахівцем справді може допомогти. 💛
@@ -4840,7 +4820,6 @@ function CalmSection({ name, onRename }) {
                 { icon: Wind, color: "#0ea5e9", label: "Просто подихати", desc: "М'яке дихання, щоб сповільнитися", go: () => setCview("breath") },
                 { icon: Anchor, color: "#6366f1", label: "Повернутися в тіло", desc: "Заземлення 5-4-3-2-1", go: () => setCview("ground") },
                 { icon: HeartPulse, color: "#14b8a6", label: "Відпустити напругу", desc: "Розслаблення м'язів", go: () => setCview("pmr") },
-                { icon: Sparkles, color: "#10b981", label: "Дай пораду зараз", desc: "Одна техніка, яку можна зробити одразу", go: () => { setTab("library"); setFocusTod((x) => x + 1); } },
                 { icon: NotebookPen, color: "#8b5cf6", label: "Виписати думку", desc: "Розплутати тривожну думку на папері", go: () => setCview("thought") },
               ].map((o) => (
                 <button key={o.label} onClick={() => { setAnxOpen(false); o.go(); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 transition hover:ring-teal-200">
@@ -4870,141 +4849,6 @@ function CalmSection({ name, onRename }) {
   );
 }
 
-/* ---------- 101 anti-anxiety techniques library ---------- */
-function TechCard({ t, style, fav, triedDate, pinned, onFav, onTried, onPin, highlight }) {
-  return (
-    <div className={`rounded-2xl bg-white p-4 shadow-sm ring-1 transition ${highlight ? "ring-2 ring-teal-400" : "ring-teal-50"}`}>
-      <div className="flex items-start gap-3">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm font-extrabold tabular-nums text-white" style={{ backgroundColor: style.accent }}>{t.n}</span>
-        <h3 className="min-w-0 flex-1 pt-1 font-bold leading-snug text-slate-800">{t.title}</h3>
-      </div>
-      <p className="mt-2 text-sm leading-relaxed text-slate-600">{t.idea}</p>
-      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
-        <div className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-600"><Sparkles className="h-3.5 w-3.5" /> Зроби зараз</div>
-        <p className="text-sm leading-relaxed text-amber-900">{t.lifehack}</p>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button onClick={onFav} title="До улюблених"
-          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${fav ? "bg-rose-50 text-rose-600 ring-rose-200" : "bg-white text-slate-500 ring-slate-200 hover:text-rose-500"}`}>
-          <Heart className={`h-3.5 w-3.5 ${fav ? "fill-rose-500 text-rose-500" : ""}`} /> Улюблене
-        </button>
-        <button onClick={onTried} title="Позначити, що спробувала"
-          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${triedDate ? "bg-emerald-50 text-emerald-600 ring-emerald-200" : "bg-white text-slate-500 ring-slate-200 hover:text-emerald-500"}`}>
-          <Check className="h-3.5 w-3.5" /> {triedDate ? `Спробувала ${triedDate}` : "Спробувала"}
-        </button>
-        <button onClick={onPin} title="Практикувати цього тижня"
-          className={`ml-auto flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${pinned ? "bg-sky-50 text-sky-600 ring-sky-200" : "bg-white text-slate-500 ring-slate-200 hover:text-sky-500"}`}>
-          <Pin className={`h-3.5 w-3.5 ${pinned ? "fill-sky-500 text-sky-500" : ""}`} /> {pinned ? "Цього тижня" : "На тиждень"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function TechLibrary({ data, favs, tried, week, onFav, onTried, onPin, focusTod }) {
-  const [query, setQuery] = useState("");
-  const [part, setPart] = useState(0);        // 0 = all parts
-  const [mode, setMode] = useState("all");    // all | fav | untried
-  const techs = data.techniques;
-  const parts = data.parts;
-  const favSet = useMemo(() => new Set(favs), [favs]);
-  const weekSet = useMemo(() => new Set(week), [week]);
-  const today = dateKey(Date.now());
-  const tod = useMemo(() => techniqueOfDay(techs, today), [techs, today]);
-  const triedCount = Object.keys(tried).length;
-
-  const styleFor = (n) => PART_STYLES[(n || 1) - 1] || PART_STYLES[0];
-  const cardProps = (t) => ({
-    t, style: styleFor(t.part), fav: favSet.has(t.n), triedDate: tried[t.n], pinned: weekSet.has(t.n),
-    onFav: () => onFav(t.n), onTried: () => onTried(t.n), onPin: () => onPin(t.n),
-  });
-
-  const q = query.trim().toLowerCase();
-  const filtered = techs.filter((t) => {
-    if (part && t.part !== part) return false;
-    if (mode === "fav" && !favSet.has(t.n)) return false;
-    if (mode === "untried" && tried[t.n]) return false;
-    if (q && !(t.title.toLowerCase().includes(q) || t.idea.toLowerCase().includes(q) || t.lifehack.toLowerCase().includes(q))) return false;
-    return true;
-  });
-  const groups = parts.map((p) => ({ p, items: filtered.filter((t) => t.part === p.n) })).filter((g) => g.items.length);
-  const browsing = !q && mode === "all" && part === 0; // show week + tech-of-day only when not searching/filtering
-
-  const pinnedTechs = week.map((n) => techs.find((t) => t.n === n)).filter(Boolean);
-  const todRef = useRef(null);
-  useEffect(() => { if (focusTod && todRef.current) todRef.current.scrollIntoView({ behavior: "smooth", block: "center" }); }, [focusTod]);
-
-  return (
-    <div className="space-y-4">
-      {/* progress */}
-      <div className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm ring-1 ring-teal-100">
-        <div>
-          <div className="text-sm font-bold text-slate-700">Твій прогрес</div>
-          <div className="text-xs text-slate-400">Пробуй по одній — поспіху немає</div>
-        </div>
-        <div className="text-right"><div className="text-2xl font-extrabold tabular-nums text-teal-600">{triedCount}<span className="text-base text-slate-300">/{techs.length}</span></div><div className="text-[11px] text-slate-400">спробувано</div></div>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-teal-50"><div className="h-full rounded-full bg-gradient-to-r from-teal-400 to-emerald-400 transition-all" style={{ width: `${Math.round((triedCount / techs.length) * 100)}%` }} /></div>
-
-      {/* this week */}
-      {browsing && pinnedTechs.length > 0 && (
-        <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4">
-          <div className="mb-2 flex items-center gap-1.5 text-sm font-bold text-sky-700"><Pin className="h-4 w-4" /> Цього тижня практикую</div>
-          <div className="space-y-3">{pinnedTechs.map((t) => <TechCard key={t.n} {...cardProps(t)} />)}</div>
-        </div>
-      )}
-
-      {/* technique of the day */}
-      {browsing && tod && (
-        <div ref={todRef}>
-          <div className="mb-2 flex items-center gap-1.5 text-sm font-bold text-teal-700"><Sparkle className="h-4 w-4" /> Техніка дня</div>
-          <TechCard {...cardProps(tod)} highlight={!!focusTod} />
-        </div>
-      )}
-
-      {/* search */}
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Пошук серед 101 техніки…"
-          className="w-full rounded-2xl border border-teal-100 bg-white py-2.5 pl-10 pr-9 text-sm text-slate-700 shadow-sm focus:border-teal-300 focus:outline-none" />
-        {query && <button onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>}
-      </div>
-
-      {/* filters */}
-      <div className="flex flex-wrap gap-2">
-        {[["all", "Усі"], ["fav", "Улюблені"], ["untried", "Ще не пробувала"]].map(([m, label]) => (
-          <button key={m} onClick={() => setMode(m)} className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${mode === m ? "bg-teal-500 text-white ring-teal-500" : "bg-white text-slate-500 ring-slate-200 hover:ring-teal-200"}`}>{label}</button>
-        ))}
-      </div>
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-        <button onClick={() => setPart(0)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${part === 0 ? "bg-slate-800 text-white ring-slate-800" : "bg-white text-slate-500 ring-slate-200"}`}>Усі частини</button>
-        {parts.map((p) => { const st = styleFor(p.n); const on = part === p.n; return (
-          <button key={p.n} onClick={() => setPart(on ? 0 : p.n)} className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition"
-            style={on ? { backgroundColor: st.accent, color: "#fff", borderColor: st.accent, boxShadow: `0 0 0 1px ${st.accent}` } : { backgroundColor: "#fff", color: "#64748b" }}>
-            {p.n}. {p.title}
-          </button>
-        ); })}
-      </div>
-
-      {/* results */}
-      {groups.length === 0 ? (
-        <div className="rounded-2xl bg-white p-8 text-center text-sm text-slate-400 ring-1 ring-teal-50">Нічого не знайшлося. Спробуй інший запит чи фільтр.</div>
-      ) : groups.map((g) => {
-        const st = styleFor(g.p.n);
-        return (
-          <div key={g.p.n} className="space-y-3">
-            <div className="flex items-center gap-2 pt-1">
-              <span className="grid h-7 w-7 place-items-center rounded-lg text-white" style={{ backgroundColor: st.accent }}><st.icon className="h-4 w-4" /></span>
-              <h2 className="text-sm font-extrabold text-slate-700">Частина {g.p.n}. {g.p.title}</h2>
-              <span className="ml-auto text-xs text-slate-400">{g.items.length}</span>
-            </div>
-            {g.items.map((t) => <TechCard key={t.n} {...cardProps(t)} />)}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function CalmHeader({ title, onExit, right }) {
   return (
