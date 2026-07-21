@@ -587,8 +587,58 @@ const RKEYS = {
   streak: "routine:streak",
   mood: "routine:mood",
   seeded: "routine:seeded",
+  xp: "routine:xp",         // { xp: number }
+  rewards: "routine:rewards", // [{ id, label, cost, unlockedAt }]
 };
 const cKey = (date) => `routine:completions:${date}`;
+
+/* ---- ADHD gamification helpers ---- */
+const ENERGY = {
+  low: { label: "Легко", emoji: "🟢", xp: 0 },
+  med: { label: "Середнє", emoji: "🟡", xp: 5 },
+  high: { label: "Складне", emoji: "🔴", xp: 15 },
+};
+const EST_CHIPS = [2, 5, 15, 30, 60];
+// XP earned for finishing a task: base + effort + a little for longer estimates
+function xpForTask(task) {
+  let xp = 10;
+  if (task?.energy && ENERGY[task.energy]) xp += ENERGY[task.energy].xp;
+  if (task?.estMin) xp += Math.min(20, Math.floor(task.estMin / 5) * 2);
+  return xp;
+}
+// Level curve: level N starts at 50*N*(N-1) XP (0,100,300,600,1000,…)
+function levelFromXp(xp) {
+  let lvl = 1;
+  while (50 * (lvl + 1) * lvl <= xp) lvl += 1;
+  return lvl;
+}
+const xpForLevel = (lvl) => 50 * lvl * (lvl - 1);
+function levelProgress(xp) {
+  const lvl = levelFromXp(xp);
+  const cur = xpForLevel(lvl), next = xpForLevel(lvl + 1);
+  return { lvl, cur, next, into: xp - cur, span: next - cur, pct: Math.min(1, (xp - cur) / (next - cur)) };
+}
+const fmtEst = (min) => { min = Math.round(min || 0); if (min < 60) return `${min} хв`; const h = Math.floor(min / 60), m = min % 60; return m ? `${h} год ${m} хв` : `${h} год`; };
+
+// Daily challenges — rotating pool. Each has a check(ctx) -> bool.
+const CHALLENGE_POOL = [
+  { id: "close3", emoji: "✅", label: "Закрий 3 справи сьогодні", xp: 20, check: (c) => c.doneCount >= 3 },
+  { id: "close5", emoji: "🏆", label: "Закрий 5 справ сьогодні", xp: 35, check: (c) => c.doneCount >= 5 },
+  { id: "frog", emoji: "🐸", label: "З'їж жабу: закрий одну «складну» справу", xp: 25, check: (c) => c.tasks.some((t) => t.energy === "high" && c.isDone(t)) },
+  { id: "anytime", emoji: "🎈", label: "Закрий одну справу «будь-коли»", xp: 15, check: (c) => c.tasks.some((t) => !t.time && c.isDone(t)) },
+  { id: "beatEst", emoji: "⏱️", label: "Вклади в свою оцінку часу на одній справі", xp: 25, check: (c) => c.tasks.some((t) => t.estMin && c.actualMin(t) != null && c.actualMin(t) <= t.estMin && c.isDone(t)) },
+  { id: "twoQuick", emoji: "⚡", label: "Закрий 2 швидкі перемоги (≤5 хв)", xp: 20, check: (c) => c.tasks.filter((t) => (t.estMin && t.estMin <= 5) && c.isDone(t)).length >= 2 },
+  { id: "firstThing", emoji: "🌅", label: "Закрий першу справу дня зранку", xp: 15, check: (c) => c.doneCount >= 1 },
+  { id: "half", emoji: "🌤️", label: "Закрий половину сьогоднішніх справ", xp: 30, check: (c) => c.tasks.length > 0 && c.doneCount >= Math.ceil(c.tasks.length / 2) },
+];
+// Deterministic 3 challenges per day
+function pickChallenges(dateStr) {
+  let h = 0; for (let i = 0; i < dateStr.length; i++) h = (h * 31 + dateStr.charCodeAt(i)) >>> 0;
+  const pool = [...CHALLENGE_POOL];
+  const out = [];
+  for (let i = 0; i < 3 && pool.length; i++) { const idx = h % pool.length; out.push(pool.splice(idx, 1)[0]); h = (h * 1103515245 + 12345) >>> 0; }
+  return out;
+}
 const ruid = (p) => uid(p);
 
 // Me+ pastel palette
@@ -627,17 +677,19 @@ async function loadRoutineData() {
   const cindex = await store.get(RKEYS.cindex, []);
   const streak = await store.get(RKEYS.streak, { best: 0, lastCelebrated: "" });
   const moods = await store.get(RKEYS.mood, {});
+  const xp = await store.get(RKEYS.xp, { xp: 0 });
+  const rewards = await store.get(RKEYS.rewards, []);
   const completions = {};
   for (const d of cindex) {
     const doc = await store.get(cKey(d), null);
     if (doc) completions[d] = doc;
   }
-  return { tasks, categories, cindex, completions, streak, moods };
+  return { tasks, categories, cindex, completions, streak, moods, xp, rewards };
 }
 
 async function collectRoutineExport() {
   const d = await loadRoutineData();
-  return { tasks: d.tasks || [], categories: d.categories || [], completions: d.completions, streak: d.streak, moods: d.moods };
+  return { tasks: d.tasks || [], categories: d.categories || [], completions: d.completions, streak: d.streak, moods: d.moods, xp: d.xp, rewards: d.rewards };
 }
 
 async function clearRoutineData() {
@@ -3959,6 +4011,207 @@ const weekDaysOf = (anchorDs) => {
 };
 const prettyDate = (ds) => new Date(ds + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
+/* ---------- ADHD gamification: XP bar, challenges, wheel, focus, rewards, recap ---------- */
+function GamifyBar({ xp, onRewards }) {
+  const lp = levelProgress(xp);
+  return (
+    <button onClick={onRewards} className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/80 p-3 text-left shadow-sm ring-1 ring-rose-100 transition hover:ring-rose-200">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-pink-400 to-fuchsia-400 text-white shadow-sm">
+        <span className="text-xs font-black leading-none">LVL</span>
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between">
+          <span className="text-sm font-extrabold text-slate-800">Рівень {lp.lvl}</span>
+          <span className="text-[11px] font-semibold tabular-nums text-slate-400">{xp} XP</span>
+        </div>
+        <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-pink-100">
+          <div className="h-full rounded-full bg-gradient-to-r from-pink-400 to-fuchsia-400 transition-all" style={{ width: `${lp.pct * 100}%` }} />
+        </div>
+        <div className="mt-0.5 text-[10px] text-slate-400">{lp.next - xp} XP до рівня {lp.lvl + 1} · нагороди 🎁</div>
+      </div>
+    </button>
+  );
+}
+
+function ChallengesCard({ challenges, ctx, chDoc, onDismiss }) {
+  const visible = challenges.filter((c) => !chDoc.dismissed?.[c.id]);
+  if (!visible.length) return null;
+  return (
+    <div className="mt-4 rounded-2xl bg-white/80 p-3.5 shadow-sm ring-1 ring-rose-100">
+      <div className="mb-2 flex items-center gap-1.5 text-sm font-extrabold text-slate-800"><span>🎯</span> Челенджі дня</div>
+      <div className="space-y-2">
+        {visible.map((c) => {
+          const done = c.check(ctx);
+          return (
+            <div key={c.id} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 ${done ? "bg-green-50 ring-1 ring-green-200" : "bg-slate-50"}`}>
+              <span className="text-lg">{c.emoji}</span>
+              <span className={`min-w-0 flex-1 text-sm ${done ? "font-semibold text-green-700 line-through" : "text-slate-600"}`}>{c.label}</span>
+              <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-pink-500 ring-1 ring-pink-100">+{c.xp}</span>
+              {done ? <Check className="h-4 w-4 shrink-0 text-green-500" /> : <button onClick={() => onDismiss(c.id)} className="shrink-0 rounded-full p-0.5 text-slate-300 hover:text-slate-500"><X className="h-4 w-4" /></button>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function WheelSpin({ tasks, onClose, onPick }) {
+  const [picked, setPicked] = useState(null);
+  const [spinning, setSpinning] = useState(false);
+  const spin = () => {
+    if (!tasks.length) return;
+    setSpinning(true);
+    let n = 0;
+    const iv = setInterval(() => {
+      setPicked(tasks[Math.floor((n * 7) % tasks.length)]);
+      n += 1;
+      if (n > 14) { clearInterval(iv); const final = tasks[Math.floor((n * 7 + 3) % tasks.length)]; setPicked(final); setSpinning(false); }
+    }, 90);
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-t-3xl bg-white p-6 text-center shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="text-4xl">🎡</div>
+        <h3 className="mt-2 text-lg font-extrabold text-slate-900">Колесо задач</h3>
+        <p className="mt-1 text-sm text-slate-400">Не знаєш, з чого почати? Хай вирішить колесо.</p>
+        {tasks.length === 0 ? (
+          <p className="mt-6 text-sm text-slate-400">Немає незавершених справ на сьогодні 🎉</p>
+        ) : (
+          <>
+            <div className="my-5 grid min-h-[64px] place-items-center rounded-2xl bg-pink-50 px-4 py-4 ring-1 ring-pink-100">
+              {picked ? <div className="flex items-center gap-2 text-lg font-bold text-slate-800"><span className="text-2xl">{picked.emoji || "⭐"}</span>{picked.title}</div> : <span className="text-sm text-slate-400">Крути, щоб обрати</span>}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={spin} disabled={spinning} className="flex-1 rounded-2xl bg-pink-500 py-3 font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-600 disabled:opacity-60">{picked ? "Ще раз" : "Крутити"}</button>
+              {picked && !spinning && <button onClick={() => onPick(picked)} className="flex-1 rounded-2xl bg-slate-800 py-3 font-bold text-white hover:bg-slate-900">Робити це</button>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FocusMode({ tasks, doc, onClose, onDone, onSkip }) {
+  const [idx, setIdx] = useState(0);
+  const task = tasks[idx];
+  if (!task) return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-b from-pink-500 to-fuchsia-500 p-6 text-center text-white" onClick={onClose}>
+      <div><div className="text-5xl">🎉</div><h2 className="mt-3 text-2xl font-extrabold">Усе на зараз закрито!</h2><p className="mt-1 text-white/80">Можеш видихнути.</p><button onClick={onClose} className="mt-6 rounded-2xl bg-white px-8 py-3 font-bold text-pink-600">Готово</button></div>
+    </div>
+  );
+  const p = getPastel(task.color);
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-rose-50 to-pink-100 p-6">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-bold text-slate-400">Зараз · {idx + 1}/{tasks.length}</span>
+        <button onClick={onClose} className="rounded-full bg-white/70 p-2 text-slate-500"><X className="h-5 w-5" /></button>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <div className="grid h-28 w-28 place-items-center rounded-3xl text-5xl shadow-lg" style={{ backgroundColor: p.card }}>{task.emoji || "⭐"}</div>
+        <h1 className="mt-5 max-w-md text-3xl font-extrabold text-slate-900">{task.title}</h1>
+        {task.note && <p className="mt-2 max-w-sm text-sm text-slate-500">{task.note}</p>}
+        <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs">
+          {task.estMin && <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-500 ring-1 ring-slate-200">≈ {fmtEst(task.estMin)}</span>}
+          {task.energy && ENERGY[task.energy] && <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-500 ring-1 ring-slate-200">{ENERGY[task.energy].emoji} {ENERGY[task.energy].label}</span>}
+        </div>
+      </div>
+      <div className="flex gap-3">
+        <button onClick={() => setIdx((i) => i + 1)} className="flex-1 rounded-2xl bg-white py-4 font-bold text-slate-500 shadow-sm ring-1 ring-slate-200">Пропустити →</button>
+        <button onClick={() => { onDone(task); setIdx((i) => i); }} className="flex-[2] rounded-2xl bg-pink-500 py-4 font-bold text-white shadow-lg shadow-pink-500/25 hover:bg-pink-600">Готово ✓</button>
+      </div>
+    </div>
+  );
+}
+
+function RewardsPanel({ xp, rewards, onClose, onAdd, onUnlock, onDelete }) {
+  const [label, setLabel] = useState("");
+  const [cost, setCost] = useState(300);
+  const lp = levelProgress(xp);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="text-lg font-extrabold text-slate-900">🎁 Мої нагороди</h3>
+          <button onClick={onClose} className="rounded-full p-1 text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="mb-3 rounded-2xl bg-pink-50 p-3">
+          <div className="flex items-baseline justify-between text-sm"><span className="font-bold text-slate-700">Рівень {lp.lvl}</span><span className="font-semibold tabular-nums text-pink-500">{xp} XP</span></div>
+          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-pink-100"><div className="h-full rounded-full bg-gradient-to-r from-pink-400 to-fuchsia-400" style={{ width: `${lp.pct * 100}%` }} /></div>
+        </div>
+        <p className="mb-3 text-xs text-slate-400">Придумай собі маленькі приємності й відмикай їх, коли назбираєш XP. Це твоє особисте «меню дофаміну».</p>
+        <div className="space-y-2">
+          {rewards.length === 0 && <div className="rounded-xl bg-slate-50 py-6 text-center text-sm text-slate-400">Ще немає нагород. Додай першу нижче 👇</div>}
+          {rewards.map((r) => {
+            const unlocked = !!r.unlockedAt;
+            const can = xp >= r.cost;
+            return (
+              <div key={r.id} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 ${unlocked ? "bg-green-50 ring-1 ring-green-200" : "bg-slate-50"}`}>
+                <span className="text-lg">{unlocked ? "🎉" : can ? "🔓" : "🔒"}</span>
+                <div className="min-w-0 flex-1"><div className={`truncate text-sm font-semibold ${unlocked ? "text-green-700" : "text-slate-700"}`}>{r.label}</div><div className="text-[11px] text-slate-400">{r.cost} XP{unlocked ? " · відкрито" : ""}</div></div>
+                {!unlocked && <button onClick={() => onUnlock(r.id)} disabled={!can} className="shrink-0 rounded-full bg-pink-500 px-3 py-1 text-xs font-bold text-white disabled:bg-slate-200 disabled:text-slate-400">Відкрити</button>}
+                <button onClick={() => onDelete(r.id)} className="shrink-0 rounded-full p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-200 p-3">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Напр. улюблений снек, серія серіалу…" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none" />
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-xs text-slate-400">Ціна:</span>
+            <input type="number" min={50} step={50} value={cost} onChange={(e) => setCost(Math.max(50, +e.target.value || 50))} className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm" />
+            <span className="text-xs text-slate-400">XP</span>
+            <button onClick={() => { if (label.trim()) { onAdd(label.trim(), cost); setLabel(""); } }} className="ml-auto rounded-full bg-slate-800 px-4 py-1.5 text-sm font-semibold text-white hover:bg-slate-900">Додати</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DayRecap({ tasks, doc, xpToday, xp, streak, onClose, onCarryOver, carryCount }) {
+  const doneTasks = tasks.filter((t) => doc.tasks?.[t.id]);
+  const lp = levelProgress(xp);
+  const totalMin = doneTasks.reduce((s, t) => s + (t.estMin || 0), 0);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-6 text-center shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="text-4xl">🌙</div>
+        <h3 className="mt-2 text-xl font-extrabold text-slate-900">Підсумок дня</h3>
+        <div className="my-4 grid grid-cols-3 gap-2">
+          <div className="rounded-2xl bg-pink-50 p-3"><div className="text-2xl font-extrabold text-pink-500">{doneTasks.length}</div><div className="text-[11px] text-slate-400">закрито</div></div>
+          <div className="rounded-2xl bg-fuchsia-50 p-3"><div className="text-2xl font-extrabold text-fuchsia-500">+{xpToday}</div><div className="text-[11px] text-slate-400">XP сьогодні</div></div>
+          <div className="rounded-2xl bg-orange-50 p-3"><div className="text-2xl font-extrabold text-orange-500">{streak.current}🔥</div><div className="text-[11px] text-slate-400">днів поспіль</div></div>
+        </div>
+        <div className="mb-1 text-sm font-semibold text-slate-600">Рівень {lp.lvl}{totalMin ? ` · ≈ ${fmtEst(totalMin)} роботи` : ""}</div>
+        {doneTasks.length > 0 ? (
+          <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-left">
+            <div className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">Що зроблено</div>
+            <div className="space-y-1">{doneTasks.map((t) => <div key={t.id} className="flex items-center gap-2 text-sm text-slate-700"><span>{t.emoji || "✅"}</span><span className="truncate">{t.title}</span></div>)}</div>
+          </div>
+        ) : <p className="mt-3 text-sm text-slate-400">Сьогодні нічого не закрито — і це теж нормально. Завтра новий день 💛</p>}
+        {carryCount > 0 && <button onClick={onCarryOver} className="mt-4 w-full rounded-2xl bg-white py-3 text-sm font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50">Перенести {carryCount} незавершену(і) на завтра — без провини 💛</button>}
+        <button onClick={onClose} className="mt-2 w-full rounded-2xl bg-pink-500 py-3 font-bold text-white hover:bg-pink-600">Гарного вечора ✨</button>
+      </div>
+    </div>
+  );
+}
+
+function LevelUp({ level, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gradient-to-b from-fuchsia-500 to-pink-600 p-6 text-center text-white" onClick={onClose}>
+      <div>
+        <div className="text-6xl">🎉</div>
+        <div className="mt-3 text-sm font-bold uppercase tracking-widest text-white/80">Новий рівень</div>
+        <h2 className="text-5xl font-black">Рівень {level}</h2>
+        <p className="mt-2 text-white/80">Так тримати! Кожна закрита справа — це крок.</p>
+        <button onClick={onClose} className="mt-6 rounded-2xl bg-white px-8 py-3 font-bold text-pink-600">Далі</button>
+      </div>
+    </div>
+  );
+}
+
 function RoutineSection() {
   const [loading, setLoading] = useState(true);
   const [rview, setRview] = useState("today"); // today | stats
@@ -3979,6 +4232,14 @@ function RoutineSection() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [timer, setTimer] = useState(null); // {taskId, elapsed, target, running}
   const [toast, setToast] = useState(null);
+  const [xp, setXp] = useState(0);
+  const [rewards, setRewards] = useState([]);
+  const [wheelOpen, setWheelOpen] = useState(false);
+  const [focusOpen, setFocusOpen] = useState(false);
+  const [rewardsOpen, setRewardsOpen] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [levelUp, setLevelUp] = useState(null);
+  const [energyFilter, setEnergyFilter] = useState(null); // null | "quick" | "low"
   const timerRef = useRef(null);
 
   const today = dateKey(Date.now());
@@ -3997,6 +4258,7 @@ function RoutineSection() {
     }
     setTasks(d.tasks || []); setCategories(d.categories || []); setCompletions(d.completions);
     setCindex(d.cindex); setStreakMeta(d.streak || { best: 0, lastCelebrated: "" }); setMoods(d.moods || {});
+    setXp((d.xp && d.xp.xp) || 0); setRewards(d.rewards || []);
     setLoading(false);
   }, []);
 
@@ -4011,11 +4273,45 @@ function RoutineSection() {
   const saveTasks = useCallback(async (next) => { setTasks(next); await store.set(RKEYS.tasks, next); }, []);
   const saveCategories = useCallback(async (next) => { setCategories(next); await store.set(RKEYS.categories, next); }, []);
   const saveMoods = useCallback(async (next) => { setMoods(next); await store.set(RKEYS.mood, next); }, []);
+  const completionsRef = useRef(completions);
+  completionsRef.current = completions;
   const persistCompletion = useCallback(async (date, doc) => {
     setCompletions((m) => ({ ...m, [date]: doc }));
+    completionsRef.current = { ...completionsRef.current, [date]: doc };
     await store.set(cKey(date), doc);
     setCindex((prev) => { if (prev.includes(date)) return prev; const next = [...prev, date].sort(); store.set(RKEYS.cindex, next); return next; });
   }, []);
+
+  // Award XP for any freshly-completed tasks + newly-satisfied challenges (idempotent, never removes).
+  const settleDoc = useCallback((doc, dateStr) => {
+    const occurring = tasks.filter((t) => taskOccursOn(t, dateStr));
+    doc.xpAwarded = { ...(doc.xpAwarded || {}) };
+    let delta = 0;
+    for (const t of occurring) {
+      if (doc.tasks?.[t.id] && doc.xpAwarded[t.id] == null) { const amt = xpForTask(t); doc.xpAwarded[t.id] = amt; delta += amt; }
+    }
+    const ctx = {
+      tasks: occurring,
+      doneCount: occurring.filter((t) => doc.tasks?.[t.id]).length,
+      isDone: (t) => !!doc.tasks?.[t.id],
+      actualMin: (t) => (doc.goal?.[t.id] != null ? Math.round(doc.goal[t.id] / 60) : null),
+    };
+    doc.ch = { dismissed: { ...(doc.ch?.dismissed || {}) }, awarded: { ...(doc.ch?.awarded || {}) } };
+    for (const c of pickChallenges(dateStr)) {
+      if (!doc.ch.awarded[c.id] && c.check(ctx)) { doc.ch.awarded[c.id] = c.xp; delta += c.xp; }
+    }
+    return delta;
+  }, [tasks]);
+
+  // Persist a completion doc AND grant any earned XP, with a level-up moment.
+  const commitDoc = useCallback(async (doc) => {
+    const delta = settleDoc(doc, selDate);
+    await persistCompletion(selDate, doc);
+    if (delta > 0) {
+      setXp((prev) => { const nx = prev + delta; store.set(RKEYS.xp, { xp: nx }); if (levelFromXp(nx) > levelFromXp(prev)) setLevelUp(levelFromXp(nx)); return nx; });
+      flash(`+${delta} XP ✨`);
+    }
+  }, [settleDoc, selDate, persistCompletion, flash]);
 
   const maybeCelebrate = useCallback((nextCompletions) => {
     if (selDate !== today) return;
@@ -4029,18 +4325,18 @@ function RoutineSection() {
   }, [selDate, today, completions, streakMeta]);
 
   const toggleTask = useCallback(async (taskId) => {
-    const doc = { ...(completions[selDate] || {}) };
+    const doc = { ...(completionsRef.current[selDate] || {}) };
     doc.tasks = { ...(doc.tasks || {}) };
     const willComplete = !doc.tasks[taskId];
     if (willComplete) doc.tasks[taskId] = true; else delete doc.tasks[taskId];
     const nextCompletions = { ...completions, [selDate]: doc };
-    await persistCompletion(selDate, doc);
+    await commitDoc(doc);
     if (willComplete) maybeCelebrate(nextCompletions);
-  }, [completions, selDate, persistCompletion, maybeCelebrate]);
+  }, [completions, selDate, commitDoc, maybeCelebrate]);
 
   const toggleSubtask = useCallback(async (taskId, subId) => {
     const task = tasks.find((t) => t.id === taskId);
-    const doc = { ...(completions[selDate] || {}) };
+    const doc = { ...(completionsRef.current[selDate] || {}) };
     doc.subtasks = { ...(doc.subtasks || {}) };
     doc.subtasks[taskId] = { ...(doc.subtasks[taskId] || {}) };
     if (doc.subtasks[taskId][subId]) delete doc.subtasks[taskId][subId]; else doc.subtasks[taskId][subId] = true;
@@ -4052,9 +4348,9 @@ function RoutineSection() {
     if (total > 0 && done >= total) { if (!doc.tasks[taskId]) willComplete = true; doc.tasks[taskId] = true; }
     else if (total > 0) delete doc.tasks[taskId];
     const nextCompletions = { ...completions, [selDate]: doc };
-    await persistCompletion(selDate, doc);
+    await commitDoc(doc);
     if (willComplete) maybeCelebrate(nextCompletions);
-  }, [tasks, completions, selDate, persistCompletion, maybeCelebrate]);
+  }, [tasks, completions, selDate, commitDoc, maybeCelebrate]);
 
   const setMood = useCallback(async (score) => { await saveMoods({ ...moods, [today]: score }); setMoodOpen(false); flash("Mood saved"); }, [moods, today, saveMoods, flash]);
 
@@ -4079,18 +4375,18 @@ function RoutineSection() {
     if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; }
     setTimer((cur) => {
       if (cur && markProgress) {
-        const doc = { ...(completions[selDate] || {}) };
+        const doc = { ...(completionsRef.current[selDate] || {}) };
         doc.goal = { ...(doc.goal || {}) };
         doc.goal[cur.taskId] = cur.elapsed;
         doc.tasks = { ...(doc.tasks || {}) };
         let willComplete = false;
         if (cur.elapsed >= cur.target && !doc.tasks[cur.taskId]) { doc.tasks[cur.taskId] = true; willComplete = true; }
-        persistCompletion(selDate, doc);
+        commitDoc(doc);
         if (willComplete) maybeCelebrate({ ...completions, [selDate]: doc });
       }
       return null;
     });
-  }, [completions, selDate, persistCompletion, maybeCelebrate]);
+  }, [completions, selDate, commitDoc, maybeCelebrate]);
 
   const startTimer = useCallback((task) => {
     if (timerRef.current) window.clearInterval(timerRef.current);
@@ -4104,18 +4400,18 @@ function RoutineSection() {
         if (elapsed >= cur.target) {
           // finish
           window.clearInterval(timerRef.current); timerRef.current = null;
-          const doc = { ...(completions[selDate] || {}) };
+          const doc = { ...(completionsRef.current[selDate] || {}) };
           doc.goal = { ...(doc.goal || {}), [cur.taskId]: elapsed };
           doc.tasks = { ...(doc.tasks || {}), [cur.taskId]: true };
-          persistCompletion(selDate, doc);
+          commitDoc(doc);
           maybeCelebrate({ ...completions, [selDate]: doc });
-          flash("Goal complete! 🎉");
+          flash("Ціль виконано! 🎉");
           return null;
         }
         return { ...cur, elapsed };
       });
     }, 1000);
-  }, [completions, selDate, persistCompletion, maybeCelebrate, flash]);
+  }, [completions, selDate, commitDoc, maybeCelebrate, flash]);
 
   useEffect(() => () => { if (timerRef.current) window.clearInterval(timerRef.current); }, []);
 
@@ -4131,6 +4427,28 @@ function RoutineSection() {
   }, [tasks, selDate, selCat]);
   const dayDone = dayTasks.filter((t) => doc.tasks?.[t.id]).length;
   const dayPct = dayTasks.length ? dayDone / dayTasks.length : 0;
+
+  /* ---- gamification derived ---- */
+  const occurringAll = useMemo(() => tasks.filter((t) => taskOccursOn(t, selDate)), [tasks, selDate]);
+  const shownTasks = useMemo(() => {
+    if (energyFilter === "quick") return dayTasks.filter((t) => t.estMin && t.estMin <= 5);
+    if (energyFilter === "low") return dayTasks.filter((t) => t.energy === "low");
+    return dayTasks;
+  }, [dayTasks, energyFilter]);
+  const notDone = dayTasks.filter((t) => !doc.tasks?.[t.id]);
+  const dayTotalMin = occurringAll.reduce((s, t) => s + (t.estMin || 0), 0);
+  const challenges = useMemo(() => pickChallenges(selDate), [selDate]);
+  const chCtx = { tasks: occurringAll, doneCount: occurringAll.filter((t) => doc.tasks?.[t.id]).length, isDone: (t) => !!doc.tasks?.[t.id], actualMin: (t) => (doc.goal?.[t.id] != null ? Math.round(doc.goal[t.id] / 60) : null) };
+  const xpToday = Object.values(doc.xpAwarded || {}).reduce((s, v) => s + v, 0) + Object.values(doc.ch?.awarded || {}).reduce((s, v) => s + v, 0);
+  const carryList = occurringAll.filter((t) => !doc.tasks?.[t.id] && (t.repeat?.type || "off") === "off");
+
+  const saveRewards = useCallback(async (next) => { setRewards(next); await store.set(RKEYS.rewards, next); }, []);
+  const addReward = (label, cost) => saveRewards([...rewards, { id: ruid("rw"), label, cost, unlockedAt: null }]);
+  const unlockReward = (id) => { saveRewards(rewards.map((r) => (r.id === id ? { ...r, unlockedAt: Date.now() } : r))); flash("Нагороду відкрито! 🎉"); };
+  const deleteReward = (id) => saveRewards(rewards.filter((r) => r.id !== id));
+  const dismissChallenge = useCallback(async (cid) => { const d = { ...(completionsRef.current[selDate] || {}) }; d.ch = { dismissed: { ...(d.ch?.dismissed || {}), [cid]: true }, awarded: { ...(d.ch?.awarded || {}) } }; await persistCompletion(selDate, d); }, [completions, selDate, persistCompletion]);
+  const carryOver = useCallback(async () => { const tomorrow = dateKey(Date.now() + 86400000); const ids = new Set(carryList.map((c) => c.id)); await saveTasks(tasks.map((t) => (ids.has(t.id) ? { ...t, date: tomorrow } : t))); setRecapOpen(false); flash("Перенесено на завтра 💛"); }, [tasks, carryList, saveTasks, flash]);
+  const focusDone = useCallback(async (task) => { const d = { ...(completionsRef.current[selDate] || {}) }; d.tasks = { ...(d.tasks || {}), [task.id]: true }; await commitDoc(d); maybeCelebrate({ ...completions, [selDate]: d }); }, [completions, selDate, commitDoc, maybeCelebrate]);
 
   if (loading) {
     return <div className="flex flex-1 items-center justify-center text-pink-400"><div className="flex flex-col items-center gap-3"><Sun className="h-8 w-8 animate-pulse" /><span className="text-sm">Loading your routine…</span></div></div>;
@@ -4168,6 +4486,29 @@ function RoutineSection() {
 
           {/* week strip */}
           <WeekStrip selDate={selDate} today={today} completions={completions} tasks={tasks} onPick={setSelDate} />
+
+          {/* XP / level */}
+          <GamifyBar xp={xp} onRewards={() => setRewardsOpen(true)} />
+
+          {/* daily challenges */}
+          {isToday && <ChallengesCard challenges={challenges} ctx={chCtx} chDoc={doc.ch || {}} onDismiss={dismissChallenge} />}
+
+          {/* quick actions */}
+          {isToday && dayTasks.length > 0 && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button onClick={() => notDone.length ? setWheelOpen(true) : flash("Усе на сьогодні закрито 🎉")} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-rose-100 hover:ring-rose-200">🎡 Колесо</button>
+              <button onClick={() => setFocusOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-rose-100 hover:ring-rose-200">🎯 Зараз</button>
+              <button onClick={() => setRecapOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-rose-100 hover:ring-rose-200">🌙 Підсумок</button>
+              {dayTotalMin > 0 && <span className="ml-auto text-xs font-semibold text-slate-400">Сьогодні ≈ {fmtEst(dayTotalMin)}</span>}
+            </div>
+          )}
+          {isToday && dayTasks.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[["quick", "⚡ Швидкі перемоги"], ["low", "🟢 Мало енергії"]].map(([k, label]) => (
+                <button key={k} onClick={() => setEnergyFilter((f) => (f === k ? null : k))} className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${energyFilter === k ? "bg-pink-500 text-white ring-pink-500" : "bg-white text-slate-500 ring-slate-200 hover:ring-pink-200"}`}>{label}</button>
+              ))}
+            </div>
+          )}
 
           {/* mood banner */}
           {isToday && !bannerDismissed && moods[today] == null && (
@@ -4209,7 +4550,9 @@ function RoutineSection() {
           <div className="mt-4 space-y-2.5">
             {dayTasks.length === 0 ? (
               <div className="rounded-2xl bg-white/70 py-12 text-center text-sm text-slate-400">Nothing here yet — tap the + to add a task.</div>
-            ) : dayTasks.map((t) => (
+            ) : shownTasks.length === 0 ? (
+              <div className="rounded-2xl bg-white/70 py-10 text-center text-sm text-slate-400">Нема справ під цей фільтр. <button onClick={() => setEnergyFilter(null)} className="font-semibold text-pink-500 underline">Показати всі</button></div>
+            ) : shownTasks.map((t) => (
               <TaskCard key={t.id} task={t} done={!!doc.tasks?.[t.id]} doc={doc}
                 timer={timer?.taskId === t.id ? timer : null}
                 onToggle={() => toggleTask(t.id)} onOpen={() => setDetailId(t.id)} onStartTimer={() => startTimer(t)} onStopTimer={() => stopTimer(true)} />
@@ -4274,6 +4617,13 @@ function RoutineSection() {
       {/* streak born celebration */}
       {celebration && <StreakBorn streak={celebration.streak} onClose={() => setCelebration(null)} />}
 
+      {/* gamification modals */}
+      {wheelOpen && <WheelSpin tasks={notDone} onClose={() => setWheelOpen(false)} onPick={(t) => { setWheelOpen(false); setDetailId(t.id); }} />}
+      {focusOpen && <FocusMode tasks={notDone} doc={doc} onClose={() => setFocusOpen(false)} onDone={focusDone} onSkip={() => {}} />}
+      {rewardsOpen && <RewardsPanel xp={xp} rewards={rewards} onClose={() => setRewardsOpen(false)} onAdd={addReward} onUnlock={unlockReward} onDelete={deleteReward} />}
+      {recapOpen && <DayRecap tasks={occurringAll} doc={doc} xpToday={xpToday} xp={xp} streak={streak} onClose={() => setRecapOpen(false)} onCarryOver={carryOver} carryCount={carryList.length} />}
+      {levelUp && <LevelUp level={levelUp} onClose={() => setLevelUp(null)} />}
+
       {toast && <div className="fixed bottom-24 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
     </div>
   );
@@ -4328,7 +4678,10 @@ function TaskCard({ task, done, doc, timer, onToggle, onOpen, onStartTimer, onSt
         <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px]" style={{ color: p.ink }}>
           {timed && <span className="font-semibold">Goal: {Math.floor(goalSecs / 60)}/{task.goal.minutes} min</span>}
           {task.subtasks?.length > 0 && <span className="font-semibold">{subDone}/{task.subtasks.length} steps</span>}
+          {task.estMin > 0 && <span className="font-semibold opacity-80">≈ {fmtEst(task.estMin)}</span>}
+          {task.energy && ENERGY[task.energy] && <span className="opacity-80">{ENERGY[task.energy].emoji}</span>}
           {task.reminder && <span className="inline-flex items-center gap-0.5 opacity-70"><Clock className="h-3 w-3" />{task.reminder}</span>}
+          {done && task.estMin > 0 && goalSecs > 0 && <span className="rounded-full bg-white/70 px-1.5 font-medium opacity-90">оцінка {task.estMin}хв · факт {Math.max(1, Math.round(goalSecs / 60))}хв</span>}
         </div>
       </button>
       {timed && !done && (
@@ -4431,6 +4784,8 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
   const [goalMin, setGoalMin] = useState(task?.goal?.minutes || 20);
   const [subs, setSubs] = useState(task?.subtasks?.map((s) => ({ ...s })) || []);
   const [subText, setSubText] = useState("");
+  const [estMin, setEstMin] = useState(task?.estMin || 0);
+  const [energy, setEnergy] = useState(task?.energy || "");
 
   const toggleDay = (d) => setDays((ds) => (ds.includes(d) ? ds.filter((x) => x !== d) : [...ds, d]));
   const addSub = () => { if (subText.trim()) { setSubs((s) => [...s, { id: ruid("s"), text: subText.trim() }]); setSubText(""); } };
@@ -4444,6 +4799,7 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
       repeat, time: anytime ? null : time, reminder: reminderOn ? reminder : null, categoryId,
       goal: goalOn ? { type: "timed", minutes: goalMin } : { type: "off" },
       subtasks: subs.filter((s) => s.text.trim()),
+      estMin: estMin || 0, energy: energy || null,
     });
   };
 
@@ -4483,6 +4839,23 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
 
         {/* note */}
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Note (optional)" className="mb-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100" />
+
+        {/* time estimate */}
+        <div className="mb-3">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">Скільки часу займе? (для планування дня)</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {EST_CHIPS.map((m) => <button key={m} onClick={() => setEstMin(estMin === m ? 0 : m)} className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${estMin === m ? "bg-pink-500 text-white ring-pink-500" : "bg-white text-slate-500 ring-slate-200 hover:ring-pink-200"}`}>{m} хв</button>)}
+            <input type="number" min={0} value={estMin && !EST_CHIPS.includes(estMin) ? estMin : ""} onChange={(e) => setEstMin(Math.max(0, +e.target.value || 0))} placeholder="інше" className="w-16 rounded-full border border-slate-300 px-2 py-1.5 text-center text-xs focus:border-pink-400 focus:outline-none" />
+          </div>
+        </div>
+
+        {/* energy / effort */}
+        <div className="mb-3">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">Скільки енергії треба?</div>
+          <div className="flex gap-2">
+            {Object.entries(ENERGY).map(([k, v]) => <button key={k} onClick={() => setEnergy(energy === k ? "" : k)} className={`flex-1 rounded-xl px-2 py-2 text-xs font-semibold ring-1 transition ${energy === k ? "bg-pink-50 text-slate-800 ring-pink-300" : "bg-white text-slate-500 ring-slate-200 hover:ring-pink-200"}`}>{v.emoji} {v.label}</button>)}
+          </div>
+        </div>
 
         <div className="space-y-3">
           <Row label="Date">
