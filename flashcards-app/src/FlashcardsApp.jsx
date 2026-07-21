@@ -6856,6 +6856,7 @@ const BKEYS = {
   items: "budget:items",       // [{id, catId, name, qty, unit, price, notes}]
   bought: "budget:bought",     // { [month]: { [itemId]: true } } — куплено цього місяця
   stock: "budget:stock",       // { [month]: { [itemId]: true } } — вже є в запасі, докуповувати не треба
+  actuals: "budget:actuals",   // { [month]: { [itemId]: number } } — скільки насправді витрачено
   budgets: "budget:budgets",   // { [month]: number }
   month: "budget:month",       // "2026-07"
   history: "budget:history",   // [{ month, planned, spent }]
@@ -6887,15 +6888,16 @@ async function loadBudgetData() {
   const items = await store.get(BKEYS.items, null);
   const bought = await store.get(BKEYS.bought, {});
   const stock = await store.get(BKEYS.stock, {});
+  const actuals = await store.get(BKEYS.actuals, {});
   const budgets = await store.get(BKEYS.budgets, {});
   const month = await store.get(BKEYS.month, budDefaultMonth());
   const history = await store.get(BKEYS.history, []);
   const settings = await store.get(BKEYS.settings, { name: "Budget" });
-  return { cats, items, bought, stock, budgets, month, history, settings };
+  return { cats, items, bought, stock, actuals, budgets, month, history, settings };
 }
 async function collectBudgetExport() {
   const d = await loadBudgetData();
-  return { cats: d.cats || [], items: d.items || [], bought: d.bought, stock: d.stock, budgets: d.budgets, month: d.month, history: d.history, settings: d.settings };
+  return { cats: d.cats || [], items: d.items || [], bought: d.bought, stock: d.stock, actuals: d.actuals, budgets: d.budgets, month: d.month, history: d.history, settings: d.settings };
 }
 async function clearBudgetData() { for (const k of Object.values(BKEYS)) await store.remove(k); }
 
@@ -6950,6 +6952,7 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
   const [items, setItems] = useState([]);
   const [bought, setBought] = useState({});
   const [stock, setStock] = useState({});
+  const [actuals, setActuals] = useState({});
   const [budgets, setBudgets] = useState({});
   const [month, setMonth] = useState(budDefaultMonth());
   const [history, setHistory] = useState([]);
@@ -6983,7 +6986,7 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
         d = await loadBudgetData();
       } catch (e) { d.cats = d.cats || []; d.items = d.items || []; }
     }
-    setCats(d.cats || []); setItems(d.items || []); setBought(d.bought || {}); setStock(d.stock || {}); setBudgets(d.budgets || {});
+    setCats(d.cats || []); setItems(d.items || []); setBought(d.bought || {}); setStock(d.stock || {}); setActuals(d.actuals || {}); setBudgets(d.budgets || {});
     setMonth(d.month || budDefaultMonth()); setHistory(d.history || []);
     setLoading(false);
   }, []);
@@ -7003,6 +7006,17 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
 
   const boughtMap = bought[month] || {};
   const stockMap = stock[month] || {};
+  const actualMap = actuals[month] || {};
+  // фактично витрачено на позицію: введена сума, інакше планова (для купленого)
+  const spentOf = (it) => (boughtMap[it.id] ? (actualMap[it.id] != null ? actualMap[it.id] : budLineSum(it)) : 0);
+  const setActual = (id, raw) => setActuals((prev) => {
+    const mm = { ...(prev[month] || {}) };
+    const n = parseFloat(raw);
+    if (raw === "" || isNaN(n)) delete mm[id]; else mm[id] = Math.max(0, n);
+    const next = { ...prev, [month]: mm };
+    store.set(BKEYS.actuals, next);
+    return next;
+  });
   const setBoughtItem = (id) => {
     const turningOn = !boughtMap[id];
     setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (mm[id]) delete mm[id]; else mm[id] = true; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
@@ -7017,7 +7031,7 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
 
   const itemsOf = (cid) => items.filter((it) => it.catId === cid);
   const planned = useMemo(() => items.reduce((s, it) => s + budLineSum(it), 0), [items]);
-  const spent = useMemo(() => items.reduce((s, it) => s + (boughtMap[it.id] ? budLineSum(it) : 0), 0), [items, boughtMap]);
+  const spent = useMemo(() => items.reduce((s, it) => s + spentOf(it), 0), [items, boughtMap, actualMap]);
   const inStockSum = useMemo(() => items.reduce((s, it) => s + (stockMap[it.id] ? budLineSum(it) : 0), 0), [items, stockMap]);
   const toBuy = useMemo(() => items.reduce((s, it) => s + ((boughtMap[it.id] || stockMap[it.id]) ? 0 : budLineSum(it)), 0), [items, boughtMap, stockMap]);
   const budgetAmt = budgets[month] ?? 0;
@@ -7105,9 +7119,9 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
             {cats.length === 0 ? (
               <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-emerald-50">Список порожній. Додай категорію в меню ⚙️ або імпортуй Excel.</div>
             ) : cats.map((c) => (
-              <CategoryBlock key={c.id} cat={c} items={itemsOf(c.id)} boughtMap={boughtMap} stockMap={stockMap} collapsed={!!collapsed[c.id]}
+              <CategoryBlock key={c.id} cat={c} items={itemsOf(c.id)} boughtMap={boughtMap} stockMap={stockMap} actualMap={actualMap} collapsed={!!collapsed[c.id]}
                 onToggleCollapse={() => setCollapsed((m) => ({ ...m, [c.id]: !m[c.id] }))}
-                onToggleBought={setBoughtItem} onToggleStock={setStockItem} onAddItem={() => setItemEditor({ item: null, catId: c.id })}
+                onToggleBought={setBoughtItem} onToggleStock={setStockItem} onActual={setActual} onAddItem={() => setItemEditor({ item: null, catId: c.id })}
                 onEditItem={(it) => setItemEditor({ item: it, catId: c.id })} onDeleteItem={deleteItem} />
             ))}
             <button onClick={() => setCatMgr(true)} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-emerald-300 py-3 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Категорія</button>
@@ -7115,12 +7129,12 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
         )}
 
         {bview === "shop" && (
-          <ShoppingView cats={cats} items={items} boughtMap={boughtMap} stockMap={stockMap} onToggle={setBoughtItem} onToggleStock={setStockItem}
+          <ShoppingView cats={cats} items={items} boughtMap={boughtMap} stockMap={stockMap} actualMap={actualMap} onToggle={setBoughtItem} onToggleStock={setStockItem} onActual={setActual}
             filter={shopFilter} setFilter={setShopFilter} flat={shopFlat} setFlat={setShopFlat} />
         )}
 
         {bview === "chart" && (
-          <BudgetChart cats={cats} items={items} boughtMap={boughtMap} mode={chartMode} setMode={setChartMode} planned={planned} spent={spent} history={history} />
+          <BudgetChart cats={cats} items={items} boughtMap={boughtMap} actualMap={actualMap} mode={chartMode} setMode={setChartMode} planned={planned} spent={spent} history={history} />
         )}
       </main>
 
@@ -7162,7 +7176,7 @@ function BudgetSummary({ month, onMonth, budgetAmt, onBudget, planned, spent, re
   );
 }
 
-function CategoryBlock({ cat, items, boughtMap, stockMap, collapsed, onToggleCollapse, onToggleBought, onToggleStock, onAddItem, onEditItem, onDeleteItem }) {
+function CategoryBlock({ cat, items, boughtMap, stockMap, actualMap, collapsed, onToggleCollapse, onToggleBought, onToggleStock, onActual, onAddItem, onEditItem, onDeleteItem }) {
   const subtotal = items.reduce((s, it) => s + budLineSum(it), 0);
   const boughtCount = items.filter((it) => boughtMap[it.id]).length;
   const stockCount = items.filter((it) => stockMap[it.id]).length;
@@ -7176,7 +7190,7 @@ function CategoryBlock({ cat, items, boughtMap, stockMap, collapsed, onToggleCol
       </button>
       {!collapsed && (
         <div className="divide-y divide-slate-50 border-t border-slate-100">
-          {items.map((it) => <BudgetItemRow key={it.id} item={it} bought={!!boughtMap[it.id]} inStock={!!stockMap[it.id]} onToggle={() => onToggleBought(it.id)} onToggleStock={() => onToggleStock(it.id)} onEdit={() => onEditItem(it)} onDelete={() => onDeleteItem(it.id)} />)}
+          {items.map((it) => <BudgetItemRow key={it.id} item={it} bought={!!boughtMap[it.id]} inStock={!!stockMap[it.id]} actual={actualMap[it.id]} onToggle={() => onToggleBought(it.id)} onToggleStock={() => onToggleStock(it.id)} onActual={(v) => onActual(it.id, v)} onEdit={() => onEditItem(it)} onDelete={() => onDeleteItem(it.id)} />)}
           <button onClick={onAddItem} className="flex w-full items-center gap-1.5 px-4 py-2.5 text-left text-sm font-medium text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Товар</button>
         </div>
       )}
@@ -7184,42 +7198,67 @@ function CategoryBlock({ cat, items, boughtMap, stockMap, collapsed, onToggleCol
   );
 }
 
-function BudgetItemRow({ item, bought, inStock, onToggle, onToggleStock, onEdit, onDelete }) {
+function BudgetItemRow({ item, bought, inStock, actual, onToggle, onToggleStock, onActual, onEdit, onDelete }) {
   const [showNotes, setShowNotes] = useState(false);
   const nameCls = bought ? "text-slate-400 line-through" : inStock ? "text-amber-600" : "text-slate-800";
+  const planned = budLineSum(item);
+  const delta = actual != null ? Math.round((actual - planned) * 100) / 100 : 0;
   return (
     <div className="group px-4 py-2.5">
       <div className="flex items-center gap-3">
         <button onClick={onToggle} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition ${bought ? "border-transparent bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400"}`}>{bought && <Check className="h-4 w-4" />}</button>
         <button onClick={onEdit} className="min-w-0 flex-1 text-left">
           <div className={`flex items-center gap-1.5 truncate text-sm font-medium ${nameCls}`}>{item.name}{inStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі</span>}</div>
-          <div className="text-xs text-slate-400 tabular-nums">{item.qty} {item.unit} × {budFmt(item.price)} = <span className="font-semibold text-slate-500">{budFmt(budLineSum(item))}</span></div>
+          <div className="text-xs text-slate-400 tabular-nums">{item.qty} {item.unit} × {budFmt(item.price)} = <span className="font-semibold text-slate-500">{budFmt(planned)}</span></div>
           {budFreqHint(item.qty) && <div className="text-[11px] text-slate-400">{budFreqHint(item.qty)}</div>}
         </button>
         <button onClick={onToggleStock} title="Вже є в запасі — докуповувати не треба" className={`shrink-0 rounded-md p-1 transition ${inStock ? "text-amber-500" : "text-slate-300 hover:text-amber-500"}`}><Package className="h-4 w-4" /></button>
         {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-emerald-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
         <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
       </div>
+      {bought && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-9">
+          <span className="text-xs font-medium text-slate-400">Насправді витрачено:</span>
+          <span className="relative inline-flex items-center">
+            <input type="number" step="any" min={0} value={actual ?? ""} onChange={(e) => onActual(e.target.value)} placeholder={String(Math.round(planned))} className="w-24 rounded-lg border border-slate-200 bg-white py-1 pl-2 pr-5 text-right text-xs font-semibold tabular-nums text-emerald-700 focus:border-emerald-400 focus:outline-none" />
+            <span className="pointer-events-none absolute right-2 text-xs text-slate-400">₴</span>
+          </span>
+          {actual != null && delta !== 0 && <span className={`text-[11px] font-semibold ${delta > 0 ? "text-red-500" : "text-emerald-600"}`}>{delta > 0 ? "+" : "−"}{budFmt(Math.abs(delta))} {delta > 0 ? "над план" : "менше плану"}</span>}
+        </div>
+      )}
       {showNotes && item.notes && <div className="mt-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">{item.notes}</div>}
     </div>
   );
 }
 
-function ShoppingView({ cats, items, boughtMap, stockMap, onToggle, onToggleStock, filter, setFilter, flat, setFlat }) {
+function ShoppingView({ cats, items, boughtMap, stockMap, actualMap, onToggle, onToggleStock, onActual, filter, setFilter, flat, setFlat }) {
   const total = items.length;
   const done = items.filter((it) => boughtMap[it.id]).length;
   const stockCount = items.filter((it) => stockMap[it.id]).length;
-  const cartTotal = items.reduce((s, it) => s + (boughtMap[it.id] ? budLineSum(it) : 0), 0);
+  const spentOf = (it) => (boughtMap[it.id] ? (actualMap[it.id] != null ? actualMap[it.id] : budLineSum(it)) : 0);
+  const cartTotal = items.reduce((s, it) => s + spentOf(it), 0);
   // "Лишилось купити" ховає і куплене, і те, що вже є в запасі
   const visible = (list) => (filter ? list.filter((it) => !boughtMap[it.id] && !stockMap[it.id]) : list);
   const Row = (it) => {
     const isBought = !!boughtMap[it.id], isStock = !!stockMap[it.id];
+    const planned = budLineSum(it), actual = actualMap[it.id];
     return (
-      <div key={it.id} className={`flex items-center gap-3 rounded-2xl p-4 shadow-sm ring-1 transition ${isBought ? "bg-emerald-50 ring-emerald-100" : isStock ? "bg-amber-50/70 ring-amber-100" : "bg-white ring-slate-100 hover:ring-emerald-200"}`}>
-        <button onClick={() => onToggle(it.id)} className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 transition ${isBought ? "border-transparent bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400"}`}>{isBought && <Check className="h-5 w-5" />}</button>
-        <button onClick={() => onToggle(it.id)} className="min-w-0 flex-1 text-left"><span className={`flex items-center gap-1.5 truncate font-bold ${isBought ? "text-slate-400 line-through" : isStock ? "text-amber-600" : "text-slate-800"}`}>{it.name}{isStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі</span>}</span><span className="block text-xs text-slate-400 tabular-nums">{it.qty} {it.unit} × {budFmt(it.price)}{budFreqHint(it.qty) ? ` · ${budFreqHint(it.qty)}` : ""}</span></button>
-        <button onClick={() => onToggleStock(it.id)} title="Вже є в запасі" className={`shrink-0 rounded-md p-1.5 transition ${isStock ? "text-amber-500" : "text-slate-300 hover:text-amber-500"}`}><Package className="h-4 w-4" /></button>
-        <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{budFmt(budLineSum(it))}</span>
+      <div key={it.id} className={`rounded-2xl p-4 shadow-sm ring-1 transition ${isBought ? "bg-emerald-50 ring-emerald-100" : isStock ? "bg-amber-50/70 ring-amber-100" : "bg-white ring-slate-100 hover:ring-emerald-200"}`}>
+        <div className="flex items-center gap-3">
+          <button onClick={() => onToggle(it.id)} className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 transition ${isBought ? "border-transparent bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400"}`}>{isBought && <Check className="h-5 w-5" />}</button>
+          <button onClick={() => onToggle(it.id)} className="min-w-0 flex-1 text-left"><span className={`flex items-center gap-1.5 truncate font-bold ${isBought ? "text-slate-400 line-through" : isStock ? "text-amber-600" : "text-slate-800"}`}>{it.name}{isStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі</span>}</span><span className="block text-xs text-slate-400 tabular-nums">{it.qty} {it.unit} × {budFmt(it.price)}{budFreqHint(it.qty) ? ` · ${budFreqHint(it.qty)}` : ""}</span></button>
+          <button onClick={() => onToggleStock(it.id)} title="Вже є в запасі" className={`shrink-0 rounded-md p-1.5 transition ${isStock ? "text-amber-500" : "text-slate-300 hover:text-amber-500"}`}><Package className="h-4 w-4" /></button>
+          <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{budFmt(planned)}</span>
+        </div>
+        {isBought && (
+          <div className="mt-2 flex items-center gap-2 pl-12">
+            <span className="text-xs font-medium text-slate-400">Насправді:</span>
+            <span className="relative inline-flex items-center">
+              <input type="number" step="any" min={0} value={actual ?? ""} onChange={(e) => onActual(it.id, e.target.value)} placeholder={String(Math.round(planned))} className="w-24 rounded-lg border border-slate-200 bg-white py-1 pl-2 pr-5 text-right text-xs font-semibold tabular-nums text-emerald-700 focus:border-emerald-400 focus:outline-none" />
+              <span className="pointer-events-none absolute right-2 text-xs text-slate-400">₴</span>
+            </span>
+          </div>
+        )}
       </div>
     );
   };
@@ -7249,10 +7288,11 @@ function ShoppingView({ cats, items, boughtMap, stockMap, onToggle, onToggleStoc
 }
 
 const BUD_COLORS = ["#10b981", "#0ea5e9", "#8b5cf6", "#f59e0b", "#ec4899", "#14b8a6", "#ef4444", "#84cc16", "#6366f1", "#f97316", "#06b6d4"];
-function BudgetChart({ cats, items, boughtMap, mode, setMode, planned, spent, history }) {
+function BudgetChart({ cats, items, boughtMap, actualMap, mode, setMode, planned, spent, history }) {
+  const spentOf = (it) => (boughtMap[it.id] ? ((actualMap && actualMap[it.id] != null) ? actualMap[it.id] : budLineSum(it)) : 0);
   const data = cats.map((c, i) => {
     const list = items.filter((it) => it.catId === c.id);
-    const val = mode === "planned" ? list.reduce((s, it) => s + budLineSum(it), 0) : list.reduce((s, it) => s + (boughtMap[it.id] ? budLineSum(it) : 0), 0);
+    const val = mode === "planned" ? list.reduce((s, it) => s + budLineSum(it), 0) : list.reduce((s, it) => s + spentOf(it), 0);
     return { name: `${c.emoji} ${c.name}`, value: Math.round(val), color: BUD_COLORS[i % BUD_COLORS.length] };
   }).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
   const totalVal = mode === "planned" ? planned : spent;

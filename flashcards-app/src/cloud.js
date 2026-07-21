@@ -169,7 +169,14 @@ export async function mergeCloud() {
 
 // After verifying the code, merge local ⇄ cloud. Then the caller reloads.
 export async function verifyCode(email, token) {
-  const { data, error } = await supabase.auth.verifyOtp({ email: email.trim(), token: token.trim(), type: "email" });
+  const e = email.trim(), t = token.trim();
+  // Existing users verify with type "email"; a first-ever sign-in (new user)
+  // needs type "signup". Try both so a valid code is never wrongly rejected.
+  let { data, error } = await supabase.auth.verifyOtp({ email: e, token: t, type: "email" });
+  if (error) {
+    const retry = await supabase.auth.verifyOtp({ email: e, token: t, type: "signup" });
+    if (!retry.error) { data = retry.data; error = null; }
+  }
   if (error) throw error;
   user = data.user;
   accessToken = data.session?.access_token || accessToken;
