@@ -1,30 +1,40 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import FlashcardsApp from "./FlashcardsApp.jsx";
+import { initCloud, refreshSession, isSignedIn, pullToLocal } from "./cloud.js";
 
 /*
- * window.storage shim — LOCAL PREVIEW ONLY.
- * In a claude.ai artifact, window.storage is provided by the runtime, so this
- * block is skipped. Here we back it with localStorage so persistence works
- * across reloads while you test.
+ * window.storage shim — backs the app's storage with localStorage.
+ * On a claude.ai artifact window.storage is provided by the runtime; here (and
+ * on the deployed site) we back it with localStorage so data persists locally.
  */
 if (!window.storage) {
   const backing = window.localStorage;
   window.storage = {
-    async getItem(key) {
-      return backing.getItem(`recall:${key}`);
-    },
-    async setItem(key, value) {
-      backing.setItem(`recall:${key}`, value);
-    },
-    async removeItem(key) {
-      backing.removeItem(`recall:${key}`);
-    },
+    async getItem(key) { return backing.getItem(`recall:${key}`); },
+    async setItem(key, value) { backing.setItem(`recall:${key}`, value); },
+    async removeItem(key) { backing.removeItem(`recall:${key}`); },
   };
 }
 
-createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <FlashcardsApp />
-  </React.StrictMode>
-);
+const render = () =>
+  createRoot(document.getElementById("root")).render(
+    <React.StrictMode>
+      <FlashcardsApp />
+    </React.StrictMode>
+  );
+
+// Boot: if a Supabase session exists, pull cloud → local before first paint so
+// the app renders the latest synced data. Always render, even if cloud fails.
+(async () => {
+  try {
+    initCloud();
+    await refreshSession();
+    if (isSignedIn()) {
+      try { await pullToLocal(); } catch (e) { console.warn("[cloud pull]", e?.message || e); }
+    }
+  } catch (e) {
+    console.warn("[cloud init]", e?.message || e);
+  }
+  render();
+})();

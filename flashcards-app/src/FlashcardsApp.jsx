@@ -17,8 +17,9 @@ import {
   Wind, Waves, Anchor, HeartPulse, TrendingUp, NotebookPen, Hourglass,
   Leaf, Pause, SkipForward, ListTree, Heart, Sparkle,
   Coffee, Droplet, Scale, ShieldAlert, Info, Square, TrendingDown,
-  Utensils, GlassWater, LineChart as LineChartIcon,
+  Utensils, GlassWater, LineChart as LineChartIcon, Cloud, CloudOff, LogOut, Mail,
 } from "lucide-react";
+import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signOutCloud, refreshSession } from "./cloud.js";
 
 /* ------------------------------------------------------------------ */
 /* Constants + tiny utils                                              */
@@ -264,6 +265,7 @@ const store = {
       const be = backend();
       if (be) await be.setItem(key, raw);
       else memFallback.set(key, raw);
+      cloudPush(key, value); // mirror to cloud when signed in (no-op otherwise)
       return true;
     } catch (e) {
       console.error("[storage.set]", key, e);
@@ -275,6 +277,7 @@ const store = {
       const be = backend();
       if (be) await be.removeItem(key);
       else memFallback.delete(key);
+      cloudRemove(key);
     } catch (e) {
       console.error("[storage.remove]", key, e);
     }
@@ -3567,6 +3570,9 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
         </div>
       </div>
 
+      {/* cloud sync */}
+      <CloudSyncPanel />
+
       {/* settings + data */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="mb-4 text-sm font-semibold text-slate-700">Settings & data</h2>
@@ -3593,6 +3599,76 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Cloud sync (Supabase) — optional cross-device sync                  */
+/* ------------------------------------------------------------------ */
+function CloudSyncPanel() {
+  const [signed, setSigned] = useState(false);
+  const [email, setEmail] = useState(null);
+  const [step, setStep] = useState("idle"); // idle | email | code
+  const [input, setInput] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => { (async () => { await refreshSession(); setSigned(cloudSignedIn()); setEmail(currentEmail()); })(); }, []);
+
+  const doSend = async () => {
+    setErr(""); if (!input.trim()) return;
+    setBusy(true);
+    try { await sendCode(input); setStep("code"); } catch (e) { setErr(e?.message || "Не вдалося надіслати код."); } finally { setBusy(false); }
+  };
+  const doVerify = async () => {
+    setErr(""); if (!code.trim()) return;
+    setBusy(true);
+    try { await verifyCode(input, code); location.reload(); }
+    catch (e) {
+      const msg = e?.message || "";
+      if (/kv|schema cache|relation|does not exist/i.test(msg)) setErr("Майже готово — створи таблицю kv у Supabase (SQL з інструкції), і синхронізація запрацює.");
+      else setErr(msg || "Невірний або застарілий код.");
+      setBusy(false);
+    }
+  };
+  const doSignOut = async () => { setBusy(true); await signOutCloud(); setSigned(false); setEmail(null); setStep("idle"); setBusy(false); };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-1 flex items-center gap-2">
+        {signed ? <Cloud className="h-4 w-4 text-green-500" /> : <CloudOff className="h-4 w-4 text-slate-400" />}
+        <h2 className="text-sm font-semibold text-slate-700">Cloud sync (cross-device)</h2>
+      </div>
+
+      {signed ? (
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-sm text-slate-500">Synced as <span className="font-semibold text-slate-700">{email}</span>. Your data is backed up and syncs across devices.</p>
+          <button onClick={doSignOut} disabled={busy} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"><LogOut className="h-4 w-4" /> Sign out</button>
+        </div>
+      ) : (
+        <>
+          <p className="mb-3 text-sm text-slate-500">Optional. Sign in with your email to back up everything (Studying, Routine, Calm, Fasting) and sync it across your phone and computer. A 6-digit code will be emailed to you.</p>
+          {step !== "code" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[200px]">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input type="email" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") doSend(); }} placeholder="you@email.com" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+              </div>
+              <button onClick={doSend} disabled={busy || !input.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:bg-slate-300">{busy ? "…" : "Send code"}</button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={(e) => { if (e.key === "Enter") doVerify(); }} placeholder="6-digit code" inputMode="numeric" className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm tracking-widest focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+              <button onClick={doVerify} disabled={busy || code.length < 6} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:bg-slate-300">{busy ? "…" : "Verify & sync"}</button>
+              <button onClick={() => { setStep("idle"); setCode(""); setErr(""); }} className="text-sm font-medium text-slate-400 hover:text-slate-600">Change email</button>
+              <span className="w-full text-xs text-slate-400">Code sent to {input}. Check your inbox (and spam).</span>
+            </div>
+          )}
+          {err && <p className="mt-2 text-sm text-rose-600">{err}</p>}
+        </>
+      )}
     </div>
   );
 }
