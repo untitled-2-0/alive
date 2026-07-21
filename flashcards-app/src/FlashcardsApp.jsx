@@ -695,20 +695,20 @@ function seededRoutine() {
   const wd = { type: "weekdays", days: [1, 2, 3, 4, 5] };
 
   const tasks = [
-    T({ emoji: "☀️", title: "Підйом", note: "Тонізуючий напій + вітаміни.", time: "07:00", color: "orange", categoryId: morning.id }),
-    T({ emoji: "💊", title: "Ломексин на обличчя (1-й раз)", note: "Прив'яжи до ранкового ритуалу — одразу після підйому.", time: "07:10", color: "pink", categoryId: morning.id }),
-    T({ emoji: "🧘", title: "Каланетика", note: "Поки Міша спить, поки тихо. Таймер — і понеслі.", time: "07:15", color: "purple", categoryId: morning.id, goal: { type: "timed", minutes: 30 } }),
-    T({ emoji: "🚿", title: "Душ", note: "Кетоконазол шампунь — вт/пт, залишити на 5 хв.", time: "07:45", color: "teal", categoryId: morning.id }),
-    T({ emoji: "🍳", title: "Сніданок + Силібор + ліки від каменю", note: "Їжа вдома — не доставка. Щось просте і швидке.", time: "08:05", color: "yellow", categoryId: morning.id }),
-    T({ emoji: "🧹", title: "Прибирання — одна зона", note: "Кухня → ванна → коридор → вітальня → спальня. Таймер і стоп.", time: "08:25", color: "green", categoryId: morning.id, goal: { type: "timed", minutes: 20 } }),
+    T({ emoji: "☀️", image: "/routine/podyom.jpg", title: "Підйом", note: "Тонізуючий напій + вітаміни.", time: "07:00", color: "orange", categoryId: morning.id }),
+    T({ emoji: "💊", image: "/routine/lomeksin-face.jpg", title: "Ломексин на обличчя (1-й раз)", note: "Прив'яжи до ранкового ритуалу — одразу після підйому.", time: "07:10", color: "pink", categoryId: morning.id }),
+    T({ emoji: "🧘", image: "/routine/kalanetyka.jpg", title: "Каланетика", note: "Поки Міша спить, поки тихо. Таймер — і понеслі.", time: "07:15", color: "purple", categoryId: morning.id, goal: { type: "timed", minutes: 30 } }),
+    T({ emoji: "🚿", image: "/routine/dush.jpg", title: "Душ", note: "Кетоконазол шампунь — вт/пт, залишити на 5 хв.", time: "07:45", color: "teal", categoryId: morning.id }),
+    T({ emoji: "🍳", image: "/routine/snidanok.jpg", title: "Сніданок + Силібор + ліки від каменю", note: "Їжа вдома — не доставка. Щось просте і швидке.", time: "08:05", color: "yellow", categoryId: morning.id }),
+    T({ emoji: "🧹", image: "/routine/prybyrannia.jpg", title: "Прибирання — одна зона", note: "Кухня → ванна → коридор → вітальня → спальня. Таймер і стоп.", time: "08:25", color: "green", categoryId: morning.id, goal: { type: "timed", minutes: 20 } }),
 
-    T({ emoji: "💻", title: "Початок роботи", note: "Перші 25 хв — найважливіша задача без відволікань. Телефон вбік.", time: "09:00", color: "teal", categoryId: work.id, repeat: wd }),
-    T({ emoji: "🍽️", title: "Обід + Ломексин (2-й раз)", note: "Прив'яжи другий прийом ломексину до обіду — легше пам'ятати.", time: "13:00", color: "orange", categoryId: work.id, repeat: wd }),
-    T({ emoji: "✋", title: "Кінець роботи — закрити ноут", note: "Не тягнути роботу у вечір. Межа важлива.", time: "18:00", color: "pink", categoryId: work.id, repeat: wd }),
+    T({ emoji: "💻", image: "/routine/robota.jpg", title: "Початок роботи", note: "Перші 25 хв — найважливіша задача без відволікань. Телефон вбік.", time: "09:00", color: "teal", categoryId: work.id, repeat: wd }),
+    T({ emoji: "🍽️", image: "/routine/lomeksin-lunch.jpg", title: "Обід + Ломексин (2-й раз)", note: "Прив'яжи другий прийом ломексину до обіду — легше пам'ятати.", time: "13:00", color: "orange", categoryId: work.id, repeat: wd }),
+    T({ emoji: "✋", image: "/routine/kinets-roboty.jpg", title: "Кінець роботи — закрити ноут", note: "Не тягнути роботу у вечір. Межа важлива.", time: "18:00", color: "pink", categoryId: work.id, repeat: wd }),
 
     T({ emoji: "📚", title: "Англійська", note: "Одразу після роботи. Duolingo, відео — регулярне.", time: "18:00", color: "purple", categoryId: evening.id, goal: { type: "timed", minutes: 15 } }),
-    T({ emoji: "🍲", title: "Приготування вечері + вечеря", note: "Готуємо вдома. Смачно і без доставки.", time: "18:30", color: "green", categoryId: evening.id }),
-    T({ emoji: "🎉", title: "Вільний час", note: "Без почуття провини. Ти вже зробила все головне за день.", time: "19:30", color: "pink", categoryId: evening.id }),
+    T({ emoji: "🍲", image: "/routine/vecheria.jpg", title: "Приготування вечері + вечеря", note: "Готуємо вдома. Смачно і без доставки.", time: "18:30", color: "green", categoryId: evening.id }),
+    T({ emoji: "🎉", image: "/routine/vilnyi-chas.jpg", title: "Вільний час", note: "Без почуття провини. Ти вже зробила все головне за день.", time: "19:30", color: "pink", categoryId: evening.id }),
     T({ emoji: "💊", title: "Ліки від пролактину", note: "Тільки в понеділок.", time: null, color: "yellow", categoryId: evening.id, repeat: { type: "weekdays", days: [1] } }),
     T({ emoji: "😴", title: "Сон", note: "Телефон геть. Книга або щось легке. До 00:00 вже спати.", time: "23:00", reminder: "23:00", color: "purple", categoryId: evening.id }),
 
@@ -3776,7 +3776,9 @@ function TaskCard({ task, done, doc, timer, onToggle, onOpen, onStartTimer, onSt
   const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   return (
     <div className="flex items-center gap-3 rounded-2xl p-3.5 shadow-sm transition" style={{ backgroundColor: p.card }}>
-      <button onClick={onOpen} className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/70 text-xl">{task.emoji || "⭐"}</button>
+      <button onClick={onOpen} className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-white/70 text-xl">
+        {task.image ? <img src={task.image} alt="" loading="lazy" className="h-full w-full object-cover" /> : (task.emoji || "⭐")}
+      </button>
       <button onClick={onOpen} className="min-w-0 flex-1 text-left">
         <div className="text-[11px] font-semibold" style={{ color: p.ink }}>{task.time || "Anytime"}</div>
         <div className={`truncate font-bold ${done ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</div>
@@ -3811,7 +3813,9 @@ function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onT
       <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl text-2xl" style={{ backgroundColor: p.card }}>{task.emoji || "⭐"}</span>
+            <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-2xl text-2xl" style={{ backgroundColor: p.card }}>
+              {task.image ? <img src={task.image} alt="" className="h-full w-full object-cover" /> : (task.emoji || "⭐")}
+            </span>
             <div>
               <h2 className="text-lg font-bold text-slate-900">{task.title}</h2>
               {category && <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ backgroundColor: getPastel(category.color).dot }}>{category.name}</span>}
@@ -3820,6 +3824,7 @@ function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onT
           <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
         </div>
 
+        {task.image && <img src={task.image} alt="" className="mb-3 h-40 w-full rounded-2xl object-cover" />}
         {task.note && <p className="mb-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">{task.note}</p>}
         <p className="mb-3 text-sm text-slate-500">{repeatWords(task)}</p>
 
@@ -3866,6 +3871,7 @@ function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onT
 
 function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
   const [emoji, setEmoji] = useState(task?.emoji || "⭐");
+  const [image, setImage] = useState(task?.image || "");
   const [title, setTitle] = useState(task?.title || "");
   const [note, setNote] = useState(task?.note || "");
   const [color, setColor] = useState(task?.color || "pink");
@@ -3891,7 +3897,7 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
     const repeat = repType === "off" ? { type: "off" } : repType === "daily" ? { type: "daily" }
       : repType === "weekdays" ? { type: "weekdays", days: days.slice().sort() } : { type: "times", times };
     onSave({
-      emoji, title: title.trim().slice(0, 50), note: note.trim(), color, date,
+      emoji, image: image || "", title: title.trim().slice(0, 50), note: note.trim(), color, date,
       repeat, time: anytime ? null : time, reminder: reminderOn ? reminder : null, categoryId,
       goal: goalOn ? { type: "timed", minutes: goalMin } : { type: "off" },
       subtasks: subs.filter((s) => s.text.trim()),
@@ -3907,9 +3913,12 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
           <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
         </div>
 
-        {/* emoji + name */}
+        {/* emoji/photo + name */}
         <div className="mb-3 flex items-center gap-3">
-          <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl text-3xl" style={{ backgroundColor: p.card }}>{emoji}</span>
+          <span className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl text-3xl" style={{ backgroundColor: p.card }}>
+            {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : emoji}
+            {image && <button onClick={() => setImage("")} title="Remove photo" className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-slate-900/60 text-white"><X className="h-3 w-3" /></button>}
+          </span>
           <div className="flex-1">
             <input value={title} onChange={(e) => setTitle(e.target.value.slice(0, 50))} placeholder="Task name" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100" />
             <div className="mt-0.5 text-right text-[10px] text-slate-400">{title.length}/50</div>
