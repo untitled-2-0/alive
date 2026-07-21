@@ -138,7 +138,26 @@ function schedule(card, grade, now, deckOpts) {
     if (due <= now) due = now + Math.max(1, interval) * DAY;
   }
 
-  return { ...card, ef, interval, reps, lapses, stepIdx, due, state, lastReviewed: now };
+  // record the interval progression (in days) each time the card lands in review,
+  // so the card can show its schedule in plain words ("1 → 3 → 8 d")
+  let ivls = card.ivls || [];
+  if (state === "review") ivls = [...ivls, interval];
+
+  return { ...card, ef, interval, reps, lapses, stepIdx, due, state, lastReviewed: now, ivls };
+}
+
+// Plain-words spaced-repetition schedule for one card.
+function cardScheduleText(card, now = Date.now()) {
+  if (card.state === "new") return { line: "Нова картка — ще не в графіку", prog: "", next: "" };
+  const ivls = card.ivls || [];
+  const prog = ivls.length ? ivls.map((d) => `${d}`).join(" → ") + " дн" : "";
+  const cur = card.state === "learning" ? "вивчення" : `${card.interval || 1} дн`;
+  const diff = card.due - now;
+  let next;
+  if (diff <= 0) next = "готова зараз";
+  else if (diff < DAY) next = `за ${Math.max(1, Math.round(diff / (60 * 60 * 1000)))} год`;
+  else { const days = Math.round(diff / DAY); next = `за ${days} ${days === 1 ? "день" : days < 5 ? "дні" : "днів"}`; }
+  return { prog, cur, next };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1120,9 +1139,8 @@ export default function FlashcardsApp() {
   /* ---------- derived: per-deck due summary ---------- */
   const deckSummary = useMemo(() => {
     const now = Date.now();
-    const todayKey = dateKey(now);
-    const introducedToday = stats.history?.[todayKey]?.newIntroduced || 0;
-    const newRemainingGlobal = Math.max(0, newPerDay - introducedToday);
+    const endToday = new Date(now); endToday.setHours(23, 59, 59, 999);
+    const endTs = endToday.getTime();
     const out = {};
     for (const d of decks) {
       const cards = cardsByDeck[d.id] || [];
@@ -1130,16 +1148,17 @@ export default function FlashcardsApp() {
       const stages = {}; // stageId -> count, across ALL cards (interval breakdown)
       for (const c of cards) {
         if (c.state === "new") newTotal += 1;
-        else if (c.state === "learning" && c.due <= now) learn += 1;
-        else if (c.state === "review" && c.due <= now) review += 1;
+        else if (c.state === "learning" && c.due <= endTs) learn += 1;
+        else if (c.state === "review" && c.due <= endTs) review += 1;
         const sid = stageForCard(c).id;
         stages[sid] = (stages[sid] || 0) + 1;
       }
-      const newDue = Math.min(newTotal, newRemainingGlobal);
-      out[d.id] = { learn, review, newTotal, newDue, total: cards.length, due: learn + review + newDue, stages };
+      // Strict "due today" = only cards the schedule actually placed today or earlier.
+      // New cards are NOT padded in — they're studied via the "only new"/"all" modes.
+      out[d.id] = { learn, review, newTotal, newDue: newTotal, total: cards.length, due: learn + review, stages };
     }
     return out;
-  }, [decks, cardsByDeck, stats, newPerDay]);
+  }, [decks, cardsByDeck, stats]);
 
   // roll up due counts + card totals per group
   const groupSummary = useMemo(() => {
@@ -1197,17 +1216,15 @@ export default function FlashcardsApp() {
         const future = all.filter((x) => isReview(x) && !dueNow(x));
         out = [...review, ...learn, ...news, ...future].slice(0, Math.max(1, count || 20));
       } else {
-        // "due" — the scheduled queue, respecting the new-per-day cap
-        const review = all.filter((x) => isReview(x) && dueNow(x));
-        const learn = all.filter((x) => isLearn(x) && dueNow(x));
-        const news = all.filter(isNew).slice(0, newRemaining);
-        const mixed = [];
-        const a = [...review], b = [...news];
-        while (a.length || b.length) {
-          if (a.length) mixed.push(a.shift());
-          if (b.length) mixed.push(b.shift());
-        }
-        out = [...mixed, ...learn];
+        // "due" — strictly the scheduled queue: cards actually due today or earlier,
+        // however many, with NO new-card padding and NO cap. New cards are a separate
+        // opt-in ("only new" / "all" / custom).
+        const endToday = new Date(now); endToday.setHours(23, 59, 59, 999);
+        const endTs = endToday.getTime();
+        const dueToday = (x) => x.card.due <= endTs;
+        const review = all.filter((x) => isReview(x) && dueToday(x));
+        const learn = all.filter((x) => isLearn(x) && dueToday(x));
+        out = [...review, ...learn];
       }
       return out.map(toRef);
     },
@@ -2965,6 +2982,20 @@ function GroupEditor({ group, onClose, onSave }) {
 /* ------------------------------------------------------------------ */
 /* Deck detail — browse/edit cards, see intervals + scheduling goal    */
 /* ------------------------------------------------------------------ */
+// Plain-words spaced-repetition schedule shown under each card.
+function CardScheduleLine({ card }) {
+  if (card.state === "new") return <div className="mt-0.5 text-[11px] italic text-slate-300">Нова — ще не в графіку повторень</div>;
+  const s = cardScheduleText(card);
+  return (
+    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400">
+      {s.prog && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-500" title="Як росли інтервали повторень">{s.prog}</span>}
+      <span>інтервал {s.cur}</span>
+      <span className="text-slate-300">·</span>
+      <span>наступний повтор {s.next}</span>
+    </div>
+  );
+}
+
 function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onAddCard, onEditCard, onDeleteCard }) {
   const [q, setQ] = useState("");
   const color = getColor(deck.color);
@@ -3068,6 +3099,7 @@ function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onA
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-slate-800">{c.front || <span className="italic text-slate-400">(image)</span>}</div>
                   <div className="truncate text-xs text-slate-400">{c.back}</div>
+                  <CardScheduleLine card={c} />
                 </div>
                 <StageBadge card={c} />
                 <SpeakerButton text={c.front} lang={c.lang || lang} />
