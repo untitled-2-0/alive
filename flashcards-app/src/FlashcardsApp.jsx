@@ -2924,7 +2924,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
   const dleft = deadline ? daysUntil(new Date(deadline + "T23:59:59").getTime()) : null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div
         className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -3118,7 +3118,7 @@ function GroupEditor({ group, onClose, onSave }) {
   const save = () => { if (name.trim()) onSave({ name: name.trim(), emoji, color }); };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">{group ? "Edit group" : "New group"}</h2>
@@ -3410,7 +3410,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
   );
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()} onPaste={onPaste}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">{card ? "Edit card" : "New card"}</h2>
@@ -4744,7 +4744,7 @@ function RoutineSection() {
 
       {/* mood picker */}
       {moodOpen && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/30 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setMoodOpen(false)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/30 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setMoodOpen(false)}>
           <div className="w-full max-w-sm rounded-t-3xl bg-white p-6 text-center shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-1 text-lg font-bold text-slate-900">How is your day?</h3>
             <p className="mb-4 text-sm text-slate-400">{prettyDate(today)}</p>
@@ -4882,7 +4882,7 @@ function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onT
   const noSteps = !(task.subtasks?.length > 0);
   const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -5002,7 +5002,7 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
 
   const p = getPastel(color);
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[94vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">{task ? "Edit task" : "New task"}</h2>
@@ -5148,7 +5148,7 @@ function CategoryManager({ categories, onClose, onAdd, onRename, onRecolor, onDe
   const [name, setName] = useState("");
   const [color, setColor] = useState("pink");
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">Categories</h2><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
         <div className="space-y-2">
@@ -5828,7 +5828,7 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
       )}
 
       {logFear && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setLogId(null)}>
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setLogId(null)}>
           <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-1 text-lg font-bold text-slate-900">Записати спробу</h3>
             <p className="mb-4 text-sm text-slate-500">“{logFear.title}”</p>
@@ -6560,7 +6560,7 @@ function DiaryForm({ entry, defaultProtocol, onClose, onSave }) {
     onSave({ date: f.date, protocol: f.protocol, targetHrs, actualHrs, goalMet: actualHrs != null && targetHrs != null && actualHrs + 0.05 >= targetHrs, weight: num(f.weight), waist: num(f.waist), energy: num(f.energy), hunger: num(f.hunger), wellbeing: f.wellbeing.trim(), notes: f.notes.trim() });
   };
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[94vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">{entry ? "Запис щоденника" : "Новий запис"}</h2><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
         <div className="grid grid-cols-2 gap-3">
