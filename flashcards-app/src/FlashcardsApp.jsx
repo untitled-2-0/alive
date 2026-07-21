@@ -1089,7 +1089,7 @@ export default function FlashcardsApp() {
     (async () => {
       const idx = await store.get("decks:index", { decks: [] });
       const gi = await store.get("groups:index", { groups: [] });
-      const ui = await store.get("ui:prefs", { section: "studying", sidebarCollapsed: false });
+      const ui = await store.get("ui:prefs", { section: "review", sidebarCollapsed: false });
       const calmSettings = await store.get(CKEYS.settings, { name: "Спокій" });
       const fastingSettings = await store.get(FKEYS.settings, { name: "Fasting" });
       const mgmtSettings = await store.get("mgmt:settings", { name: "Менеджмент" });
@@ -1101,7 +1101,7 @@ export default function FlashcardsApp() {
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["routine", "calm", "fasting", "management", "toolkit", "budget", "inventory"].includes(ui.section) ? ui.section : "studying");
+      setSection(["review", "routine", "calm", "fasting", "management", "toolkit", "budget", "inventory"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
       setFastingName(fastingSettings?.name || "Fasting");
@@ -1547,6 +1547,7 @@ export default function FlashcardsApp() {
     await clearToolkitData();
     await clearBudgetData();
     await clearInventoryData();
+    await clearReviewData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
@@ -1565,6 +1566,7 @@ export default function FlashcardsApp() {
     window.dispatchEvent(new CustomEvent("toolkit-reset"));
     window.dispatchEvent(new CustomEvent("budget-reset"));
     window.dispatchEvent(new CustomEvent("inventory-reset"));
+    window.dispatchEvent(new CustomEvent("review-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
@@ -1575,9 +1577,10 @@ export default function FlashcardsApp() {
     const toolkit = await collectToolkitExport();
     const budget = await collectBudgetExport();
     const inventory = await collectInventoryExport();
+    const review = await collectReviewExport();
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 8,
+      version: 9,
       decks,
       groups,
       cards: cardsByDeck,
@@ -1589,6 +1592,7 @@ export default function FlashcardsApp() {
       toolkit,
       budget,
       inventory,
+      review,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1809,7 +1813,9 @@ export default function FlashcardsApp() {
       />
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-16 lg:pb-0">
-        {section === "routine" ? (
+        {section === "review" ? (
+          <ReviewSection onGo={changeSection} />
+        ) : section === "routine" ? (
           <RoutineSection />
         ) : section === "calm" ? (
           <CalmSection name={calmName} onRename={renameCalm} />
@@ -2005,6 +2011,7 @@ export default function FlashcardsApp() {
 /* Mobile bottom tab bar — shown below lg, replaces the left rail on phones */
 function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, cloud, onSyncNow }) {
   const items = [
+    { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
     { id: "studying", label: "Навчання", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "Рутина", icon: Sun, badge: 0 },
     { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
@@ -2023,7 +2030,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
           <span>{cloud.syncing ? "Синхронізація…" : cloud.signedIn ? "Синхронізовано" : "Офлайн"}</span>
         </button>
       )}
-      <div className="grid grid-cols-8">
+      <div className="grid grid-cols-9">
         {items.map((it) => {
           const active = section === it.id;
           return (
@@ -2061,6 +2068,7 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 /* ------------------------------------------------------------------ */
 function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, cloud, onSyncNow }) {
   const items = [
+    { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
     { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
@@ -7470,6 +7478,199 @@ function InvManager({ rooms, onClose, onAddRoom, onRenameRoom, onDeleteRoom, onM
           <button onClick={() => { if (newRoom.trim()) { onAddRoom(newRoom); setNewRoom(""); } }} className="shrink-0 rounded-full bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-900">Додати</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* DAILY REVIEW — one-screen morning+evening check-in (review:{date})  */
+/* ================================================================== */
+const REVKEYS = { index: "review:index" };
+const rvKey = (d) => `review:${d}`;
+async function collectReviewExport() {
+  const index = await store.get(REVKEYS.index, []);
+  const docs = {};
+  for (const d of index) { const doc = await store.get(rvKey(d), null); if (doc) docs[d] = doc; }
+  return { index, docs };
+}
+async function clearReviewData() {
+  const index = await store.get(REVKEYS.index, []);
+  for (const d of index) await store.remove(rvKey(d));
+  await store.remove(REVKEYS.index);
+}
+
+function ReviewSection({ onGo }) {
+  const today = dateKey(Date.now());
+  const nowHour = new Date().getHours();
+  const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState(nowHour < 15 ? "morning" : "evening");
+  const [doc, setDoc] = useState({});
+  const [mood, setMood] = useState(null);
+  const [routine, setRoutine] = useState({ tasks: [], completions: {}, streak: { current: 0 }, xp: 0 });
+  const [fasting, setFasting] = useState(null);
+  const [study, setStudy] = useState({ streak: 0, due: 0 });
+  const [calmStreakVal, setCalmStreakVal] = useState(0);
+  const [toast, setToast] = useState(null);
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 1800); }, []);
+
+  const reload = useCallback(async () => {
+    const d = await store.get(rvKey(today), {});
+    setDoc(d || {});
+    const r = await loadRoutineData();
+    setMood((r.moods || {})[today] ?? null);
+    setRoutine({ tasks: r.tasks || [], completions: r.completions || {}, streak: computeTaskStreak(r.completions || {}, today), xp: (r.xp && r.xp.xp) || 0 });
+    const f = await loadFastingData();
+    setFasting(f.current || null);
+    const c = await loadCalmData();
+    setCalmStreakVal(calmStreak(c.sessions || [], today));
+    const stats = await store.get("stats", { history: {} });
+    // strict due-today count across decks
+    const idx = await store.get("decks:index", { decks: [] });
+    const endToday = new Date(); endToday.setHours(23, 59, 59, 999); const endTs = endToday.getTime();
+    let due = 0;
+    for (const dk of idx.decks || []) {
+      const cards = await store.get(`cards:${dk.id}`, []);
+      for (const cd of cards) if ((cd.state === "learning" || cd.state === "review") && cd.due <= endTs) due += 1;
+    }
+    setStudy({ streak: computeStreak(stats.history || {}), due });
+    setLoading(false);
+  }, [today]);
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("review-reset", onReset);
+    return () => window.removeEventListener("review-reset", onReset);
+  }, [reload]);
+
+  const saveDoc = useCallback((patch) => {
+    setDoc((prev) => {
+      const next = { ...prev, ...patch };
+      store.set(rvKey(today), next);
+      store.get(REVKEYS.index, []).then((idx) => { if (!idx.includes(today)) store.set(REVKEYS.index, [...idx, today].sort()); });
+      return next;
+    });
+  }, [today]);
+  const setMoodVal = useCallback(async (score) => {
+    setMood(score);
+    const prev = await store.get("routine:mood", {});
+    await store.set("routine:mood", { ...prev, [today]: score });
+  }, [today]);
+
+  const occurring = useMemo(() => routine.tasks.filter((t) => taskOccursOn(t, today)), [routine.tasks, today]);
+  const todayDoc = routine.completions[today] || {};
+  const doneTasks = occurring.filter((t) => todayDoc.tasks?.[t.id]);
+  const fastElapsedH = fasting ? (Date.now() - fasting.startTs) / 3600000 : 0;
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-amber-400"><div className="flex flex-col items-center gap-3"><Sunrise className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  const Toggle = ({ label, value, onYes, onNo, goodWhenNo }) => (
+    <div className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-100">
+      <span className="text-sm font-semibold text-slate-700">{label}</span>
+      <div className="flex gap-1.5">
+        <button onClick={onNo} className={`rounded-full px-3 py-1 text-xs font-bold ring-1 transition ${value === false ? (goodWhenNo ? "bg-emerald-500 text-white ring-emerald-500" : "bg-slate-700 text-white ring-slate-700") : "bg-white text-slate-400 ring-slate-200"}`}>Ні</button>
+        <button onClick={onYes} className={`rounded-full px-3 py-1 text-xs font-bold ring-1 transition ${value === true ? (goodWhenNo ? "bg-slate-700 text-white ring-slate-700" : "bg-emerald-500 text-white ring-emerald-500") : "bg-white text-slate-400 ring-slate-200"}`}>Так</button>
+      </div>
+    </div>
+  );
+
+  const MoodPicker = () => (
+    <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+      <div className="mb-1.5 text-sm font-semibold text-slate-700">Як настрій?</div>
+      <div className="flex justify-between">
+        {MOODS.map((m) => (
+          <button key={m.score} onClick={() => setMoodVal(m.score)} className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-1.5 transition hover:scale-110 ${mood === m.score ? "bg-amber-50 ring-2 ring-amber-300" : ""}`}>
+            <span className="text-2xl">{m.emoji}</span><span className="text-[9px] font-medium text-slate-400">{m.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const StreakChips = () => (
+    <div className="flex flex-wrap gap-2">
+      <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ring-1 ring-slate-100"><span>🔥</span><span className="tabular-nums text-orange-500">{routine.streak.current}</span> рутина</span>
+      <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ring-1 ring-slate-100"><GraduationCap className="h-3.5 w-3.5 text-indigo-500" /><span className="tabular-nums text-indigo-500">{study.streak}</span> навчання</span>
+      <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ring-1 ring-slate-100"><Leaf className="h-3.5 w-3.5 text-teal-500" /><span className="tabular-nums text-teal-500">{calmStreakVal}</span> спокій</span>
+    </div>
+  );
+
+  const Glance = () => (
+    <div className="grid grid-cols-3 gap-2">
+      <button onClick={() => onGo("routine")} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-slate-100 hover:ring-pink-200"><div className="text-2xl font-extrabold tabular-nums text-pink-500">{doneTasks.length}/{occurring.length}</div><div className="text-[11px] text-slate-400">справи</div></button>
+      <button onClick={() => onGo("fasting")} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-slate-100 hover:ring-orange-200"><div className="text-2xl font-extrabold tabular-nums text-orange-500">{fasting ? `${Math.floor(fastElapsedH)}г` : "—"}</div><div className="text-[11px] text-slate-400">{fasting ? "голодування" : "не постишся"}</div></button>
+      <button onClick={() => onGo("studying")} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-slate-100 hover:ring-indigo-200"><div className="text-2xl font-extrabold tabular-nums text-indigo-500">{study.due}</div><div className="text-[11px] text-slate-400">карток на сьогодні</div></button>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-amber-50/50 via-rose-50/30 to-white">
+      <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
+        {/* header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900">Огляд дня</h1>
+            <p className="text-xs font-medium text-slate-400">{prettyDate(today)}</p>
+          </div>
+          <div className="flex gap-1 rounded-full bg-white p-1 shadow-sm ring-1 ring-slate-100">
+            <button onClick={() => setMode("morning")} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${mode === "morning" ? "bg-amber-400 text-white" : "text-slate-400"}`}>🌅 Ранок</button>
+            <button onClick={() => setMode("evening")} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${mode === "evening" ? "bg-indigo-500 text-white" : "text-slate-400"}`}>🌙 Вечір</button>
+          </div>
+        </div>
+
+        {mode === "morning" ? (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-gradient-to-r from-amber-300 to-rose-300 p-4 text-white shadow-sm">
+              <div className="text-lg font-extrabold">Доброго ранку 🌅</div>
+              <div className="text-sm text-white/90">Хвилинка, щоб налаштуватись — без тиску.</div>
+            </div>
+            <StreakChips />
+            <MoodPicker />
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+              <div className="mb-1.5 text-sm font-semibold text-slate-700">Мій намір на сьогодні</div>
+              <textarea value={doc.intentions || ""} onChange={(e) => saveDoc({ intentions: e.target.value })} rows={2} placeholder="Одна річ, яка зробить день добрим…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" />
+            </div>
+            <div className="mb-1 mt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">На сьогодні чекає</div>
+            <Glance />
+            <p className="pt-2 text-center text-xs text-slate-400">Не мусиш робити все. Обери одне — і почни з нього 💛</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-gradient-to-r from-indigo-400 to-violet-400 p-4 text-white shadow-sm">
+              <div className="text-lg font-extrabold">Як пройшов день? 🌙</div>
+              <div className="text-sm text-white/90">Відзначимо, що вдалося — решта зачекає.</div>
+            </div>
+            <StreakChips />
+            <MoodPicker />
+
+            {/* done celebration */}
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+              <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Закрито сьогодні</span><span className="text-sm font-extrabold text-pink-500">{doneTasks.length}{routine.xp ? ` · рівень ${levelProgress(routine.xp).lvl}` : ""}</span></div>
+              {doneTasks.length > 0 ? (
+                <div className="mt-2 space-y-1">{doneTasks.slice(0, 12).map((t) => <div key={t.id} className="flex items-center gap-2 text-sm text-slate-700"><span>{t.emoji || "✅"}</span><span className="truncate">{t.title}</span></div>)}</div>
+              ) : <p className="mt-1 text-sm text-slate-400">Сьогодні нічого не закрито — і це ок. Завтра новий день 💛</p>}
+            </div>
+
+            {/* quick check-ins */}
+            <div className="space-y-2">
+              <Toggle label="Ліки прийняла?" value={doc.meds ?? null} onYes={() => saveDoc({ meds: true })} onNo={() => saveDoc({ meds: false })} />
+              <Toggle label="Порухалась сьогодні?" value={doc.moved ?? null} onYes={() => saveDoc({ moved: true })} onNo={() => saveDoc({ moved: false })} />
+              <Toggle label="Алкоголь сьогодні?" value={doc.alcohol ?? null} onYes={() => saveDoc({ alcohol: true })} onNo={() => saveDoc({ alcohol: false })} goodWhenNo />
+              <Toggle label="Сигарети сьогодні?" value={doc.smoke ?? null} onYes={() => saveDoc({ smoke: true })} onNo={() => saveDoc({ smoke: false })} goodWhenNo />
+              <Toggle label="Витрати поза планом?" value={doc.spentOver ?? null} onYes={() => saveDoc({ spentOver: true })} onNo={() => saveDoc({ spentOver: false })} goodWhenNo />
+            </div>
+
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+              <div className="mb-1.5 text-sm font-semibold text-slate-700">Як був день? (одним рядком)</div>
+              <textarea value={doc.note || ""} onChange={(e) => saveDoc({ note: e.target.value })} rows={2} placeholder="Що запам'яталось…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+            </div>
+
+            <div className="mb-1 mt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Стан секцій</div>
+            <Glance />
+            <p className="pt-2 text-center text-xs text-slate-400">Ти зробила достатньо на сьогодні. Відпочинок — теж частина плану 💛</p>
+          </div>
+        )}
+      </div>
+      {toast && <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg lg:bottom-6">{toast}</div>}
     </div>
   );
 }
