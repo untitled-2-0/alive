@@ -20,7 +20,7 @@ import {
   Utensils, GlassWater, LineChart as LineChartIcon, Cloud, CloudOff, LogOut, Mail,
   Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft, RefreshCw,
   Wrench, Star, Users, Sparkles as SparklesIcon, Scale as ScaleIcon, ArrowLeftRight, Home,
-  HandHeart,
+  HandHeart, ShoppingCart, Wallet, ShoppingBasket,
 } from "lucide-react";
 import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signOutCloud, refreshSession, syncNow } from "./cloud.js";
 
@@ -1072,6 +1072,7 @@ export default function FlashcardsApp() {
   const [fastingName, setFastingName] = useState("Fasting");
   const [mgmtName, setMgmtName] = useState("Менеджмент");
   const [toolkitName, setToolkitName] = useState("Toolkit");
+  const [budgetName, setBudgetName] = useState("Budget");
   const [cloudState, setCloudState] = useState({ signedIn: false, email: null, syncing: false });
   const [toast, setToast] = useState(null);
   const [deckEditor, setDeckEditor] = useState(null); // null | { deck } (deck=null → create)
@@ -1092,17 +1093,19 @@ export default function FlashcardsApp() {
       const fastingSettings = await store.get(FKEYS.settings, { name: "Fasting" });
       const mgmtSettings = await store.get("mgmt:settings", { name: "Менеджмент" });
       const toolkitSettings = await store.get(TKEYS.settings, { name: "Toolkit" });
+      const budgetSettings = await store.get(BKEYS.settings, { name: "Budget" });
       const st = await store.get("stats", {
         history: {},
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["routine", "calm", "fasting", "management", "toolkit"].includes(ui.section) ? ui.section : "studying");
+      setSection(["routine", "calm", "fasting", "management", "toolkit", "budget"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
       setFastingName(fastingSettings?.name || "Fasting");
       setMgmtName(mgmtSettings?.name || "Менеджмент");
       setToolkitName(toolkitSettings?.name || "Toolkit");
+      setBudgetName(budgetSettings?.name || "Budget");
       setStats(st);
       setGroups(gi.groups || []);
       setDecks(idx.decks || []);
@@ -1186,6 +1189,13 @@ export default function FlashcardsApp() {
     setToolkitName(clean);
     const prev = await store.get(TKEYS.settings, { name: "Toolkit" });
     await store.set(TKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameBudget = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Budget";
+    setBudgetName(clean);
+    const prev = await store.get(BKEYS.settings, { name: "Budget" });
+    await store.set(BKEYS.settings, { ...prev, name: clean });
   }, []);
 
   /* ---------- derived: per-deck due summary ---------- */
@@ -1525,6 +1535,7 @@ export default function FlashcardsApp() {
     await clearFastingData();
     await store.remove("mgmt:settings");
     await clearToolkitData();
+    await clearBudgetData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
@@ -1534,11 +1545,13 @@ export default function FlashcardsApp() {
     setFastingName("Fasting");
     setMgmtName("Менеджмент");
     setToolkitName("Toolkit");
+    setBudgetName("Budget");
     flash("All data reset");
     window.dispatchEvent(new CustomEvent("routine-reset"));
     window.dispatchEvent(new CustomEvent("calm-reset"));
     window.dispatchEvent(new CustomEvent("fasting-reset"));
     window.dispatchEvent(new CustomEvent("toolkit-reset"));
+    window.dispatchEvent(new CustomEvent("budget-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
@@ -1547,9 +1560,10 @@ export default function FlashcardsApp() {
     const fasting = await collectFastingExport();
     const mgmt = await store.get("mgmt:settings", { name: "Менеджмент" });
     const toolkit = await collectToolkitExport();
+    const budget = await collectBudgetExport();
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 6,
+      version: 7,
       decks,
       groups,
       cards: cardsByDeck,
@@ -1559,6 +1573,7 @@ export default function FlashcardsApp() {
       fasting,
       mgmt,
       toolkit,
+      budget,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1772,6 +1787,7 @@ export default function FlashcardsApp() {
         fastingName={fastingName}
         mgmtName={mgmtName}
         toolkitName={toolkitName}
+        budgetName={budgetName}
         cloud={cloudState}
         onSyncNow={doSyncNow}
       />
@@ -1787,6 +1803,8 @@ export default function FlashcardsApp() {
           <ManagementSection name={mgmtName} onRename={renameMgmt} />
         ) : section === "toolkit" ? (
           <ToolkitSection name={toolkitName} onRename={renameToolkit} />
+        ) : section === "budget" ? (
+          <BudgetSection name={budgetName} onRename={renameBudget} />
         ) : (
         <>
       {/* studying top bar */}
@@ -1910,6 +1928,7 @@ export default function FlashcardsApp() {
         fastingName={fastingName}
         mgmtName={mgmtName}
         toolkitName={toolkitName}
+        budgetName={budgetName}
         cloud={cloudState}
         onSyncNow={doSyncNow}
       />
@@ -1965,7 +1984,7 @@ export default function FlashcardsApp() {
 /* Nav button                                                          */
 /* ------------------------------------------------------------------ */
 /* Mobile bottom tab bar — shown below lg, replaces the left rail on phones */
-function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, cloud, onSyncNow }) {
+function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, cloud, onSyncNow }) {
   const items = [
     { id: "studying", label: "Навчання", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "Рутина", icon: Sun, badge: 0 },
@@ -1973,6 +1992,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
     { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
+    { id: "budget", label: budgetName || "Budget", icon: ShoppingCart, badge: 0 },
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -1983,7 +2003,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
           <span>{cloud.syncing ? "Синхронізація…" : cloud.signedIn ? "Синхронізовано" : "Офлайн"}</span>
         </button>
       )}
-      <div className="grid grid-cols-6">
+      <div className="grid grid-cols-7">
         {items.map((it) => {
           const active = section === it.id;
           return (
@@ -2019,7 +2039,7 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 /* ------------------------------------------------------------------ */
 /* Sidebar — top-level section navigation                              */
 /* ------------------------------------------------------------------ */
-function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, cloud, onSyncNow }) {
+function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, cloud, onSyncNow }) {
   const items = [
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
@@ -2027,6 +2047,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
     { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
+    { id: "budget", label: budgetName || "Budget", icon: ShoppingCart, badge: 0 },
   ];
   const wide = !collapsed;
   return (
@@ -6558,6 +6579,468 @@ function ChapterReader({ chapter, index, total, onNav, onToc }) {
 /* ================================================================== */
 /* TOOLKIT — section UI                                               */
 /* ================================================================== */
+/* ================================================================== */
+/* BUDGET — monthly shopping list + budget tracker (budget:* keys)     */
+/* ================================================================== */
+const BKEYS = {
+  cats: "budget:categories",   // [{id, emoji, name}]
+  items: "budget:items",       // [{id, catId, name, qty, unit, price, notes}]
+  bought: "budget:bought",     // { [month]: { [itemId]: true } }
+  budgets: "budget:budgets",   // { [month]: number }
+  month: "budget:month",       // "2026-07"
+  history: "budget:history",   // [{ month, planned, spent }]
+  settings: "budget:settings", // { name }
+  seeded: "budget:seeded",
+};
+const MONTHS_UA = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
+const budMonthLabel = (m) => { const [y, mo] = (m || "").split("-").map(Number); return MONTHS_UA[(mo || 1) - 1] + " " + (y || ""); };
+const budDefaultMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+const budShiftMonth = (m, delta) => { let [y, mo] = m.split("-").map(Number); mo += delta; while (mo > 12) { mo -= 12; y += 1; } while (mo < 1) { mo += 12; y -= 1; } return `${y}-${String(mo).padStart(2, "0")}`; };
+const budFmt = (n) => { const r = Math.round((n + Number.EPSILON) * 100) / 100; const s = (Number.isInteger(r) ? r : r.toFixed(2)).toLocaleString ? (Number.isInteger(r) ? r.toLocaleString("uk-UA") : r.toFixed(2)) : String(r); return s + " ₴"; };
+const budLineSum = (it) => (Number(it.qty) || 0) * (Number(it.price) || 0);
+
+async function loadBudgetData() {
+  const cats = await store.get(BKEYS.cats, null);
+  const items = await store.get(BKEYS.items, null);
+  const bought = await store.get(BKEYS.bought, {});
+  const budgets = await store.get(BKEYS.budgets, {});
+  const month = await store.get(BKEYS.month, budDefaultMonth());
+  const history = await store.get(BKEYS.history, []);
+  const settings = await store.get(BKEYS.settings, { name: "Budget" });
+  return { cats, items, bought, budgets, month, history, settings };
+}
+async function collectBudgetExport() {
+  const d = await loadBudgetData();
+  return { cats: d.cats || [], items: d.items || [], bought: d.bought, budgets: d.budgets, month: d.month, history: d.history, settings: d.settings };
+}
+async function clearBudgetData() { for (const k of Object.values(BKEYS)) await store.remove(k); }
+
+// Parse a shopping-list .xlsx following the category-block layout → { cats, items }
+function parseBudgetWorkbook(wb) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+  const cats = [], items = [];
+  let cur = null;
+  const num = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const c0 = (r[0] ?? "").toString().trim();
+    if (!c0 || c0 === "Товар" || c0.startsWith("Разом")) continue;
+    const onlyC0 = (r[1] ?? "") === "" && (r[2] ?? "") === "" && (r[3] ?? "") === "" && (r[4] ?? "") === "";
+    if (onlyC0 && /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(c0)) {
+      if (/СПИСОК ПОКУПОК|ЗАГАЛОМ|Залишок/i.test(c0)) { cur = null; continue; }
+      const sp = c0.indexOf(" ");
+      const emoji = sp > 0 ? c0.slice(0, sp) : "🛒";
+      const name = sp > 0 ? c0.slice(sp + 1).trim() : c0;
+      cur = cats.find((x) => x.name === name);
+      if (!cur) { cur = { id: ruid("bc"), emoji, name }; cats.push(cur); }
+      continue;
+    }
+    if (cur && c0) {
+      if (items.some((it) => it.catId === cur.id && it.name === c0)) continue;
+      items.push({ id: ruid("bi"), catId: cur.id, name: c0, qty: num(r[1]), unit: (r[2] ?? "").toString().trim(), price: num(r[3]), notes: (r[6] ?? "").toString().trim() });
+    }
+  }
+  return { cats, items };
+}
+
+function BudgetSection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [bview, setBview] = useState("list"); // list | shop | chart
+  const [cats, setCats] = useState([]);
+  const [items, setItems] = useState([]);
+  const [bought, setBought] = useState({});
+  const [budgets, setBudgets] = useState({});
+  const [month, setMonth] = useState(budDefaultMonth());
+  const [history, setHistory] = useState([]);
+  const [collapsed, setCollapsed] = useState({});
+  const [itemEditor, setItemEditor] = useState(null); // {item, catId}
+  const [catMgr, setCatMgr] = useState(false);
+  const [newMonthOpen, setNewMonthOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [chartMode, setChartMode] = useState("planned"); // planned | spent
+  const [shopFilter, setShopFilter] = useState(false); // hide bought
+  const [shopFlat, setShopFlat] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [toast, setToast] = useState(null);
+  const fileRef = useRef(null);
+
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2200); }, []);
+
+  const reload = useCallback(async () => {
+    let d = await loadBudgetData();
+    if (d.cats === null && d.items === null) {
+      try {
+        const res = await fetch("/budget-seed.json");
+        const seed = await res.json();
+        const c = [], it = [];
+        for (const sc of seed.categories) {
+          const cid = ruid("bc"); c.push({ id: cid, emoji: sc.emoji, name: sc.name });
+          for (const si of sc.items) it.push({ id: ruid("bi"), catId: cid, name: si.name, qty: si.qty, unit: si.unit, price: si.price, notes: si.notes || "" });
+        }
+        await store.set(BKEYS.cats, c); await store.set(BKEYS.items, it); await store.set(BKEYS.seeded, true);
+        d = await loadBudgetData();
+      } catch (e) { d.cats = d.cats || []; d.items = d.items || []; }
+    }
+    setCats(d.cats || []); setItems(d.items || []); setBought(d.bought || {}); setBudgets(d.budgets || {});
+    setMonth(d.month || budDefaultMonth()); setHistory(d.history || []);
+    setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("budget-reset", onReset);
+    return () => window.removeEventListener("budget-reset", onReset);
+  }, [reload]);
+
+  const saveCats = useCallback(async (next) => { setCats(next); await store.set(BKEYS.cats, next); }, []);
+  const saveItems = useCallback(async (next) => { setItems(next); await store.set(BKEYS.items, next); }, []);
+  const saveBought = useCallback(async (next) => { setBought(next); await store.set(BKEYS.bought, next); }, []);
+  const saveBudgets = useCallback(async (next) => { setBudgets(next); await store.set(BKEYS.budgets, next); }, []);
+  const saveMonth = useCallback(async (m) => { setMonth(m); await store.set(BKEYS.month, m); }, []);
+  const saveHistory = useCallback(async (next) => { setHistory(next); await store.set(BKEYS.history, next); }, []);
+
+  const boughtMap = bought[month] || {};
+  const setBoughtItem = (id) => setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (mm[id]) delete mm[id]; else mm[id] = true; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
+
+  const itemsOf = (cid) => items.filter((it) => it.catId === cid);
+  const planned = useMemo(() => items.reduce((s, it) => s + budLineSum(it), 0), [items]);
+  const spent = useMemo(() => items.reduce((s, it) => s + (boughtMap[it.id] ? budLineSum(it) : 0), 0), [items, boughtMap]);
+  const budgetAmt = budgets[month] ?? 0;
+  const remaining = budgetAmt - spent;
+
+  const setBudgetAmt = (v) => saveBudgets({ ...budgets, [month]: Math.max(0, v) });
+
+  // item CRUD
+  const upsertItem = (meta, id, catId) => {
+    if (id) saveItems(items.map((it) => (it.id === id ? { ...it, ...meta } : it)));
+    else saveItems([...items, { id: ruid("bi"), catId, ...meta }]);
+  };
+  const deleteItem = (id) => saveItems(items.filter((it) => it.id !== id));
+
+  // category CRUD
+  const addCat = (emoji, nm) => saveCats([...cats, { id: ruid("bc"), emoji: emoji || "🛒", name: nm.trim() || "Нова категорія" }]);
+  const renameCat = (id, patch) => saveCats(cats.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  const deleteCat = (id) => { saveCats(cats.filter((c) => c.id !== id)); saveItems(items.filter((it) => it.catId !== id)); };
+  const moveCat = (id, dir) => { const i = cats.findIndex((c) => c.id === id); const j = i + dir; if (i < 0 || j < 0 || j >= cats.length) return; const next = cats.slice(); [next[i], next[j]] = [next[j], next[i]]; saveCats(next); };
+
+  const startNewMonth = async (keepBudget) => {
+    const nm = budShiftMonth(month, 1);
+    // snapshot current month into history
+    const hist = history.filter((h) => h.month !== month);
+    hist.push({ month, planned, spent });
+    await saveHistory(hist.sort((a, b) => a.month.localeCompare(b.month)));
+    if (keepBudget) await saveBudgets({ ...budgets, [nm]: budgetAmt });
+    await saveMonth(nm); // bought[nm] is empty → all unchecked
+    setNewMonthOpen(false); flash(`Новий місяць: ${budMonthLabel(nm)} — усі позначки скинуто`);
+  };
+
+  const onImportFile = async (file) => {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const parsed = parseBudgetWorkbook(wb);
+      if (!parsed.cats.length) { flash("Не вдалося розпізнати файл"); return; }
+      await saveCats(parsed.cats); await saveItems(parsed.items);
+      flash(`Імпортовано: ${parsed.cats.length} категорій, ${parsed.items.length} товарів`);
+    } catch (e) { flash("Помилка імпорту"); }
+  };
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-emerald-500"><div className="flex flex-col items-center gap-3"><ShoppingCart className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  const overBudget = budgetAmt > 0 && spent > budgetAmt;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-emerald-50/60 to-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-emerald-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          <div className="relative">
+            <button onClick={() => setMenuOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100"><Settings className="h-4 w-4" /></button>
+            {menuOpen && (<>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-11 z-20 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                <button onClick={() => { setCatMgr(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><ListTree className="h-4 w-4 text-slate-400" /> Категорії</button>
+                <button onClick={() => { setNewMonthOpen(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><CalendarDays className="h-4 w-4 text-slate-400" /> Почати новий місяць</button>
+                <button onClick={() => { fileRef.current?.click(); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><Upload className="h-4 w-4 text-slate-400" /> Імпорт з Excel</button>
+              </div>
+            </>)}
+          </div>
+        </div>
+      </header>
+      <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportFile(f); e.target.value = ""; }} />
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-5">
+        {/* summary */}
+        <BudgetSummary month={month} onMonth={(d) => saveMonth(budShiftMonth(month, d))} budgetAmt={budgetAmt} onBudget={setBudgetAmt} planned={planned} spent={spent} remaining={remaining} overBudget={overBudget} />
+
+        {/* view nav */}
+        <div className="mb-4 mt-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-emerald-100">
+          {[["list", "Список", ListChecks], ["shop", "Покупки", ShoppingCart], ["chart", "Аналітика", BarChart3]].map(([k, label, Icon]) => (
+            <button key={k} onClick={() => setBview(k)} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${bview === k ? "bg-emerald-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4" /> {label}</button>
+          ))}
+        </div>
+
+        {bview === "list" && (
+          <div className="space-y-3">
+            {cats.length === 0 ? (
+              <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-emerald-50">Список порожній. Додай категорію в меню ⚙️ або імпортуй Excel.</div>
+            ) : cats.map((c) => (
+              <CategoryBlock key={c.id} cat={c} items={itemsOf(c.id)} boughtMap={boughtMap} collapsed={!!collapsed[c.id]}
+                onToggleCollapse={() => setCollapsed((m) => ({ ...m, [c.id]: !m[c.id] }))}
+                onToggleBought={setBoughtItem} onAddItem={() => setItemEditor({ item: null, catId: c.id })}
+                onEditItem={(it) => setItemEditor({ item: it, catId: c.id })} onDeleteItem={deleteItem} />
+            ))}
+            <button onClick={() => setCatMgr(true)} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-emerald-300 py-3 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Категорія</button>
+          </div>
+        )}
+
+        {bview === "shop" && (
+          <ShoppingView cats={cats} items={items} boughtMap={boughtMap} onToggle={setBoughtItem}
+            filter={shopFilter} setFilter={setShopFilter} flat={shopFlat} setFlat={setShopFlat} />
+        )}
+
+        {bview === "chart" && (
+          <BudgetChart cats={cats} items={items} boughtMap={boughtMap} mode={chartMode} setMode={setChartMode} planned={planned} spent={spent} history={history} />
+        )}
+      </main>
+
+      {itemEditor && <BudgetItemEditor item={itemEditor.item} cats={cats} catId={itemEditor.catId}
+        onClose={() => setItemEditor(null)} onDelete={itemEditor.item ? () => { deleteItem(itemEditor.item.id); setItemEditor(null); } : null}
+        onSave={(meta, catId) => { upsertItem(meta, itemEditor.item?.id, catId); setItemEditor(null); }} />}
+      {catMgr && <BudgetCatManager cats={cats} onClose={() => setCatMgr(false)} onAdd={addCat} onRename={renameCat} onDelete={deleteCat} onMove={moveCat} />}
+      {newMonthOpen && <NewMonthModal month={month} next={budShiftMonth(month, 1)} planned={planned} spent={spent} onClose={() => setNewMonthOpen(false)} onConfirm={startNewMonth} />}
+
+      {toast && <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg lg:bottom-6">{toast}</div>}
+    </div>
+  );
+}
+
+function BudgetSummary({ month, onMonth, budgetAmt, onBudget, planned, spent, remaining, overBudget }) {
+  return (
+    <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+      <div className="flex items-center justify-between">
+        <button onClick={() => onMonth(-1)} className="grid h-8 w-8 place-items-center rounded-full text-slate-400 hover:bg-slate-100"><ChevronLeft className="h-4 w-4" /></button>
+        <div className="text-center"><div className="text-lg font-extrabold text-slate-900">{budMonthLabel(month)}</div></div>
+        <button onClick={() => onMonth(1)} className="grid h-8 w-8 place-items-center rounded-full text-slate-400 hover:bg-slate-100"><ChevronRight className="h-4 w-4" /></button>
+      </div>
+      <label className="mt-3 flex items-center justify-between gap-2 rounded-2xl bg-emerald-50/70 px-3 py-2">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-800"><Wallet className="h-4 w-4" /> Бюджет</span>
+        <span className="flex items-center gap-1"><input type="number" min={0} value={budgetAmt || ""} onChange={(e) => onBudget(Math.max(0, +e.target.value || 0))} placeholder="0" className="w-28 rounded-lg border border-emerald-200 bg-white px-2 py-1 text-right text-sm font-bold tabular-nums focus:border-emerald-400 focus:outline-none" /><span className="text-sm font-bold text-emerald-800">₴</span></span>
+      </label>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-2xl bg-slate-50 p-3"><div className="text-[11px] font-medium text-slate-400">Заплановано</div><div className="mt-0.5 text-base font-extrabold tabular-nums text-slate-700">{budFmt(planned)}</div></div>
+        <div className="rounded-2xl bg-sky-50 p-3"><div className="text-[11px] font-medium text-sky-500">Витрачено</div><div className="mt-0.5 text-base font-extrabold tabular-nums text-sky-600">{budFmt(spent)}</div></div>
+        <div className={`rounded-2xl p-3 ${overBudget ? "bg-amber-50" : "bg-emerald-50"}`}><div className={`text-[11px] font-medium ${overBudget ? "text-amber-600" : "text-emerald-600"}`}>{overBudget ? "Понад бюджет" : "Залишок"}</div><div className={`mt-0.5 text-base font-extrabold tabular-nums ${overBudget ? "text-amber-600" : "text-emerald-600"}`}>{budFmt(Math.abs(remaining))}</div></div>
+      </div>
+    </div>
+  );
+}
+
+function CategoryBlock({ cat, items, boughtMap, collapsed, onToggleCollapse, onToggleBought, onAddItem, onEditItem, onDeleteItem }) {
+  const subtotal = items.reduce((s, it) => s + budLineSum(it), 0);
+  const boughtCount = items.filter((it) => boughtMap[it.id]).length;
+  return (
+    <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-50">
+      <button onClick={onToggleCollapse} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
+        <span className="text-xl">{cat.emoji}</span>
+        <span className="min-w-0 flex-1"><span className="block truncate font-bold text-slate-800">{cat.name}</span><span className="block text-xs text-slate-400">{boughtCount} з {items.length} куплено</span></span>
+        <span className="text-sm font-bold tabular-nums text-slate-600">{budFmt(subtotal)}</span>
+        {collapsed ? <ChevronRight className="h-4 w-4 text-slate-300" /> : <ChevronDown className="h-4 w-4 text-slate-300" />}
+      </button>
+      {!collapsed && (
+        <div className="divide-y divide-slate-50 border-t border-slate-100">
+          {items.map((it) => <BudgetItemRow key={it.id} item={it} bought={!!boughtMap[it.id]} onToggle={() => onToggleBought(it.id)} onEdit={() => onEditItem(it)} onDelete={() => onDeleteItem(it.id)} />)}
+          <button onClick={onAddItem} className="flex w-full items-center gap-1.5 px-4 py-2.5 text-left text-sm font-medium text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Товар</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BudgetItemRow({ item, bought, onToggle, onEdit, onDelete }) {
+  const [showNotes, setShowNotes] = useState(false);
+  return (
+    <div className="group px-4 py-2.5">
+      <div className="flex items-center gap-3">
+        <button onClick={onToggle} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition ${bought ? "border-transparent bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400"}`}>{bought && <Check className="h-4 w-4" />}</button>
+        <button onClick={onEdit} className="min-w-0 flex-1 text-left">
+          <div className={`truncate text-sm font-medium ${bought ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.name}</div>
+          <div className="text-xs text-slate-400 tabular-nums">{item.qty} {item.unit} × {budFmt(item.price)} = <span className="font-semibold text-slate-500">{budFmt(budLineSum(item))}</span></div>
+        </button>
+        {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-emerald-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
+        <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
+      </div>
+      {showNotes && item.notes && <div className="mt-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">{item.notes}</div>}
+    </div>
+  );
+}
+
+function ShoppingView({ cats, items, boughtMap, onToggle, filter, setFilter, flat, setFlat }) {
+  const total = items.length;
+  const done = items.filter((it) => boughtMap[it.id]).length;
+  const cartTotal = items.reduce((s, it) => s + (boughtMap[it.id] ? budLineSum(it) : 0), 0);
+  const visible = (list) => (filter ? list.filter((it) => !boughtMap[it.id]) : list);
+  const Row = (it) => (
+    <button key={it.id} onClick={() => onToggle(it.id)} className={`flex w-full items-center gap-3 rounded-2xl p-4 text-left shadow-sm ring-1 transition ${boughtMap[it.id] ? "bg-emerald-50 ring-emerald-100" : "bg-white ring-slate-100 hover:ring-emerald-200"}`}>
+      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 ${boughtMap[it.id] ? "border-transparent bg-emerald-500 text-white" : "border-slate-300"}`}>{boughtMap[it.id] && <Check className="h-5 w-5" />}</span>
+      <span className="min-w-0 flex-1"><span className={`block truncate font-bold ${boughtMap[it.id] ? "text-slate-400 line-through" : "text-slate-800"}`}>{it.name}</span><span className="block text-xs text-slate-400 tabular-nums">{it.qty} {it.unit} × {budFmt(it.price)}</span></span>
+      <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{budFmt(budLineSum(it))}</span>
+    </button>
+  );
+  return (
+    <div>
+      <div className="sticky top-14 z-10 -mx-4 mb-3 bg-gradient-to-b from-emerald-50/60 to-transparent px-4 pb-2 pt-1">
+        <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-100">
+          <div className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">Куплено {done} з {total}</span><span className="font-bold tabular-nums text-emerald-600">У кошику: {budFmt(cartTotal)}</span></div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-emerald-50"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${total ? (done / total) * 100 : 0}%` }} /></div>
+          <div className="mt-2 flex gap-2">
+            <button onClick={() => setFilter(!filter)} className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${filter ? "bg-emerald-500 text-white ring-emerald-500" : "bg-white text-slate-500 ring-slate-200"}`}>Лишилось купити</button>
+            <button onClick={() => setFlat(!flat)} className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${flat ? "bg-slate-800 text-white ring-slate-800" : "bg-white text-slate-500 ring-slate-200"}`}>{flat ? "Одним списком" : "За категоріями"}</button>
+          </div>
+        </div>
+      </div>
+      {flat ? (
+        <div className="space-y-2">{visible(items).map(Row)}</div>
+      ) : (
+        <div className="space-y-4">
+          {cats.map((c) => { const list = visible(items.filter((it) => it.catId === c.id)); if (!list.length) return null; return (
+            <div key={c.id}><div className="mb-1.5 flex items-center gap-1.5 px-1 text-sm font-bold text-slate-600"><span>{c.emoji}</span> {c.name}</div><div className="space-y-2">{list.map(Row)}</div></div>
+          ); })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const BUD_COLORS = ["#10b981", "#0ea5e9", "#8b5cf6", "#f59e0b", "#ec4899", "#14b8a6", "#ef4444", "#84cc16", "#6366f1", "#f97316", "#06b6d4"];
+function BudgetChart({ cats, items, boughtMap, mode, setMode, planned, spent, history }) {
+  const data = cats.map((c, i) => {
+    const list = items.filter((it) => it.catId === c.id);
+    const val = mode === "planned" ? list.reduce((s, it) => s + budLineSum(it), 0) : list.reduce((s, it) => s + (boughtMap[it.id] ? budLineSum(it) : 0), 0);
+    return { name: `${c.emoji} ${c.name}`, value: Math.round(val), color: BUD_COLORS[i % BUD_COLORS.length] };
+  }).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+  const totalVal = mode === "planned" ? planned : spent;
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        {[["planned", "Заплановано"], ["spent", "Витрачено"]].map(([k, label]) => (
+          <button key={k} onClick={() => setMode(k)} className={`flex-1 rounded-xl py-2 text-sm font-bold ring-1 transition ${mode === k ? "bg-emerald-500 text-white ring-emerald-500" : "bg-white text-slate-500 ring-slate-200"}`}>{label}</button>
+        ))}
+      </div>
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+        <div className="mb-2 text-sm font-bold text-slate-700">{mode === "planned" ? "Куди йде бюджет" : "Куди пішли гроші"} · {budFmt(totalVal)}</div>
+        {data.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Немає даних.</p> : (
+          <div style={{ height: Math.max(200, data.length * 38) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                <XAxis type="number" hide />
+                <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 11, fill: "#64748b" }} />
+                <Tooltip formatter={(v) => budFmt(v)} cursor={{ fill: "#f1f5f9" }} />
+                <Bar dataKey="value" radius={[0, 6, 6, 0]}>{data.map((d, i) => <Cell key={i} fill={d.color} />)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+      {history.length > 0 && (
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+          <div className="mb-2 text-sm font-bold text-slate-700">Минулі місяці</div>
+          <div className="space-y-1.5">
+            {history.slice().reverse().map((h) => (
+              <div key={h.month} className="flex items-center justify-between text-sm"><span className="text-slate-500">{budMonthLabel(h.month)}</span><span className="tabular-nums text-slate-600">витрачено <b>{budFmt(h.spent)}</b> з {budFmt(h.planned)}</span></div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BudgetItemEditor({ item, cats, catId, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(item?.name || "");
+  const [qty, setQty] = useState(item?.qty ?? 1);
+  const [unit, setUnit] = useState(item?.unit || "шт");
+  const [price, setPrice] = useState(item?.price ?? 0);
+  const [notes, setNotes] = useState(item?.notes || "");
+  const [cid, setCid] = useState(catId || item?.catId || cats[0]?.id);
+  const sum = (Number(qty) || 0) * (Number(price) || 0);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{item ? "Редагувати товар" : "Новий товар"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва товару" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-emerald-400 focus:outline-none" />
+        <div className="mb-3 grid grid-cols-3 gap-2">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">К-сть</span><input type="number" min={0} step="any" value={qty} onChange={(e) => setQty(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Од.</span><input value={unit} onChange={(e) => setUnit(e.target.value)} list="bud-units" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /><datalist id="bud-units">{["шт", "уп", "кг", "л", "міс", "пара", "пачка", "компл", "поїздка"].map((u) => <option key={u} value={u} />)}</datalist></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Ціна ₴</span><input type="number" min={0} step="any" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+        </div>
+        <div className="mb-3 flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2 text-sm"><span className="font-semibold text-emerald-800">Сума</span><span className="font-extrabold tabular-nums text-emerald-700">{budFmt(sum)}</span></div>
+        <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Категорія</span><select value={cid} onChange={(e) => setCid(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{cats.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}</select></label>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Нотатки (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+        <div className="flex gap-2">
+          <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), qty: Number(qty) || 0, unit: unit.trim(), price: Number(price) || 0, notes: notes.trim() }, cid); }} className="flex-1 rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Зберегти</button>
+          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-rose-50 px-4 py-3 font-semibold text-rose-500 hover:bg-rose-100"><Trash2 className="h-5 w-5" /></button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BudgetCatManager({ cats, onClose, onAdd, onRename, onDelete, onMove }) {
+  const [emoji, setEmoji] = useState("🛒");
+  const [nm, setNm] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">Категорії</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="space-y-2">
+          {cats.map((c, i) => (
+            <div key={c.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-2 py-2">
+              <input value={c.emoji} onChange={(e) => onRename(c.id, { emoji: e.target.value.slice(0, 2) })} className="w-9 rounded-lg border border-slate-200 bg-white px-1 py-1 text-center text-lg" />
+              <input value={c.name} onChange={(e) => onRename(c.id, { name: e.target.value })} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-medium focus:border-emerald-400 focus:outline-none" />
+              <div className="flex shrink-0 flex-col">
+                <button onClick={() => onMove(c.id, -1)} disabled={i === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 -rotate-90" /></button>
+                <button onClick={() => onMove(c.id, 1)} disabled={i === cats.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 rotate-90" /></button>
+              </div>
+              <button onClick={() => { if (confirm(`Видалити «${c.name}» і всі її товари?`)) onDelete(c.id); }} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-slate-300 p-2">
+          <input value={emoji} onChange={(e) => setEmoji(e.target.value.slice(0, 2))} className="w-9 rounded-lg border border-slate-200 px-1 py-1 text-center text-lg" />
+          <input value={nm} onChange={(e) => setNm(e.target.value)} placeholder="Нова категорія" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" />
+          <button onClick={() => { if (nm.trim()) { onAdd(emoji, nm); setNm(""); setEmoji("🛒"); } }} className="shrink-0 rounded-full bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-900">Додати</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewMonthModal({ month, next, planned, spent, onClose, onConfirm }) {
+  const [keepBudget, setKeepBudget] = useState(true);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-t-3xl bg-white p-6 text-center shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="text-4xl">🗓️</div>
+        <h3 className="mt-2 text-lg font-extrabold text-slate-900">Почати {budMonthLabel(next)}?</h3>
+        <p className="mt-1 text-sm text-slate-500">Список товарів, ціни й категорії лишаться. Усі позначки «куплено» скинуться — почнеш місяць з чистого аркуша.</p>
+        <div className="my-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">{budMonthLabel(month)}: витрачено <b>{budFmt(spent)}</b> з {budFmt(planned)} — збережу в історію.</div>
+        <label className="mb-4 flex items-center justify-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={keepBudget} onChange={(e) => setKeepBudget(e.target.checked)} className="h-4 w-4 accent-emerald-500" /> Перенести суму бюджету</label>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 rounded-2xl bg-slate-100 py-3 font-semibold text-slate-500">Скасувати</button>
+          <button onClick={() => onConfirm(keepBudget)} className="flex-1 rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Почати</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ToolkitSection({ name, onRename }) {
   const [loading, setLoading] = useState(true);
   const [tool, setTool] = useState("hub"); // hub | anxiety | chores
