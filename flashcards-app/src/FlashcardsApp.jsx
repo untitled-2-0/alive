@@ -743,34 +743,34 @@ const CKEYS = {
 };
 
 const BREATH_PATTERNS = [
-  { id: "box", name: "Box breathing", desc: "In 4 · Hold 4 · Out 4 · Hold 4", phases: [["in", 4], ["hold", 4], ["out", 4], ["hold", 4]] },
-  { id: "478", name: "4-7-8", desc: "In 4 · Hold 7 · Out 8", phases: [["in", 4], ["hold", 7], ["out", 8]] },
-  { id: "relax", name: "Relaxing", desc: "In 4 · Out 6", phases: [["in", 4], ["out", 6]] },
+  { id: "box", name: "Квадратне дихання", desc: "Вдих 4 · Затримка 4 · Видих 4 · Затримка 4", phases: [["in", 4], ["hold", 4], ["out", 4], ["hold", 4]] },
+  { id: "478", name: "4-7-8", desc: "Вдих 4 · Затримка 7 · Видих 8", phases: [["in", 4], ["hold", 7], ["out", 8]] },
+  { id: "relax", name: "Розслаблення", desc: "Вдих 4 · Видих 6", phases: [["in", 4], ["out", 6]] },
 ];
-const PHASE_TEXT = { in: "Breathe in", hold: "Hold", out: "Breathe out" };
+const PHASE_TEXT = { in: "Вдих", hold: "Затримай", out: "Видих" };
 
 const MUSCLE_GROUPS = [
-  "Hands", "Forearms", "Upper arms", "Shoulders", "Face", "Neck",
-  "Chest & back", "Stomach", "Glutes", "Thighs", "Calves", "Feet",
+  "Кисті", "Передпліччя", "Плечі (руки)", "Плечі", "Обличчя", "Шия",
+  "Груди й спина", "Живіт", "Сідниці", "Стегна", "Литки", "Стопи",
 ];
 const PMR_TENSE = 10, PMR_RELEASE = 15;
 
 const CALM_TECHNIQUES = {
-  breath: { label: "Breathing", icon: Wind },
-  pmr: { label: "Muscle relaxation", icon: HeartPulse },
-  ground: { label: "Grounding 5-4-3-2-1", icon: Anchor },
-  thought: { label: "Thought record", icon: NotebookPen },
-  fear: { label: "Fear ladder", icon: TrendingUp },
-  focus: { label: "Focus timer", icon: Timer },
-  worry: { label: "Worry time", icon: Hourglass },
-  beforework: { label: "Before work", icon: Sparkle },
+  breath: { label: "Дихання", icon: Wind },
+  pmr: { label: "Розслаблення м'язів", icon: HeartPulse },
+  ground: { label: "Заземлення 5-4-3-2-1", icon: Anchor },
+  thought: { label: "Журнал думок", icon: NotebookPen },
+  fear: { label: "Сходинки страху", icon: TrendingUp },
+  focus: { label: "Таймер фокусу", icon: Timer },
+  worry: { label: "Час для тривоги", icon: Hourglass },
+  beforework: { label: "Перед роботою", icon: Sparkle },
 };
 
 async function loadCalmData() {
   const fears = await store.get(CKEYS.fears, []);
   const thoughts = await store.get(CKEYS.thoughts, []);
   const sessions = await store.get(CKEYS.sessions, []);
-  const settings = await store.get(CKEYS.settings, { name: "Calm" });
+  const settings = await store.get(CKEYS.settings, { name: "Спокій" });
   const techFav = await store.get(CKEYS.techFav, []);
   const techTried = await store.get(CKEYS.techTried, {});
   const techWeek = await store.get(CKEYS.techWeek, []);
@@ -1026,7 +1026,7 @@ export default function FlashcardsApp() {
   const [view, setView] = useState("home"); // home | deck | study | setup | import | stats
   const [section, setSection] = useState("studying"); // studying | routine | calm | fasting
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [calmName, setCalmName] = useState("Calm");
+  const [calmName, setCalmName] = useState("Спокій");
   const [fastingName, setFastingName] = useState("Fasting");
   const [mgmtName, setMgmtName] = useState("Менеджмент");
   const [toolkitName, setToolkitName] = useState("Toolkit");
@@ -1046,7 +1046,7 @@ export default function FlashcardsApp() {
       const idx = await store.get("decks:index", { decks: [] });
       const gi = await store.get("groups:index", { groups: [] });
       const ui = await store.get("ui:prefs", { section: "studying", sidebarCollapsed: false });
-      const calmSettings = await store.get(CKEYS.settings, { name: "Calm" });
+      const calmSettings = await store.get(CKEYS.settings, { name: "Спокій" });
       const fastingSettings = await store.get(FKEYS.settings, { name: "Fasting" });
       const mgmtSettings = await store.get("mgmt:settings", { name: "Менеджмент" });
       const toolkitSettings = await store.get(TKEYS.settings, { name: "Toolkit" });
@@ -1057,7 +1057,7 @@ export default function FlashcardsApp() {
       if (!alive) return;
       setSection(["routine", "calm", "fasting", "management", "toolkit"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
-      setCalmName(calmSettings?.name || "Calm");
+      setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
       setFastingName(fastingSettings?.name || "Fasting");
       setMgmtName(mgmtSettings?.name || "Менеджмент");
       setToolkitName(toolkitSettings?.name || "Toolkit");
@@ -1119,9 +1119,9 @@ export default function FlashcardsApp() {
   }, [changeSection, flash]);
 
   const renameCalm = useCallback(async (name) => {
-    const clean = (name || "").trim() || "Calm";
+    const clean = (name || "").trim() || "Спокій";
     setCalmName(clean);
-    const prev = await store.get(CKEYS.settings, { name: "Calm" });
+    const prev = await store.get(CKEYS.settings, { name: "Спокій" });
     await store.set(CKEYS.settings, { ...prev, name: clean });
   }, []);
 
@@ -1490,7 +1490,7 @@ export default function FlashcardsApp() {
     setCardsByDeck({});
     setStats({ history: {}, settings: { newPerDay: DEFAULT_NEW_PER_DAY } });
     setView("home");
-    setCalmName("Calm");
+    setCalmName("Спокій");
     setFastingName("Fasting");
     setMgmtName("Менеджмент");
     setToolkitName("Toolkit");
@@ -1936,7 +1936,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
   const items = [
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
-    { id: "calm", label: calmName || "Calm", icon: Leaf, badge: 0 },
+    { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
     { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
@@ -4680,7 +4680,7 @@ function CalmSection({ name, onRename }) {
   const [fears, setFears] = useState([]);
   const [thoughts, setThoughts] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [settings, setSettings] = useState({ name: "Calm", tick: true, pattern: "box" });
+  const [settings, setSettings] = useState({ name: "Спокій", tick: true, pattern: "box" });
   const [techData, setTechData] = useState(null);
   const [techFav, setTechFav] = useState([]);
   const [techTried, setTechTried] = useState({});
@@ -4738,19 +4738,19 @@ function CalmSection({ name, onRename }) {
   const streak = useMemo(() => calmStreak(sessions, today), [sessions, today]);
   const minutes = useMemo(() => calmMinutes(sessions), [sessions]);
 
-  if (loading) return <div className="flex flex-1 items-center justify-center text-teal-400"><div className="flex flex-col items-center gap-3"><Leaf className="h-8 w-8 animate-pulse" /><span className="text-sm">Loading…</span></div></div>;
+  if (loading) return <div className="flex flex-1 items-center justify-center text-teal-400"><div className="flex flex-col items-center gap-3"><Leaf className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
 
   const back = () => setCview("hub");
-  const done = (type) => (sec, meta) => { log(type, sec, meta); flash("Nice — logged 🌿"); back(); };
+  const done = (type) => (sec, meta) => { log(type, sec, meta); flash("Молодець — записано 🌿"); back(); };
 
   const PRACTICES = [
-    { id: "breath", label: "Guided breathing", desc: "Animated breath to slow down", icon: Wind, color: "#0ea5e9" },
-    { id: "pmr", label: "Muscle relaxation", desc: "Tense & release, head to toe", icon: HeartPulse, color: "#14b8a6" },
-    { id: "ground", label: "Grounding 5-4-3-2-1", desc: "Come back to your senses", icon: Anchor, color: "#6366f1" },
-    { id: "thought", label: "Thought record", desc: "Untangle an anxious thought", icon: NotebookPen, color: "#8b5cf6" },
-    { id: "fear", label: "Fear ladder", desc: "Face worries one gentle step at a time", icon: TrendingUp, color: "#f59e0b" },
-    { id: "focus", label: "Focus timer", desc: "Calm breath, then focused work", icon: Timer, color: "#10b981" },
-    { id: "worry", label: "Worry time", desc: "A contained slot to worry, then let go", icon: Hourglass, color: "#f472b6" },
+    { id: "breath", label: "Дихання з підказкою", desc: "Анімоване дихання, щоб сповільнитися", icon: Wind, color: "#0ea5e9" },
+    { id: "pmr", label: "Розслаблення м'язів", desc: "Напруж і відпусти — від голови до п'ят", icon: HeartPulse, color: "#14b8a6" },
+    { id: "ground", label: "Заземлення 5-4-3-2-1", desc: "Повернися до своїх відчуттів", icon: Anchor, color: "#6366f1" },
+    { id: "thought", label: "Журнал думок", desc: "Розплутати тривожну думку", icon: NotebookPen, color: "#8b5cf6" },
+    { id: "fear", label: "Сходинки страху", desc: "Назустріч страху — по одній м'якій сходинці", icon: TrendingUp, color: "#f59e0b" },
+    { id: "focus", label: "Таймер фокусу", desc: "Спокійний вдих, потім зосереджена робота", icon: Timer, color: "#10b981" },
+    { id: "worry", label: "Час для тривоги", desc: "Виділений час потривожитись — і відпустити", icon: Hourglass, color: "#f472b6" },
   ];
 
   return (
@@ -4766,11 +4766,11 @@ function CalmSection({ name, onRename }) {
                   onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }}
                   className="rounded-lg border border-teal-200 px-2 py-1 text-2xl font-extrabold text-slate-900 focus:outline-none" />
               ) : (
-                <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="text-left" title="Tap to rename">
+                <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="text-left" title="Натисни, щоб перейменувати">
                   <h1 className="text-2xl font-extrabold text-slate-900">{name} <Pencil className="ml-1 inline h-4 w-4 text-slate-300" /></h1>
                 </button>
               )}
-              <p className="text-sm text-slate-500">Take a breath. You're okay.</p>
+              <p className="text-sm text-slate-500">Зроби вдих. Усе гаразд.</p>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-teal-100"><Leaf className="h-4 w-4 text-teal-500" /><span className="text-sm font-bold tabular-nums text-teal-600">{streak}</span></div>
@@ -4795,15 +4795,15 @@ function CalmSection({ name, onRename }) {
             {/* before work */}
             <button onClick={() => setCview("beforework")} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-teal-400 to-sky-400 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:from-teal-500 hover:to-sky-500">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20"><Sparkle className="h-6 w-6" /></span>
-              <span className="flex-1"><span className="block text-lg font-bold">Before work</span><span className="block text-sm text-white/90">2 min breathing → grounding. One tap to reset.</span></span>
+              <span className="flex-1"><span className="block text-lg font-bold">Перед роботою</span><span className="block text-sm text-white/90">2 хв дихання → заземлення. Одне натискання — і ти в ресурсі.</span></span>
               <ArrowRight className="h-5 w-5" />
             </button>
 
             {/* stat strip */}
             <div className="mb-4 grid grid-cols-3 gap-3">
-              <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-teal-600">{minutes}</div><div className="text-[11px] text-slate-400">minutes</div></div>
-              <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-sky-600">{sessions.length}</div><div className="text-[11px] text-slate-400">sessions</div></div>
-              <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-emerald-500">{streak}</div><div className="text-[11px] text-slate-400">day streak</div></div>
+              <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-teal-600">{minutes}</div><div className="text-[11px] text-slate-400">хвилин</div></div>
+              <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-sky-600">{sessions.length}</div><div className="text-[11px] text-slate-400">сесій</div></div>
+              <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-emerald-500">{streak}</div><div className="text-[11px] text-slate-400">днів поспіль</div></div>
             </div>
 
             {/* practices */}
@@ -4825,7 +4825,7 @@ function CalmSection({ name, onRename }) {
           )}
 
           <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">
-            These are self-help tools, not a substitute for professional care. If anxiety feels severe or lasting, talking to a professional can really help. 💛
+            Це інструменти самодопомоги, а не заміна професійної підтримки. Якщо тривога сильна або триває довго — розмова з фахівцем справді може допомогти. 💛
           </p>
         </div>
       )}
@@ -4858,11 +4858,11 @@ function CalmSection({ name, onRename }) {
       {cview === "breath" && <BreathPractice settings={settings} saveSettings={saveSettings} onExit={back} onDone={done("breath")} />}
       {cview === "pmr" && <PMRPractice onExit={back} onDone={done("pmr")} />}
       {cview === "ground" && <GroundingPractice onExit={back} onDone={done("ground")} />}
-      {cview === "thought" && <ThoughtRecord thoughts={thoughts} onExit={back} onSave={async (entry, sec) => { await saveThoughts([entry, ...thoughts]); log("thought", sec); flash("Saved 🌿"); }} onDelete={async (id) => saveThoughts(thoughts.filter((t) => t.id !== id))} />}
+      {cview === "thought" && <ThoughtRecord thoughts={thoughts} onExit={back} onSave={async (entry, sec) => { await saveThoughts([entry, ...thoughts]); log("thought", sec); flash("Збережено 🌿"); }} onDelete={async (id) => saveThoughts(thoughts.filter((t) => t.id !== id))} />}
       {cview === "fear" && <FearLadder fears={fears} onExit={back} onSave={saveFears} onLog={(sec, meta) => log("fear", sec, meta)} flash={flash} />}
       {cview === "focus" && <FocusTimer settings={settings} onExit={back} onDone={done("focus")} />}
       {cview === "worry" && <WorryTimer onExit={back} onDone={done("worry")} />}
-      {cview === "beforework" && <BeforeWork onExit={back} onDone={(sec) => { log("beforework", sec); flash("Reset complete — you've got this ✨"); back(); }} />}
+      {cview === "beforework" && <BeforeWork onExit={back} onDone={(sec) => { log("beforework", sec); flash("Готово — у тебе все вийде ✨"); back(); }} />}
       {cview === "stats" && <CalmStats sessions={sessions} onExit={back} />}
 
       {toast && <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
@@ -5060,10 +5060,10 @@ function BreathPractice({ settings, saveSettings, onExit, onDone, auto }) {
   if (!started) {
     return (
       <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
-        <CalmHeader title="Guided breathing" onExit={onExit} />
+        <CalmHeader title="Дихання з підказкою" onExit={onExit} />
         <div className="space-y-4">
           <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Pattern</div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Патерн</div>
             <div className="space-y-2">
               {BREATH_PATTERNS.map((p) => (
                 <button key={p.id} onClick={() => setPatternId(p.id)} className={`flex w-full items-center justify-between rounded-2xl border p-3 text-left transition ${patternId === p.id ? "border-sky-400 bg-sky-50 ring-2 ring-sky-100" : "border-slate-200 bg-white hover:border-slate-300"}`}>
@@ -5074,20 +5074,20 @@ function BreathPractice({ settings, saveSettings, onExit, onDone, auto }) {
             </div>
           </div>
           <div>
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Length</div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Тривалість</div>
             <div className="mb-2 flex gap-2">
-              <button onClick={() => setMode("cycles")} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${mode === "cycles" ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-500"}`}>Cycles</button>
-              <button onClick={() => setMode("minutes")} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${mode === "minutes" ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-500"}`}>Minutes</button>
+              <button onClick={() => setMode("cycles")} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${mode === "cycles" ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-500"}`}>Цикли</button>
+              <button onClick={() => setMode("minutes")} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${mode === "minutes" ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-500"}`}>Хвилини</button>
             </div>
             {mode === "cycles"
-              ? <div className="flex items-center gap-2"><input type="number" min={1} max={50} value={cycles} onChange={(e) => setCycles(Math.max(1, Math.min(50, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">cycles (~{Math.round(cycles * cycleSecs / 60 * 10) / 10} min)</span></div>
-              : <div className="flex items-center gap-2"><input type="number" min={1} max={60} value={minutes} onChange={(e) => setMinutes(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">minutes</span></div>}
+              ? <div className="flex items-center gap-2"><input type="number" min={1} max={50} value={cycles} onChange={(e) => setCycles(Math.max(1, Math.min(50, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">циклів (~{Math.round(cycles * cycleSecs / 60 * 10) / 10} хв)</span></div>
+              : <div className="flex items-center gap-2"><input type="number" min={1} max={60} value={minutes} onChange={(e) => setMinutes(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">хвилин</span></div>}
           </div>
           <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
-            <span className="text-sm font-medium text-slate-700">Soft tick sound</span>
+            <span className="text-sm font-medium text-slate-700">М'який звук-підказка</span>
             <input type="checkbox" checked={tick} onChange={(e) => { setTick(e.target.checked); saveSettings({ tick: e.target.checked }); }} className="h-4 w-4 accent-sky-500" />
           </label>
-          <button onClick={() => { saveSettings({ pattern: patternId }); start(); }} className="w-full rounded-2xl bg-sky-500 py-3.5 font-bold text-white shadow-lg shadow-sky-500/20 transition hover:bg-sky-600">Begin</button>
+          <button onClick={() => { saveSettings({ pattern: patternId }); start(); }} className="w-full rounded-2xl bg-sky-500 py-3.5 font-bold text-white shadow-lg shadow-sky-500/20 transition hover:bg-sky-600">Почати</button>
         </div>
       </div>
     );
@@ -5096,7 +5096,7 @@ function BreathPractice({ settings, saveSettings, onExit, onDone, auto }) {
   const [phaseKey] = pattern.phases[run.phaseIdx];
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
-      <div className="mb-8 w-full"><CalmHeader title="Breathing" onExit={stop} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{run.cyclesDone + 1}/{target}</span>} /></div>
+      <div className="mb-8 w-full"><CalmHeader title="Дихання" onExit={stop} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{run.cyclesDone + 1}/{target}</span>} /></div>
       <div className="relative my-6 grid h-72 w-72 place-items-center">
         <div className="absolute rounded-full bg-gradient-to-br from-sky-300 to-teal-300 opacity-70"
           style={{ width: 260, height: 260, transform: `scale(${run.scale})`, transition: `transform ${run.dur}s ease-in-out` }} />
@@ -5107,7 +5107,7 @@ function BreathPractice({ settings, saveSettings, onExit, onDone, auto }) {
           <div className="text-5xl font-extrabold tabular-nums drop-shadow">{Math.ceil(run.remaining)}</div>
         </div>
       </div>
-      <button onClick={stop} className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> Finish</button>
+      <button onClick={stop} className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> Завершити</button>
     </div>
   );
 }
@@ -5141,12 +5141,12 @@ function PMRPractice({ onExit, onDone }) {
 
   if (!run) return (
     <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
-      <CalmHeader title="Muscle relaxation" onExit={onExit} />
+      <CalmHeader title="Розслаблення м'язів" onExit={onExit} />
       <div className="rounded-3xl bg-white p-5 text-center shadow-sm ring-1 ring-teal-100">
         <HeartPulse className="mx-auto h-10 w-10 text-teal-500" />
-        <p className="mt-3 text-sm text-slate-500">We'll move through 12 muscle groups, head to toe. For each: <b>tense ~10s</b>, then <b>release ~15s</b>. Find a comfy seat and let go as you release.</p>
-        <p className="mt-2 text-xs text-slate-400">About {Math.round(totalSec / 60)} minutes.</p>
-        <button onClick={start} className="mt-4 w-full rounded-2xl bg-teal-500 py-3.5 font-bold text-white shadow-lg shadow-teal-500/20 hover:bg-teal-600">Begin</button>
+        <p className="mt-3 text-sm text-slate-500">Пройдемося по 12 групах м'язів — від голови до п'ят. Для кожної: <b>напруж ~10 с</b>, тоді <b>відпусти ~15 с</b>. Сядь зручно і повністю відпускай на видиху.</p>
+        <p className="mt-2 text-xs text-slate-400">Приблизно {Math.round(totalSec / 60)} хв.</p>
+        <button onClick={start} className="mt-4 w-full rounded-2xl bg-teal-500 py-3.5 font-bold text-white shadow-lg shadow-teal-500/20 hover:bg-teal-600">Почати</button>
       </div>
     </div>
   );
@@ -5155,28 +5155,28 @@ function PMRPractice({ onExit, onDone }) {
   const overall = (run.elapsed / totalSec) * 100;
   return (
     <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-16 pt-6">
-      <CalmHeader title="Muscle relaxation" onExit={stop} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{run.idx + 1}/{MUSCLE_GROUPS.length}</span>} />
+      <CalmHeader title="Розслаблення м'язів" onExit={stop} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{run.idx + 1}/{MUSCLE_GROUPS.length}</span>} />
       <div className="mb-4 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${overall}%` }} /></div>
       <div className={`grid place-items-center rounded-3xl p-8 text-center transition-colors ${isTense ? "bg-orange-50" : "bg-teal-50"}`}>
-        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Now</div>
+        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Зараз</div>
         <div className="mt-1 text-3xl font-extrabold text-slate-900">{MUSCLE_GROUPS[run.idx]}</div>
         <div className={`mt-4 grid h-32 w-32 place-items-center rounded-full text-white ${isTense ? "bg-orange-400" : "bg-teal-400"}`} style={{ transform: `scale(${isTense ? 1 : 0.9})`, transition: "transform .4s" }}>
-          <div><div className="text-lg font-bold">{isTense ? "Tense…" : "Release…"}</div><div className="text-3xl font-extrabold tabular-nums">{Math.ceil(run.remaining)}</div></div>
+          <div><div className="text-lg font-bold">{isTense ? "Напруж…" : "Відпусти…"}</div><div className="text-3xl font-extrabold tabular-nums">{Math.ceil(run.remaining)}</div></div>
         </div>
-        <div className="mt-4 text-sm text-slate-500">{isTense ? "Squeeze this muscle group — not to strain, just firm." : "Let it go completely. Notice the softness."}</div>
+        <div className="mt-4 text-sm text-slate-500">{isTense ? "Стисни цю групу м'язів — не до болю, просто відчутно." : "Повністю відпусти. Відчуй, яка вона мʼяка."}</div>
       </div>
-      <button onClick={stop} className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> Finish</button>
+      <button onClick={stop} className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> Завершити</button>
     </div>
   );
 }
 
 /* ---------- Grounding 5-4-3-2-1 ---------- */
 const GROUND_SENSES = [
-  { key: "see", n: 5, label: "things you can see", emoji: "👀" },
-  { key: "hear", n: 4, label: "things you can hear", emoji: "👂" },
-  { key: "touch", n: 3, label: "things you can touch", emoji: "✋" },
-  { key: "smell", n: 2, label: "things you can smell", emoji: "👃" },
-  { key: "taste", n: 1, label: "thing you can taste", emoji: "👅" },
+  { key: "see", n: 5, label: "речей, які бачиш", emoji: "👀" },
+  { key: "hear", n: 4, label: "звуки, які чуєш", emoji: "👂" },
+  { key: "touch", n: 3, label: "речі, яких торкаєшся", emoji: "✋" },
+  { key: "smell", n: 2, label: "запахи, які відчуваєш", emoji: "👃" },
+  { key: "taste", n: 1, label: "смак, який відчуваєш", emoji: "👅" },
 ];
 function GroundingPractice({ onExit, onDone }) {
   const [filled, setFilled] = useState({});
@@ -5188,8 +5188,8 @@ function GroundingPractice({ onExit, onDone }) {
 
   return (
     <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
-      <CalmHeader title="Grounding 5-4-3-2-1" onExit={onExit} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{doneCount}/{total}</span>} />
-      <p className="mb-4 text-sm text-slate-500">Slowly notice each one. Tap as you find it. No rush.</p>
+      <CalmHeader title="Заземлення 5-4-3-2-1" onExit={onExit} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{doneCount}/{total}</span>} />
+      <p className="mb-4 text-sm text-slate-500">Помічай кожне поволі. Тапай, коли знайшла. Без поспіху.</p>
       <div className="space-y-4">
         {GROUND_SENSES.map((s) => (
           <div key={s.key} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-50">
@@ -5204,7 +5204,7 @@ function GroundingPractice({ onExit, onDone }) {
         ))}
       </div>
       {complete && (
-        <button onClick={() => onDone(Math.round((Date.now() - startRef.current) / 1000))} className="mt-5 w-full rounded-2xl bg-indigo-500 py-3.5 font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-600">Done — I feel more here 🌿</button>
+        <button onClick={() => onDone(Math.round((Date.now() - startRef.current) / 1000))} className="mt-5 w-full rounded-2xl bg-indigo-500 py-3.5 font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-600">Готово — я більше тут 🌿</button>
       )}
     </div>
   );
@@ -5227,28 +5227,28 @@ function ThoughtRecord({ thoughts, onExit, onSave, onDelete }) {
 
   if (open) return (
     <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
-      <CalmHeader title="Thought record" onExit={() => setOpen(false)} />
+      <CalmHeader title="Журнал думок" onExit={() => setOpen(false)} />
       <div className="space-y-3">
-        <Field label="Situation" hint="What was happening?" k="situation" />
-        <Field label="Automatic thought" hint="What went through your mind?" k="thought" />
+        <Field label="Ситуація" hint="Що відбувалося?" k="situation" />
+        <Field label="Автоматична думка" hint="Що промайнуло в голові?" k="thought" />
         <div className="rounded-xl bg-white p-3 ring-1 ring-slate-100">
-          <div className="mb-1 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Emotion</span><span className="text-sm font-bold text-violet-600 tabular-nums">{f.intensity}%</span></div>
-          <input value={f.emotion} onChange={(e) => setF((s) => ({ ...s, emotion: e.target.value }))} placeholder="e.g. anxious, sad" className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-violet-400 focus:outline-none" />
+          <div className="mb-1 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Емоція</span><span className="text-sm font-bold text-violet-600 tabular-nums">{f.intensity}%</span></div>
+          <input value={f.emotion} onChange={(e) => setF((s) => ({ ...s, emotion: e.target.value }))} placeholder="напр. тривога, сум" className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-violet-400 focus:outline-none" />
           <input type="range" min={0} max={100} value={f.intensity} onChange={(e) => setF((s) => ({ ...s, intensity: +e.target.value }))} className="w-full accent-violet-500" />
         </div>
-        <Field label="Evidence for the thought" k="forEv" />
-        <Field label="Evidence against it" k="against" />
-        <Field label="Balanced thought" hint="A kinder, more realistic take" k="balanced" />
-        <button onClick={save} className="w-full rounded-2xl bg-violet-500 py-3 font-bold text-white hover:bg-violet-600">Save entry</button>
+        <Field label="Докази за цю думку" k="forEv" />
+        <Field label="Докази проти неї" k="against" />
+        <Field label="Врівноважена думка" hint="Добріший, реалістичніший погляд" k="balanced" />
+        <button onClick={save} className="w-full rounded-2xl bg-violet-500 py-3 font-bold text-white hover:bg-violet-600">Зберегти запис</button>
       </div>
     </div>
   );
 
   return (
     <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
-      <CalmHeader title="Thought record" onExit={onExit} right={<button onClick={() => { startRef.current = Date.now(); setOpen(true); }} className="inline-flex items-center gap-1 rounded-full bg-violet-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-600"><Plus className="h-4 w-4" /> New</button>} />
+      <CalmHeader title="Журнал думок" onExit={onExit} right={<button onClick={() => { startRef.current = Date.now(); setOpen(true); }} className="inline-flex items-center gap-1 rounded-full bg-violet-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-600"><Plus className="h-4 w-4" /> Новий</button>} />
       {thoughts.length === 0 ? (
-        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-violet-50">No entries yet. Catch an anxious thought and untangle it.</div>
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-violet-50">Записів ще немає. Злови тривожну думку і розплутай її.</div>
       ) : (
         <div className="space-y-3">
           {thoughts.map((t) => (
@@ -5279,7 +5279,7 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
   const saveAttempt = () => {
     const next = fears.map((f) => f.id === logId ? { ...f, attempts: [...(f.attempts || []), { date: dateKey(Date.now()), before, after, note: note.trim() }] } : f);
     onSave(next); onLog(120, { fearId: logId });
-    if (after < before) flash("A step forward — well done 🌱"); else flash("Logged. Be gentle with yourself.");
+    if (after < before) flash("Крок уперед — молодець 🌱"); else flash("Записано. Будь до себе лагідною.");
     setLogId(null); setNote(""); setBefore(50); setAfter(30);
   };
   const removeFear = (id) => onSave(fears.filter((f) => f.id !== id));
@@ -5288,20 +5288,20 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
 
   return (
     <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
-      <CalmHeader title="Fear ladder" onExit={onExit} right={<button onClick={() => setAdding(true)} className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-600"><Plus className="h-4 w-4" /> Add</button>} />
-      <p className="mb-4 rounded-2xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">Start at the bottom — the easiest step. Only move up when a step feels calm and manageable. There's no rush, and no wrong pace. Try each while relaxed.</p>
+      <CalmHeader title="Сходинки страху" onExit={onExit} right={<button onClick={() => setAdding(true)} className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-600"><Plus className="h-4 w-4" /> Додати</button>} />
+      <p className="mb-4 rounded-2xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">Починай знизу — з найлегшої сходинки. Піднімайся вище лише тоді, коли сходинка відчувається спокійно й посильно. Поспіху немає, і немає «неправильного» темпу. Пробуй кожну в розслабленому стані.</p>
 
       {adding && (
         <div className="mb-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="A fear or worry…" className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" />
-          <div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">How scary right now?</span><span className="font-bold text-amber-600 tabular-nums">{intensity}</span></div>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Страх чи тривога…" className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" />
+          <div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">Наскільки страшно зараз?</span><span className="font-bold text-amber-600 tabular-nums">{intensity}</span></div>
           <input type="range" min={0} max={100} value={intensity} onChange={(e) => setIntensity(+e.target.value)} className="w-full accent-amber-500" />
-          <div className="mt-3 flex gap-2"><button onClick={addFear} className="flex-1 rounded-xl bg-amber-500 py-2 font-semibold text-white hover:bg-amber-600">Add to ladder</button><button onClick={() => setAdding(false)} className="rounded-xl px-4 py-2 text-sm text-slate-500">Cancel</button></div>
+          <div className="mt-3 flex gap-2"><button onClick={addFear} className="flex-1 rounded-xl bg-amber-500 py-2 font-semibold text-white hover:bg-amber-600">Додати до сходинок</button><button onClick={() => setAdding(false)} className="rounded-xl px-4 py-2 text-sm text-slate-500">Скасувати</button></div>
         </div>
       )}
 
       {sorted.length === 0 && !adding ? (
-        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-amber-50">Add a few worries — we'll sort them from easiest to hardest.</div>
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-amber-50">Додай кілька тривог — ми розкладемо їх від найлегшої до найважчої.</div>
       ) : (
         <div className="space-y-2">
           {[...sorted].reverse().map((f, ri) => {
@@ -5314,9 +5314,9 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
                 <div className="flex items-center gap-2">
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-amber-100 text-sm font-bold text-amber-700">{step}</span>
                   <div className="min-w-0 flex-1"><div className="truncate font-bold text-slate-800">{f.title}</div>
-                    <div className="text-xs text-slate-400">Now feels {last ?? f.intensity}/100{atts.length ? ` · ${atts.length} attempt${atts.length === 1 ? "" : "s"}` : ""}{drop > 0 ? ` · ↓${drop}` : ""}</div></div>
-                  <button onClick={() => { setLogId(f.id); setBefore(last ?? f.intensity); }} className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600">Log try</button>
-                  <button onClick={() => { if (confirm("Remove this fear?")) removeFear(f.id); }} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+                    <div className="text-xs text-slate-400">Зараз {last ?? f.intensity}/100{atts.length ? ` · ${atts.length} ${atts.length === 1 ? "спроба" : atts.length < 5 ? "спроби" : "спроб"}` : ""}{drop > 0 ? ` · ↓${drop}` : ""}</div></div>
+                  <button onClick={() => { setLogId(f.id); setBefore(last ?? f.intensity); }} className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600">Записати спробу</button>
+                  <button onClick={() => { if (confirm("Прибрати цей страх?")) removeFear(f.id); }} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {atts.length > 1 && (
                   <div className="mt-2 flex items-end gap-1">
@@ -5332,12 +5332,12 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
       {logFear && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setLogId(null)}>
           <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-1 text-lg font-bold text-slate-900">Log an attempt</h3>
+            <h3 className="mb-1 text-lg font-bold text-slate-900">Записати спробу</h3>
             <p className="mb-4 text-sm text-slate-500">“{logFear.title}”</p>
-            <div className="mb-3"><div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">Anxiety before</span><span className="font-bold text-slate-700 tabular-nums">{before}</span></div><input type="range" min={0} max={100} value={before} onChange={(e) => setBefore(+e.target.value)} className="w-full accent-amber-500" /></div>
-            <div className="mb-3"><div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">Anxiety after</span><span className="font-bold text-teal-600 tabular-nums">{after}</span></div><input type="range" min={0} max={100} value={after} onChange={(e) => setAfter(+e.target.value)} className="w-full accent-teal-500" /></div>
-            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="How did it go? (optional)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" />
-            <button onClick={saveAttempt} className="w-full rounded-2xl bg-amber-500 py-3 font-bold text-white hover:bg-amber-600">Save attempt</button>
+            <div className="mb-3"><div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">Тривога до</span><span className="font-bold text-slate-700 tabular-nums">{before}</span></div><input type="range" min={0} max={100} value={before} onChange={(e) => setBefore(+e.target.value)} className="w-full accent-amber-500" /></div>
+            <div className="mb-3"><div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">Тривога після</span><span className="font-bold text-teal-600 tabular-nums">{after}</span></div><input type="range" min={0} max={100} value={after} onChange={(e) => setAfter(+e.target.value)} className="w-full accent-teal-500" /></div>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Як усе пройшло? (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" />
+            <button onClick={saveAttempt} className="w-full rounded-2xl bg-amber-500 py-3 font-bold text-white hover:bg-amber-600">Зберегти спробу</button>
           </div>
         </div>
       )}
@@ -5377,34 +5377,34 @@ function FocusTimer({ settings, onExit, onDone }) {
 
   if (stage === "config") return (
     <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
-      <CalmHeader title="Focus timer" onExit={onExit} />
+      <CalmHeader title="Таймер фокусу" onExit={onExit} />
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100">
-        <p className="mb-4 text-sm text-slate-500">We'll begin with three slow breaths, then a focused work block, then a short break.</p>
-        <div className="mb-3 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Work</span><span className="flex items-center gap-2"><input type="number" min={1} max={120} value={workMin} onChange={(e) => setWorkMin(Math.max(1, Math.min(120, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">min</span></span></div>
-        <div className="mb-4 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Break</span><span className="flex items-center gap-2"><input type="number" min={1} max={60} value={breakMin} onChange={(e) => setBreakMin(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">min</span></span></div>
-        <button onClick={startBreath} className="w-full rounded-2xl bg-emerald-500 py-3.5 font-bold text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600">Start</button>
+        <p className="mb-4 text-sm text-slate-500">Почнемо з трьох повільних вдихів, тоді — блок зосередженої роботи, а потім коротка перерва.</p>
+        <div className="mb-3 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Робота</span><span className="flex items-center gap-2"><input type="number" min={1} max={120} value={workMin} onChange={(e) => setWorkMin(Math.max(1, Math.min(120, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">хв</span></span></div>
+        <div className="mb-4 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Перерва</span><span className="flex items-center gap-2"><input type="number" min={1} max={60} value={breakMin} onChange={(e) => setBreakMin(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">хв</span></span></div>
+        <button onClick={startBreath} className="w-full rounded-2xl bg-emerald-500 py-3.5 font-bold text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600">Почати</button>
       </div>
     </div>
   );
 
   if (stage === "breathe") return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
-      <div className="w-full"><CalmHeader title="Settle in" onExit={stop} /></div>
+      <div className="w-full"><CalmHeader title="Налаштуйся" onExit={stop} /></div>
       <div className="my-10 grid h-56 w-56 place-items-center rounded-full bg-gradient-to-br from-emerald-300 to-teal-300 text-white">
-        <div className="text-center"><div className="text-lg font-bold">Breathe slowly</div><div className="text-5xl font-extrabold tabular-nums">{breatheLeft}</div></div>
+        <div className="text-center"><div className="text-lg font-bold">Дихай повільно</div><div className="text-5xl font-extrabold tabular-nums">{breatheLeft}</div></div>
       </div>
-      <p className="text-sm text-slate-500">A few calm breaths before we focus…</p>
+      <p className="text-sm text-slate-500">Кілька спокійних вдихів перед фокусом…</p>
     </div>
   );
 
   const isWork = stage === "work";
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
-      <div className="w-full"><CalmHeader title={isWork ? "Focus" : "Break"} onExit={stop} /></div>
+      <div className="w-full"><CalmHeader title={isWork ? "Фокус" : "Перерва"} onExit={stop} /></div>
       <div className={`my-10 grid h-64 w-64 place-items-center rounded-full text-white ${isWork ? "bg-gradient-to-br from-emerald-400 to-teal-400" : "bg-gradient-to-br from-sky-300 to-teal-300"}`}>
-        <div className="text-center"><div className="text-sm font-semibold uppercase tracking-widest text-white/80">{isWork ? "Focus" : "Rest"}</div><div className="text-6xl font-extrabold tabular-nums">{fmtClock(remaining)}</div></div>
+        <div className="text-center"><div className="text-sm font-semibold uppercase tracking-widest text-white/80">{isWork ? "Фокус" : "Відпочинок"}</div><div className="text-6xl font-extrabold tabular-nums">{fmtClock(remaining)}</div></div>
       </div>
-      <button onClick={stop} className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> End</button>
+      <button onClick={stop} className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> Завершити</button>
     </div>
   );
 }
@@ -5421,20 +5421,20 @@ function WorryTimer({ onExit, onDone }) {
 
   if (!running) return (
     <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
-      <CalmHeader title="Worry time" onExit={onExit} />
+      <CalmHeader title="Час для тривоги" onExit={onExit} />
       <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-pink-100">
-        <p className="mb-3 text-sm leading-relaxed text-slate-600">This is a <b>deliberate, time-boxed</b> slot to let yourself worry on purpose. Set the timer, worry freely — write, think, feel it — and when it ends, gently set it down. It's a technique to <i>contain</i> worry, not to dwell in it.</p>
-        <div className="mb-4 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">How long?</span><span className="flex items-center gap-2"><input type="number" min={1} max={60} value={min} onChange={(e) => setMin(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">min</span></span></div>
-        <button onClick={start} className="w-full rounded-2xl bg-pink-500 py-3.5 font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-600">Start worry time</button>
+        <p className="mb-3 text-sm leading-relaxed text-slate-600">Це <b>свідомо виділений, обмежений у часі</b> проміжок, щоб дозволити собі потривожитись навмисне. Постав таймер, тривожся вільно — пиши, думай, відчувай це — а коли час вийде, м'яко відклади це вбік. Це техніка, щоб <i>вмістити</i> тривогу, а не занурюватись у неї.</p>
+        <div className="mb-4 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Скільки часу?</span><span className="flex items-center gap-2"><input type="number" min={1} max={60} value={min} onChange={(e) => setMin(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">хв</span></span></div>
+        <button onClick={start} className="w-full rounded-2xl bg-pink-500 py-3.5 font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-600">Почати час для тривоги</button>
       </div>
     </div>
   );
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
-      <div className="w-full"><CalmHeader title="Worry time" onExit={stop} /></div>
+      <div className="w-full"><CalmHeader title="Час для тривоги" onExit={stop} /></div>
       <div className="my-10 grid h-64 w-64 place-items-center rounded-full bg-gradient-to-br from-pink-300 to-rose-300 text-white"><div className="text-6xl font-extrabold tabular-nums">{fmtClock(remaining)}</div></div>
-      <p className="mb-4 max-w-xs text-center text-sm text-slate-500">Let it all come up now. When the timer ends, we'll close the door on it — for now.</p>
-      <button onClick={stop} className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Check className="h-4 w-4" /> I'm done</button>
+      <p className="mb-4 max-w-xs text-center text-sm text-slate-500">Хай усе підніметься зараз. Коли таймер закінчиться — ми зачинимо ці двері. Поки що.</p>
+      <button onClick={stop} className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Check className="h-4 w-4" /> Я закінчила</button>
     </div>
   );
 }
@@ -5447,12 +5447,12 @@ function BeforeWork({ onExit, onDone }) {
     <div className="min-h-full">
       {step === "intro" && (
         <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
-          <CalmHeader title="Before work" onExit={onExit} />
+          <CalmHeader title="Перед роботою" onExit={onExit} />
           <div className="rounded-3xl bg-white p-6 text-center shadow-sm ring-1 ring-teal-100">
             <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-teal-100 text-teal-600"><Sparkle className="h-7 w-7" /></span>
-            <h2 className="mt-3 text-xl font-bold text-slate-900">A gentle reset</h2>
-            <p className="mt-2 text-sm text-slate-500">Two minutes of breathing, then a quick grounding. Then you'll be ready to begin — calm and clear.</p>
-            <button onClick={() => setStep("breath")} className="mt-5 w-full rounded-2xl bg-teal-500 py-3.5 font-bold text-white shadow-lg shadow-teal-500/20 hover:bg-teal-600">Begin</button>
+            <h2 className="mt-3 text-xl font-bold text-slate-900">М'яке перезавантаження</h2>
+            <p className="mt-2 text-sm text-slate-500">Дві хвилини дихання, потім швидке заземлення. І ти будеш готова почати — спокійно й ясно.</p>
+            <button onClick={() => setStep("breath")} className="mt-5 w-full rounded-2xl bg-teal-500 py-3.5 font-bold text-white shadow-lg shadow-teal-500/20 hover:bg-teal-600">Почати</button>
           </div>
         </div>
       )}
@@ -5461,9 +5461,9 @@ function BeforeWork({ onExit, onDone }) {
       {step === "done" && (
         <div className="mx-auto w-full max-w-md px-4 pb-16 pt-16 text-center">
           <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-teal-100 text-teal-600"><Check className="h-8 w-8" /></div>
-          <h2 className="mt-4 text-2xl font-bold text-slate-900">You're ready ✨</h2>
-          <p className="mt-1 text-sm text-slate-500">Calm and clear. Take it one task at a time.</p>
-          <button onClick={() => onDone(acc.current)} className="mt-6 rounded-2xl bg-teal-500 px-8 py-3 font-bold text-white hover:bg-teal-600">Start my day</button>
+          <h2 className="mt-4 text-2xl font-bold text-slate-900">Ти готова ✨</h2>
+          <p className="mt-1 text-sm text-slate-500">Спокійно й ясно. Крок за кроком, по одній справі.</p>
+          <button onClick={() => onDone(acc.current)} className="mt-6 rounded-2xl bg-teal-500 px-8 py-3 font-bold text-white hover:bg-teal-600">Почати мій день</button>
         </div>
       )}
     </div>
@@ -5488,16 +5488,16 @@ function CalmStats({ sessions, onExit }) {
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-6">
-      <CalmHeader title="Your calm practice" onExit={onExit} />
+      <CalmHeader title="Твоя практика спокою" onExit={onExit} />
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">🌿</div><div className="text-2xl font-extrabold tabular-nums text-teal-600">{streak}</div><div className="text-[11px] text-slate-400">day streak</div></div>
-        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">⏱️</div><div className="text-2xl font-extrabold tabular-nums text-sky-600">{minutes}</div><div className="text-[11px] text-slate-400">minutes</div></div>
-        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">🧘</div><div className="text-2xl font-extrabold tabular-nums text-emerald-500">{sessions.length}</div><div className="text-[11px] text-slate-400">sessions</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">🌿</div><div className="text-2xl font-extrabold tabular-nums text-teal-600">{streak}</div><div className="text-[11px] text-slate-400">днів поспіль</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">⏱️</div><div className="text-2xl font-extrabold tabular-nums text-sky-600">{minutes}</div><div className="text-[11px] text-slate-400">хвилин</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">🧘</div><div className="text-2xl font-extrabold tabular-nums text-emerald-500">{sessions.length}</div><div className="text-[11px] text-slate-400">сесій</div></div>
       </div>
 
       <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-teal-100">
-        <h2 className="mb-3 text-sm font-bold text-slate-700">By practice</h2>
-        {Object.keys(byType).length === 0 ? <p className="text-sm text-slate-400">No sessions yet.</p> : (
+        <h2 className="mb-3 text-sm font-bold text-slate-700">За практикою</h2>
+        {Object.keys(byType).length === 0 ? <p className="text-sm text-slate-400">Сесій ще немає.</p> : (
           <div className="space-y-2">
             {Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([type, n]) => {
               const T = CALM_TECHNIQUES[type] || { label: type, icon: Leaf };
@@ -5510,15 +5510,15 @@ function CalmStats({ sessions, onExit }) {
 
       <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-teal-100">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-700">{view.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
+          <h2 className="text-sm font-bold text-slate-700">{view.toLocaleDateString("uk-UA", { month: "long", year: "numeric" })}</h2>
           <div className="flex gap-1">
             <button onClick={() => setMonthOffset((m) => m - 1)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" /></button>
-            <button onClick={() => setMonthOffset(0)} disabled={monthOffset === 0} className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40">Today</button>
+            <button onClick={() => setMonthOffset(0)} disabled={monthOffset === 0} className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40">Сьогодні</button>
             <button onClick={() => setMonthOffset((m) => Math.min(0, m + 1))} disabled={monthOffset === 0} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-40"><ArrowRight className="h-4 w-4" /></button>
           </div>
         </div>
         <div className="grid grid-cols-7 gap-1.5">
-          {["M", "T", "W", "T", "F", "S", "S"].map((w, i) => <div key={i} className="pb-1 text-center text-[10px] font-semibold text-slate-400">{w}</div>)}
+          {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"].map((w, i) => <div key={i} className="pb-1 text-center text-[10px] font-semibold text-slate-400">{w}</div>)}
           {Array.from({ length: startPad }).map((_, i) => <div key={"p" + i} />)}
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const d = i + 1; const ds = dateKey(new Date(year, month, d).getTime()); const c = dayCount[ds] || 0;
@@ -5528,7 +5528,7 @@ function CalmStats({ sessions, onExit }) {
         </div>
       </div>
 
-      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Self-help tools, not a replacement for professional support. If things feel heavy, reaching out to someone can help. 💛</p>
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Інструменти самодопомоги, а не заміна професійної підтримки. Якщо стає важко — звернутися до когось справді може допомогти. 💛</p>
     </div>
   );
 }
@@ -6286,11 +6286,6 @@ function ToolkitSection({ name, onRename }) {
           <div className="space-y-4">
             <h1 className="text-2xl font-extrabold text-slate-900">Інструменти</h1>
             <p className="text-sm text-slate-500">Практичні помічники для щоденного життя.</p>
-            <button onClick={() => setTool("anxiety")} className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-teal-200 hover:shadow-md">
-              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-teal-100 text-2xl">🧠</span>
-              <span className="min-w-0 flex-1"><span className="block text-lg font-bold text-slate-800">Anxiety Toolkit</span><span className="block text-sm text-slate-400">Бібліотека технік від тривоги — збережи улюблені, познач що пробувала, обери фокус тижня.</span></span>
-              <ChevronRight className="h-5 w-5 text-slate-300" />
-            </button>
             <button onClick={() => setTool("chores")} className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-indigo-200 hover:shadow-md">
               <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-indigo-100 text-2xl">🧹</span>
               <span className="min-w-0 flex-1"><span className="block text-lg font-bold text-slate-800">Chore Splitter</span><span className="block text-sm text-slate-400">7-крокова система, щоб чесно поділити хатні справи — по складності, а не по кількості.</span></span>
@@ -6298,7 +6293,6 @@ function ToolkitSection({ name, onRename }) {
             </button>
           </div>
         )}
-        {tool === "anxiety" && <AnxietyToolkit favorites={favorites} tried={tried} weekFocus={weekFocus} settings={settings} onFav={saveFav} onTried={saveTried} onWeek={saveWeek} onDismissNote={() => saveSettings({ noteSeen: true })} />}
         {tool === "chores" && <ChoreSplitter members={members} list={list} ratings={ratings} assignments={assignments} meta={meta} saveMembers={saveMembers} saveList={saveList} saveRatings={saveRatings} saveAssignments={saveAssignments} saveMeta={saveMeta} />}
       </main>
     </div>
