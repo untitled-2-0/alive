@@ -892,6 +892,7 @@ function fastingStreak(diary, today = dateKey(Date.now())) {
   return cur;
 }
 const fmtHM = (ms) => { const m = Math.max(0, Math.floor(ms / 60000)); return `${Math.floor(m / 60)}г ${m % 60}хв`; };
+const fmtHMS = (ms) => { const t = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60; return `${h}г ${m}хв ${s}с`; };
 
 /* ================================================================== */
 /* TOOLKIT — Anxiety toolkit library + Chore Splitter wizard          */
@@ -5474,7 +5475,7 @@ function FastingSection({ name, onRename }) {
 
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
         {fview === "timer" && <FastTimer current={current} now={now} protocol={protocol} onStart={startFast} onEnd={endFast} onSetStart={setStartTs} onChangeProtocol={() => setFview("ladder")} />}
-        {fview === "ladder" && <ProtocolLadder goals={goals} diary={diary} onSet={(id) => { saveGoals({ protocol: id }); flash(`Протокол: ${getProtocol(id).label}`); setFview("timer"); }} />}
+        {fview === "ladder" && <ProtocolLadder goals={goals} diary={diary} onSaveGoals={saveGoals} onSet={(id) => { saveGoals({ protocol: id, protocolSince: dateKey(Date.now()), stepUpDismissed: null }); flash(`Протокол: ${getProtocol(id).label}`); setFview("timer"); }} />}
         {fview === "diary" && <FastDiary diary={diary} onNew={() => setDiaryEditor({ entry: null })} onEdit={(e) => setDiaryEditor({ entry: e })} onDelete={deleteEntry} />}
         {fview === "overview" && <FastOverview goals={goals} diary={diary} onSaveGoals={saveGoals} />}
         {fview === "reference" && <FastReference />}
@@ -5493,7 +5494,7 @@ function FastRing({ pct, size = 240, stroke = 16, color = "#f97316", children })
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#fdead1" strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" style={{ transition: "stroke-dashoffset .8s ease" }} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" style={{ transition: "stroke-dashoffset 1s linear" }} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center">{children}</div>
     </div>
@@ -5519,8 +5520,8 @@ function FastTimer({ current, now, protocol, onStart, onEnd, onSetStart, onChang
 
       <FastRing pct={pct} color={current ? stage.color : "#fb923c"}>
         <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">{current ? "Голодування" : "Готова почати"}</div>
-        <div className="text-4xl font-extrabold tabular-nums text-slate-900">{fmtHM(elapsedMs)}</div>
-        <div className="mt-1 text-sm text-slate-400">ціль {targetH} год{current ? ` · ${Math.round(pct * 100)}%` : ""}</div>
+        <div className="text-4xl font-extrabold tabular-nums text-slate-900">{current ? fmtHMS(elapsedMs) : fmtHM(elapsedMs)}</div>
+        <div className="mt-1 text-sm text-slate-400">ціль {targetH} год{current ? ` · ${(pct * 100).toFixed(1)}%` : ""}</div>
       </FastRing>
 
       {current ? (
@@ -5570,11 +5571,19 @@ function FastTimer({ current, now, protocol, onStart, onEnd, onSetStart, onChang
 function toLocalInput(ts) { const d = new Date(ts - new Date().getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); }
 
 /* ---------- Protocol ladder ---------- */
-function ProtocolLadder({ goals, diary, onSet }) {
+function ProtocolLadder({ goals, diary, onSet, onSaveGoals }) {
   const cur = getProtocol(goals.protocol);
-  const doneAtCurrent = diary.filter((r) => r.protocol === goals.protocol && r.goalMet).length;
   const nextP = PROTOCOLS.find((p) => p.level === cur.level + 1);
-  const readyToStep = doneAtCurrent >= 5 && nextP;
+  const stepUpDays = goals.stepUpDays || 14;
+  const since = goals.protocolSince || goals.startDate || dateKey(Date.now());
+  // consistency: distinct days you actually completed this protocol since you settled on it
+  const daysDone = new Set(diary.filter((r) => r.protocol === goals.protocol && r.goalMet && r.date >= since).map((r) => r.date)).size;
+  const remaining = Math.max(0, stepUpDays - daysDone);
+  const reached = daysDone >= stepUpDays && !!nextP;
+  const dismissed = goals.stepUpDismissed === goals.protocol;
+  const pctToStep = Math.min(1, stepUpDays ? daysDone / stepUpDays : 0);
+  const highlightNext = reached && !dismissed && nextP;
+  const setStepDays = (d) => onSaveGoals({ stepUpDays: Math.max(3, Math.min(60, d)) });
 
   return (
     <div>
@@ -5583,29 +5592,59 @@ function ProtocolLadder({ goals, diary, onSet }) {
         Починай з найм'якшого щабля й піднімайся <b>поступово</b> — тільки коли поточний рівень дається легко й приємно. Немає «єдино правильного» рівня; сталість важливіша за інтенсивність. Жодного поспіху.
       </p>
 
-      {readyToStep && (
-        <div className="mt-3 flex items-center gap-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3">
-          <Sparkle className="h-5 w-5 shrink-0 text-green-500" />
-          <p className="text-sm text-green-800">Ти комфортно витримала <b>{cur.label}</b> вже {doneAtCurrent} разів. Якщо почуваєшся добре — можна спробувати <b>{nextP.label}</b>. Але без тиску, коли сама відчуєш готовність.</p>
-        </div>
+      {/* recommendation */}
+      {nextP ? (
+        highlightNext ? (
+          <div className="mt-3 rounded-2xl border border-green-200 bg-green-50 p-4">
+            <div className="flex items-start gap-3">
+              <Sparkle className="mt-0.5 h-5 w-5 shrink-0 text-green-500" />
+              <div className="flex-1">
+                <p className="text-sm text-green-800">Ти освоїла <b>{cur.label}</b> — вже {daysDone} {daysDone === 1 ? "день" : daysDone < 5 ? "дні" : "днів"} на цьому рівні. Коли відчуєш готовність, можна спробувати <b>{nextP.label}</b>. Без поспіху 💛</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={() => onSet(nextP.id)} className="rounded-full bg-green-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Спробувати {nextP.label}</button>
+                  <button onClick={() => onSaveGoals({ stepUpDismissed: goals.protocol })} className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50">Поки лишити {cur.label}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm text-slate-600">Ти на <b>{cur.label}</b> вже <b>{daysDone}</b> {daysDone === 1 ? "день" : daysDone < 5 ? "дні" : "днів"}.{dismissed ? " Лишаєшся на цьому рівні 👍" : ` Орієнтир: ще ~${remaining} дн на цьому рівні, перш ніж пробувати ${nextP.label}.`}</p>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full transition-all" style={{ width: `${pctToStep * 100}%`, backgroundColor: protocolColor(cur.level) }} /></div>
+            <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+              <span>Орієнтир переходу:</span>
+              <button onClick={() => setStepDays(stepUpDays - 1)} className="grid h-6 w-6 place-items-center rounded-full bg-slate-100 font-bold text-slate-500 hover:bg-slate-200">−</button>
+              <span className="font-semibold tabular-nums text-slate-600">{stepUpDays} дн</span>
+              <button onClick={() => setStepDays(stepUpDays + 1)} className="grid h-6 w-6 place-items-center rounded-full bg-slate-100 font-bold text-slate-500 hover:bg-slate-200">+</button>
+              {dismissed && <button onClick={() => onSaveGoals({ stepUpDismissed: null })} className="ml-auto font-medium text-slate-400 underline hover:text-slate-600">повернути підказку</button>}
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">Ти на найвищому щаблі драбини. Слухай своє тіло й лишайся на комфортному рівні 💛</div>
       )}
+      <p className="mt-2 px-1 text-[11px] leading-relaxed text-slate-400">Це загальний орієнтир, а не медична порада. Немає єдино правильного темпу — рухайся вгору лише коли готова, і слухай своє тіло.</p>
 
       <div className="mt-4 space-y-2">
         {[...PROTOCOLS].reverse().map((p) => {
           const active = p.id === goals.protocol;
+          const isNext = highlightNext && p.id === nextP.id;
           const color = protocolColor(p.level);
           return (
-            <div key={p.id} className={`flex items-start gap-3 rounded-2xl border p-4 transition ${active ? "shadow-md" : "border-slate-100 bg-white"}`} style={active ? { borderColor: color, backgroundColor: color + "12" } : {}}>
+            <div key={p.id} className={`flex items-start gap-3 rounded-2xl border p-4 transition ${active ? "shadow-md" : isNext ? "border-green-300 bg-green-50/60 ring-2 ring-green-200" : "border-slate-100 bg-white"}`} style={active ? { borderColor: color, backgroundColor: color + "12" } : {}}>
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-sm font-extrabold text-white" style={{ backgroundColor: color }}>{p.hrs}г</span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-bold text-slate-900">{p.label}</span>
                   <span className="text-xs text-slate-400">вікно {p.window} год · {p.freq}</span>
                   {active && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white" style={{ backgroundColor: color }}>мій зараз</span>}
+                  {isNext && <span className="rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold text-white">рекомендовано</span>}
                 </div>
                 <p className="mt-0.5 text-sm text-slate-500">{p.note}</p>
               </div>
-              {!active && <button onClick={() => onSet(p.id)} className="shrink-0 rounded-full bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900">Обрати</button>}
+              {!active && <button onClick={() => onSet(p.id)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold text-white ${isNext ? "bg-green-600 hover:bg-green-700" : "bg-slate-800 hover:bg-slate-900"}`}>Обрати</button>}
             </div>
           );
         })}
