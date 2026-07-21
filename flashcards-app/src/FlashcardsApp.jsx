@@ -19,6 +19,7 @@ import {
   Coffee, Droplet, Scale, ShieldAlert, Info, Square, TrendingDown,
   Utensils, GlassWater, LineChart as LineChartIcon, Cloud, CloudOff, LogOut, Mail,
   Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft, RefreshCw,
+  Wrench, Star, Users, Sparkles as SparklesIcon, Scale as ScaleIcon, ArrowLeftRight, Home,
 } from "lucide-react";
 import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signOutCloud, refreshSession, syncNow } from "./cloud.js";
 
@@ -891,6 +892,71 @@ function fastingStreak(diary, today = dateKey(Date.now())) {
 }
 const fmtHM = (ms) => { const m = Math.max(0, Math.floor(ms / 60000)); return `${Math.floor(m / 60)}г ${m % 60}хв`; };
 
+/* ================================================================== */
+/* TOOLKIT — Anxiety toolkit library + Chore Splitter wizard          */
+/* ================================================================== */
+const TKEYS = {
+  settings: "toolkit:settings",
+  anxFav: "toolkit:anxiety:favorites",
+  anxTried: "toolkit:anxiety:tried",
+  anxWeek: "toolkit:anxiety:weekFocus",
+  members: "toolkit:chores:members",
+  list: "toolkit:chores:list",
+  ratings: "toolkit:chores:ratings",
+  assignments: "toolkit:chores:assignments",
+  meta: "toolkit:chores:meta",
+};
+
+// Anxiety toolkit — a calm library of techniques (interactive versions live in Calm)
+const ANX_TECHNIQUES = [
+  { id: "breath", emoji: "🌬️", name: "Дихання (box / 4-7-8)", what: "Повільний ритм вдих-затримка-видих.", why: "Активує парасимпатику — тіло розуміє, що можна розслабитись." },
+  { id: "ground", emoji: "⚓", name: "Заземлення 5-4-3-2-1", what: "Назви 5 що бачиш, 4 чуєш, 3 торкаєшся, 2 нюхаєш, 1 смакуєш.", why: "Повертає з тривожних думок у теперішній момент." },
+  { id: "pmr", emoji: "💪", name: "Розслаблення м'язів", what: "Напруж і відпусти групи м'язів по черзі.", why: "Знімає фізичну напругу, яку тримає тіло під час тривоги." },
+  { id: "thought", emoji: "📝", name: "Запис думки (CBT)", what: "Ситуація → думка → докази за/проти → збалансована думка.", why: "Розплутує автоматичну тривожну думку й повертає перспективу." },
+  { id: "fear", emoji: "🪜", name: "Сходинки страху", what: "Список страхів від легкого до важкого, крок за кроком.", why: "Поступова експозиція м'яко зменшує уникання й тривогу." },
+  { id: "worry", emoji: "⏳", name: "Час для тривоги", what: "Виділи 10 хв, щоб хвилюватись навмисно — потім стоп.", why: "Контейнує хвилювання, замість того щоб воно розтікалось на весь день." },
+  { id: "focus", emoji: "⏱️", name: "Фокус-таймер", what: "Спокійний вдих, потім блок роботи й коротка перерва.", why: "Знижує тривогу «нічого не встигаю» через маленькі кроки." },
+  { id: "self", emoji: "💛", name: "Самоспівчуття", what: "Скажи собі те, що сказала б другові в такій ситуації.", why: "Пом'якшує внутрішнього критика, який підживлює тривогу." },
+];
+
+const CHORE_ROOMS = [
+  { room: "Спальня", items: ["Застелити ліжко", "Змінити білизну", "Пропилососити", "Розкласти одяг", "Витерти пил"] },
+  { room: "Ванна", items: ["Помити раковину", "Помити унітаз", "Помити душ/ванну", "Дзеркало", "Поміняти рушники", "Помити підлогу"] },
+  { room: "Вітальня/їдальня", items: ["Пропилососити", "Витерти пил", "Прибрати зі столу", "Помити підлогу", "Скласти речі"] },
+  { room: "Кухня", items: ["Помити посуд", "Витерти столи", "Помити плиту", "Розібрати продукти", "Помити підлогу"] },
+  { room: "Інше", items: ["Винести сміття", "Посуд у машину", "Коридор", "Полити рослини", "Погодувати тварин", "Прання: завантажити", "Прання: розвісити", "Прання: скласти", "Прасування"] },
+];
+
+const ATT = { like: { label: "Подобається", emoji: "🙂", weight: 2, color: "#22c55e" }, tolerable: { label: "Терпимо", emoji: "😐", weight: 5, color: "#eab308" }, hate: { label: "Ненавиджу", emoji: "😖", weight: 9, color: "#ef4444" } };
+const ATT_ORDER = ["like", "tolerable", "hate"];
+
+async function loadToolkitData() {
+  const settings = await store.get(TKEYS.settings, { name: "Toolkit" });
+  const favorites = await store.get(TKEYS.anxFav, []);
+  const tried = await store.get(TKEYS.anxTried, []);
+  const weekFocus = await store.get(TKEYS.anxWeek, null);
+  const members = await store.get(TKEYS.members, null);
+  const list = await store.get(TKEYS.list, []);
+  const ratings = await store.get(TKEYS.ratings, {});
+  const assignments = await store.get(TKEYS.assignments, {});
+  const meta = await store.get(TKEYS.meta, { step: 1, useScores: false, finished: false });
+  return { settings, favorites, tried, weekFocus, members, list, ratings, assignments, meta };
+}
+async function collectToolkitExport() {
+  const d = await loadToolkitData();
+  return { settings: d.settings, anxiety: { favorites: d.favorites, tried: d.tried, weekFocus: d.weekFocus }, chores: { members: d.members, list: d.list, ratings: d.ratings, assignments: d.assignments, meta: d.meta } };
+}
+async function clearToolkitData() {
+  for (const k of Object.values(TKEYS)) await store.remove(k);
+}
+// effective difficulty score for member on chore (score if using 1-10, else attitude weight)
+function choreScore(ratings, choreId, memberId, useScores) {
+  const r = ratings[choreId]?.[memberId];
+  if (!r) return null;
+  if (useScores && r.score != null) return r.score;
+  return ATT[r.attitude]?.weight ?? null;
+}
+
 /* ------------------------------------------------------------------ */
 /* Small presentational pieces                                         */
 /* ------------------------------------------------------------------ */
@@ -932,6 +998,7 @@ export default function FlashcardsApp() {
   const [calmName, setCalmName] = useState("Calm");
   const [fastingName, setFastingName] = useState("Fasting");
   const [mgmtName, setMgmtName] = useState("Менеджмент");
+  const [toolkitName, setToolkitName] = useState("Toolkit");
   const [cloudState, setCloudState] = useState({ signedIn: false, email: null, syncing: false });
   const [toast, setToast] = useState(null);
   const [deckEditor, setDeckEditor] = useState(null); // null | { deck } (deck=null → create)
@@ -951,16 +1018,18 @@ export default function FlashcardsApp() {
       const calmSettings = await store.get(CKEYS.settings, { name: "Calm" });
       const fastingSettings = await store.get(FKEYS.settings, { name: "Fasting" });
       const mgmtSettings = await store.get("mgmt:settings", { name: "Менеджмент" });
+      const toolkitSettings = await store.get(TKEYS.settings, { name: "Toolkit" });
       const st = await store.get("stats", {
         history: {},
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["routine", "calm", "fasting", "management"].includes(ui.section) ? ui.section : "studying");
+      setSection(["routine", "calm", "fasting", "management", "toolkit"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name || "Calm");
       setFastingName(fastingSettings?.name || "Fasting");
       setMgmtName(mgmtSettings?.name || "Менеджмент");
+      setToolkitName(toolkitSettings?.name || "Toolkit");
       setStats(st);
       setGroups(gi.groups || []);
       setDecks(idx.decks || []);
@@ -1037,6 +1106,13 @@ export default function FlashcardsApp() {
     setMgmtName(clean);
     const prev = await store.get("mgmt:settings", { name: "Менеджмент" });
     await store.set("mgmt:settings", { ...prev, name: clean });
+  }, []);
+
+  const renameToolkit = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Toolkit";
+    setToolkitName(clean);
+    const prev = await store.get(TKEYS.settings, { name: "Toolkit" });
+    await store.set(TKEYS.settings, { ...prev, name: clean });
   }, []);
 
   /* ---------- derived: per-deck due summary ---------- */
@@ -1377,6 +1453,7 @@ export default function FlashcardsApp() {
     await clearCalmData();
     await clearFastingData();
     await store.remove("mgmt:settings");
+    await clearToolkitData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
@@ -1385,10 +1462,12 @@ export default function FlashcardsApp() {
     setCalmName("Calm");
     setFastingName("Fasting");
     setMgmtName("Менеджмент");
+    setToolkitName("Toolkit");
     flash("All data reset");
     window.dispatchEvent(new CustomEvent("routine-reset"));
     window.dispatchEvent(new CustomEvent("calm-reset"));
     window.dispatchEvent(new CustomEvent("fasting-reset"));
+    window.dispatchEvent(new CustomEvent("toolkit-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
@@ -1396,9 +1475,10 @@ export default function FlashcardsApp() {
     const calm = await collectCalmExport();
     const fasting = await collectFastingExport();
     const mgmt = await store.get("mgmt:settings", { name: "Менеджмент" });
+    const toolkit = await collectToolkitExport();
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 5,
+      version: 6,
       decks,
       groups,
       cards: cardsByDeck,
@@ -1407,6 +1487,7 @@ export default function FlashcardsApp() {
       calm,
       fasting,
       mgmt,
+      toolkit,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1619,6 +1700,7 @@ export default function FlashcardsApp() {
         calmName={calmName}
         fastingName={fastingName}
         mgmtName={mgmtName}
+        toolkitName={toolkitName}
         cloud={cloudState}
         onSyncNow={doSyncNow}
       />
@@ -1632,6 +1714,8 @@ export default function FlashcardsApp() {
           <FastingSection name={fastingName} onRename={renameFasting} />
         ) : section === "management" ? (
           <ManagementSection name={mgmtName} onRename={renameMgmt} />
+        ) : section === "toolkit" ? (
+          <ToolkitSection name={toolkitName} onRename={renameToolkit} />
         ) : (
         <>
       {/* studying top bar */}
@@ -1817,13 +1901,14 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 /* ------------------------------------------------------------------ */
 /* Sidebar — top-level section navigation                              */
 /* ------------------------------------------------------------------ */
-function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, cloud, onSyncNow }) {
+function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, cloud, onSyncNow }) {
   const items = [
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
     { id: "calm", label: calmName || "Calm", icon: Leaf, badge: 0 },
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
+    { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
   ];
   const wide = !collapsed;
   return (
@@ -5897,6 +5982,465 @@ function ChapterReader({ chapter, index, total, onNav, onToc }) {
         <button disabled={index <= 0} onClick={() => onNav(index - 1)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Назад</button>
         <button onClick={onToc} className="text-sm font-medium text-slate-400 hover:text-slate-600">Зміст</button>
         <button disabled={index >= total - 1} onClick={() => onNav(index + 1)} className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* TOOLKIT — section UI                                               */
+/* ================================================================== */
+function ToolkitSection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [tool, setTool] = useState("hub"); // hub | anxiety | chores
+  const [settings, setSettings] = useState({ name: "Toolkit" });
+  const [favorites, setFavorites] = useState([]);
+  const [tried, setTried] = useState([]);
+  const [weekFocus, setWeekFocus] = useState(null);
+  const [members, setMembers] = useState(null);
+  const [list, setList] = useState([]);
+  const [ratings, setRatings] = useState({});
+  const [assignments, setAssignments] = useState({});
+  const [meta, setMeta] = useState({ step: 1, useScores: false, finished: false });
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+
+  const reload = useCallback(async () => {
+    const d = await loadToolkitData();
+    setSettings(d.settings); setFavorites(d.favorites); setTried(d.tried); setWeekFocus(d.weekFocus);
+    setMembers(d.members || [{ id: ruid("m"), name: "Людина 1" }, { id: ruid("m"), name: "Людина 2" }]);
+    setList(d.list); setRatings(d.ratings); setAssignments(d.assignments); setMeta(d.meta);
+    setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => { setFavorites([]); setTried([]); setWeekFocus(null); setMembers([{ id: ruid("m"), name: "Людина 1" }, { id: ruid("m"), name: "Людина 2" }]); setList([]); setRatings({}); setAssignments({}); setMeta({ step: 1, useScores: false, finished: false }); setTool("hub"); };
+    window.addEventListener("toolkit-reset", onReset);
+    return () => window.removeEventListener("toolkit-reset", onReset);
+  }, [reload]);
+
+  const saveSettings = useCallback(async (patch) => { const n = { ...settings, ...patch }; setSettings(n); await store.set(TKEYS.settings, n); }, [settings]);
+  const saveFav = useCallback(async (n) => { setFavorites(n); await store.set(TKEYS.anxFav, n); }, []);
+  const saveTried = useCallback(async (n) => { setTried(n); await store.set(TKEYS.anxTried, n); }, []);
+  const saveWeek = useCallback(async (id) => { setWeekFocus(id); await store.set(TKEYS.anxWeek, id); }, []);
+  const saveMembers = useCallback(async (n) => { setMembers(n); await store.set(TKEYS.members, n); }, []);
+  const saveList = useCallback(async (n) => { setList(n); await store.set(TKEYS.list, n); }, []);
+  const saveRatings = useCallback(async (n) => { setRatings(n); await store.set(TKEYS.ratings, n); }, []);
+  const saveAssignments = useCallback(async (n) => { setAssignments(n); await store.set(TKEYS.assignments, n); }, []);
+  const saveMeta = useCallback(async (patch) => { const n = { ...meta, ...patch }; setMeta(n); await store.set(TKEYS.meta, n); }, [meta]);
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-slate-400"><div className="flex flex-col items-center gap-3"><Wrench className="h-8 w-8 animate-pulse text-indigo-400" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-slate-50 to-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-indigo-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          {tool !== "hub" && <button onClick={() => setTool("hub")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100"><ChevronLeft className="h-4 w-4" /> Інструменти</button>}
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-6">
+        {tool === "hub" && (
+          <div className="space-y-4">
+            <h1 className="text-2xl font-extrabold text-slate-900">Інструменти</h1>
+            <p className="text-sm text-slate-500">Практичні помічники для щоденного життя.</p>
+            <button onClick={() => setTool("anxiety")} className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-teal-200 hover:shadow-md">
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-teal-100 text-2xl">🧠</span>
+              <span className="min-w-0 flex-1"><span className="block text-lg font-bold text-slate-800">Anxiety Toolkit</span><span className="block text-sm text-slate-400">Бібліотека технік від тривоги — збережи улюблені, познач що пробувала, обери фокус тижня.</span></span>
+              <ChevronRight className="h-5 w-5 text-slate-300" />
+            </button>
+            <button onClick={() => setTool("chores")} className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-indigo-200 hover:shadow-md">
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-indigo-100 text-2xl">🧹</span>
+              <span className="min-w-0 flex-1"><span className="block text-lg font-bold text-slate-800">Chore Splitter</span><span className="block text-sm text-slate-400">7-крокова система, щоб чесно поділити хатні справи — по складності, а не по кількості.</span></span>
+              <ChevronRight className="h-5 w-5 text-slate-300" />
+            </button>
+          </div>
+        )}
+        {tool === "anxiety" && <AnxietyToolkit favorites={favorites} tried={tried} weekFocus={weekFocus} settings={settings} onFav={saveFav} onTried={saveTried} onWeek={saveWeek} onDismissNote={() => saveSettings({ noteSeen: true })} />}
+        {tool === "chores" && <ChoreSplitter members={members} list={list} ratings={ratings} assignments={assignments} meta={meta} saveMembers={saveMembers} saveList={saveList} saveRatings={saveRatings} saveAssignments={saveAssignments} saveMeta={saveMeta} />}
+      </main>
+    </div>
+  );
+}
+
+/* ---------- Anxiety toolkit (library) ---------- */
+function AnxietyToolkit({ favorites, tried, weekFocus, settings, onFav, onTried, onWeek, onDismissNote }) {
+  const toggle = (arr, id, fn) => fn(arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
+  const focus = ANX_TECHNIQUES.find((t) => t.id === weekFocus);
+  const ordered = [...ANX_TECHNIQUES].sort((a, b) => (favorites.includes(b.id) ? 1 : 0) - (favorites.includes(a.id) ? 1 : 0));
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-extrabold text-slate-900">Anxiety Toolkit</h1>
+        <p className="text-sm text-slate-500">Спокійні техніки, до яких можна повертатись. Це бібліотека — інтерактивні версії живуть у вкладці Calm.</p>
+      </div>
+
+      {focus && (
+        <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-teal-400 to-sky-400 p-4 text-white shadow-sm">
+          <span className="text-2xl">{focus.emoji}</span>
+          <div className="flex-1"><div className="text-xs font-semibold uppercase tracking-wide text-white/80">Фокус тижня</div><div className="font-bold">{focus.name}</div></div>
+          <button onClick={() => onWeek(null)} className="rounded-full bg-white/20 p-1.5 hover:bg-white/30"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      <div className="space-y-2.5">
+        {ordered.map((t) => {
+          const fav = favorites.includes(t.id); const isTried = tried.includes(t.id); const isFocus = weekFocus === t.id;
+          return (
+            <div key={t.id} className={`rounded-2xl border p-4 shadow-sm transition ${isFocus ? "border-teal-300 bg-teal-50/50" : "border-slate-100 bg-white"}`}>
+              <div className="flex items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-xl">{t.emoji}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2"><span className="font-bold text-slate-800">{t.name}</span></div>
+                  <p className="mt-0.5 text-sm text-slate-600">{t.what}</p>
+                  <p className="mt-1 text-xs text-slate-400"><b className="font-semibold text-slate-500">Чому помагає:</b> {t.why}</p>
+                </div>
+                <button onClick={() => toggle(favorites, t.id, onFav)} title="В улюблене" className={`shrink-0 rounded-full p-1.5 transition ${fav ? "text-amber-400" : "text-slate-300 hover:text-amber-400"}`}><Star className={`h-5 w-5 ${fav ? "fill-amber-400" : ""}`} /></button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button onClick={() => toggle(tried, t.id, onTried)} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition ${isTried ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{isTried ? <><Check className="h-3.5 w-3.5" /> Пробувала</> : "Позначити як спробувала"}</button>
+                <button onClick={() => onWeek(isFocus ? null : t.id)} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition ${isFocus ? "bg-teal-500 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{isFocus ? "Фокус тижня ✓" : "Зробити фокусом тижня"}</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {!settings.noteSeen && (
+        <div className="flex items-start gap-2 rounded-2xl bg-slate-100/70 px-4 py-3 text-sm text-slate-500">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          <p className="flex-1">Ці техніки доповнюють, але не замінюють професійну допомогу. Якщо тривога сильна або триває тижнями — варто поговорити з терапевтом. 💛</p>
+          <button onClick={onDismissNote} className="rounded-full p-0.5 text-slate-300 hover:text-slate-500"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Chore Splitter (7-step wizard) ---------- */
+const CHORE_STEPS = ["Учасники", "Справи", "Оцінка", "Разом", "Бали", "Розподіл", "Баланс"];
+function ChoreSplitter(props) {
+  const { members, list, ratings, assignments, meta, saveMembers, saveList, saveRatings, saveAssignments, saveMeta } = props;
+  const step = meta.step || 1;
+  const setStep = (s) => saveMeta({ step: Math.max(1, Math.min(7, s)) });
+
+  if (meta.finished) return <ChoreBoard {...props} onEdit={() => saveMeta({ finished: false, step: 7 })} />;
+
+  return (
+    <div>
+      <div className="mb-1 flex items-center gap-2"><span className="text-2xl">🧹</span><h1 className="text-2xl font-extrabold text-slate-900">Chore Splitter</h1></div>
+      {/* stepper */}
+      <div className="mb-5 flex items-center gap-1 overflow-x-auto pb-1">
+        {CHORE_STEPS.map((s, i) => {
+          const n = i + 1, active = n === step, done = n < step;
+          return (
+            <button key={s} onClick={() => setStep(n)} className="flex items-center gap-1">
+              {i > 0 && <span className={`h-0.5 w-3 ${done || active ? "bg-indigo-400" : "bg-slate-200"}`} />}
+              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold transition ${active ? "bg-indigo-600 text-white" : done ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>{done ? "✓" : n}</span>
+              <span className={`hidden whitespace-nowrap text-xs font-medium sm:inline ${active ? "text-indigo-700" : "text-slate-400"}`}>{s}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        {step === 1 && <StepMembers members={members} onSave={saveMembers} />}
+        {step === 2 && <StepBrainstorm list={list} onSave={saveList} />}
+        {step === 3 && <StepRatings members={members} list={list} ratings={ratings} onSave={saveRatings} />}
+        {step === 4 && <StepMerge members={members} list={list} ratings={ratings} />}
+        {step === 5 && <StepScores members={members} list={list} ratings={ratings} meta={meta} onSaveRatings={saveRatings} onSaveMeta={saveMeta} />}
+        {step === 6 && <StepAssign members={members} list={list} ratings={ratings} assignments={assignments} meta={meta} onSave={saveAssignments} />}
+        {step === 7 && <StepBalance members={members} list={list} ratings={ratings} assignments={assignments} meta={meta} onSave={saveAssignments} onFinish={() => saveMeta({ finished: true })} />}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <button disabled={step <= 1} onClick={() => setStep(step - 1)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Назад</button>
+        <span className="text-xs text-slate-400">Крок {step} / 7</span>
+        {step < 7
+          ? <button disabled={step === 2 && list.length === 0} onClick={() => setStep(step + 1)} className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
+          : <span />}
+      </div>
+    </div>
+  );
+}
+
+function StepMembers({ members, onSave }) {
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Хто ділить справи?</h2>
+      <p className="mb-4 text-sm text-slate-500">Додай учасників дому. Імена можна змінювати.</p>
+      <div className="space-y-2">
+        {members.map((m, i) => (
+          <div key={m.id} className="flex items-center gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-100 text-sm font-bold text-indigo-600">{i + 1}</span>
+            <input value={m.name} onChange={(e) => onSave(members.map((x) => x.id === m.id ? { ...x, name: e.target.value } : x))} className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+            {members.length > 2 && <button onClick={() => onSave(members.filter((x) => x.id !== m.id))} className="rounded p-1.5 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>}
+          </div>
+        ))}
+      </div>
+      <button onClick={() => onSave([...members, { id: ruid("m"), name: `Людина ${members.length + 1}` }])} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"><Plus className="h-4 w-4" /> Додати учасника</button>
+    </div>
+  );
+}
+
+function StepBrainstorm({ list, onSave }) {
+  const [text, setText] = useState("");
+  const has = (t) => list.some((c) => c.text.toLowerCase() === t.toLowerCase());
+  const add = (t) => { const v = t.trim(); if (v && !has(v)) onSave([...list, { id: ruid("ch"), text: v }]); };
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Всі хатні справи в один список</h2>
+      <p className="mb-3 text-sm text-slate-500">💡 Розбивай великі справи на маленькі: «прання» → «завантажити» + «розвісити» + «скласти». Так нічого не загубиться й легше ділити.</p>
+
+      <div className="mb-3 flex items-center gap-2">
+        <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { add(text); setText(""); } }} placeholder="Додати справу…" className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+        <button onClick={() => { add(text); setText(""); }} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"><Plus className="h-4 w-4" /></button>
+      </div>
+
+      <div className="mb-4 space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Готовий чек-лист по кімнатах — тапни, щоб додати</div>
+        {CHORE_ROOMS.map((r) => (
+          <div key={r.room}>
+            <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-slate-600"><Home className="h-3.5 w-3.5 text-slate-400" /> {r.room}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {r.items.map((it) => { const added = has(it); return (
+                <button key={it} onClick={() => added ? onSave(list.filter((c) => c.text.toLowerCase() !== it.toLowerCase())) : add(it)} className={`rounded-full px-3 py-1 text-xs font-medium transition ${added ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{added ? "✓ " : "+ "}{it}</button>
+              ); })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {list.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Твій список · {list.length}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {list.map((c) => (
+              <span key={c.id} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-sm text-indigo-700">{c.text}<button onClick={() => onSave(list.filter((x) => x.id !== c.id))} className="text-indigo-300 hover:text-rose-500"><X className="h-3.5 w-3.5" /></button></span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StepRatings({ members, list, ratings, onSave }) {
+  const [mi, setMi] = useState(0);
+  const member = members[mi];
+  const setAtt = (choreId, attitude) => {
+    const next = { ...ratings, [choreId]: { ...(ratings[choreId] || {}), [member.id]: { ...(ratings[choreId]?.[member.id] || {}), attitude } } };
+    onSave(next);
+  };
+  const ratedCount = (m) => list.filter((c) => ratings[c.id]?.[m.id]?.attitude).length;
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Приватна оцінка ставлення</h2>
+      <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">🔒 Оцінюй чесно й наодинці. Відповіді іншого тут <b>не показуються</b> — по черзі, по одній людині.</p>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {members.map((m, i) => (
+          <button key={m.id} onClick={() => setMi(i)} className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${i === mi ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{m.name} <span className="opacity-70">({ratedCount(m)}/{list.length})</span></button>
+        ))}
+      </div>
+      <div className="space-y-2">
+        {list.map((c) => {
+          const cur = ratings[c.id]?.[member.id]?.attitude;
+          return (
+            <div key={c.id} className="flex items-center gap-2 rounded-xl border border-slate-100 p-2">
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{c.text}</span>
+              <div className="flex shrink-0 gap-1">
+                {ATT_ORDER.map((a) => (
+                  <button key={a} onClick={() => setAtt(c.id, a)} title={ATT[a].label} className="grid h-9 w-9 place-items-center rounded-lg text-lg transition" style={cur === a ? { backgroundColor: ATT[a].color + "22", boxShadow: `0 0 0 2px ${ATT[a].color}` } : { backgroundColor: "#f8fafc" }}>{ATT[a].emoji}</button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StepMerge({ members, list, ratings }) {
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Спільна картина</h2>
+      <p className="mb-3 text-sm text-slate-500">Ставлення кожного до кожної справи. Поки без розподілу — просто дивимось разом.</p>
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-3 py-2 font-medium">Справа</th>{members.map((m) => <th key={m.id} className="px-3 py-2 font-medium">{m.name}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {list.map((c) => (
+              <tr key={c.id}><td className="px-3 py-2 text-slate-700">{c.text}</td>{members.map((m) => { const a = ratings[c.id]?.[m.id]?.attitude; return <td key={m.id} className="px-3 py-2">{a ? <span className="inline-flex items-center gap-1"><span>{ATT[a].emoji}</span><span className="text-xs" style={{ color: ATT[a].color }}>{ATT[a].label}</span></span> : <span className="text-slate-300">—</span>}</td>; })}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StepScores({ members, list, ratings, meta, onSaveRatings, onSaveMeta }) {
+  const use = meta.useScores;
+  const setScore = (choreId, memberId, score) => {
+    const s = Math.max(1, Math.min(10, Number(score) || 1));
+    onSaveRatings({ ...ratings, [choreId]: { ...(ratings[choreId] || {}), [memberId]: { ...(ratings[choreId]?.[memberId] || {}), score: s } } });
+  };
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Бали 1–10 <span className="text-sm font-normal text-slate-400">(необовʼязково)</span></h2>
+      <p className="mb-3 text-sm text-slate-500">Точніше за «подобається/терпимо/ненавиджу»: <b>1</b> = щиро подобається, <b>10</b> = «краще перееду, ніж робитиму це». Можна пропустити.</p>
+      <label className="mb-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+        <span className="text-sm font-medium text-slate-700">Використати бали 1–10</span>
+        <input type="checkbox" checked={use} onChange={(e) => onSaveMeta({ useScores: e.target.checked })} className="h-4 w-4 accent-indigo-600" />
+      </label>
+      {use && (
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-3 py-2 font-medium">Справа</th>{members.map((m) => <th key={m.id} className="px-3 py-2 font-medium">{m.name}</th>)}</tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {list.map((c) => (
+                <tr key={c.id}><td className="px-3 py-2 text-slate-700">{c.text}</td>{members.map((m) => { const r = ratings[c.id]?.[m.id]; const val = r?.score ?? ATT[r?.attitude]?.weight ?? ""; return <td key={m.id} className="px-3 py-2"><input type="number" min="1" max="10" value={val} onChange={(e) => setScore(c.id, m.id, e.target.value)} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-sm" /></td>; })}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!use && <p className="text-sm text-slate-400">Пропускаєш — розподіл рахуватиметься по «подобається/терпимо/ненавиджу».</p>}
+    </div>
+  );
+}
+
+function StepAssign({ members, list, ratings, assignments, meta, onSave }) {
+  const auto = () => {
+    const next = { ...assignments };
+    for (const c of list) {
+      let best = null, bestScore = Infinity;
+      for (const m of members) { const s = choreScore(ratings, c.id, m.id, meta.useScores); if (s != null && s < bestScore) { bestScore = s; best = m.id; } }
+      if (best) next[c.id] = { memberId: best, delegate: assignments[c.id]?.delegate || false };
+    }
+    onSave(next);
+  };
+  const setAssignee = (choreId, memberId) => onSave({ ...assignments, [choreId]: { ...(assignments[choreId] || {}), memberId } });
+  const toggleDeleg = (choreId) => onSave({ ...assignments, [choreId]: { ...(assignments[choreId] || {}), delegate: !assignments[choreId]?.delegate } });
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Розподіл</h2>
+      <p className="mb-3 text-sm text-slate-500">Кожну справу — тому, кому вона <b>найменш неприємна</b> (менший бал/ставлення). «Можна делегувати?» — підстрахування на важкий день.</p>
+      <button onClick={auto} className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"><SparklesIcon className="h-4 w-4" /> Призначити автоматично</button>
+      <div className="space-y-2">
+        {list.map((c) => {
+          const a = assignments[c.id];
+          return (
+            <div key={c.id} className="rounded-xl border border-slate-100 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="min-w-0 flex-1 text-sm font-medium text-slate-800">{c.text}</span>
+                <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500"><input type="checkbox" checked={!!a?.delegate} onChange={() => toggleDeleg(c.id)} className="h-3.5 w-3.5 accent-green-600" /> Можна делегувати</label>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {members.map((m) => { const s = choreScore(ratings, c.id, m.id, meta.useScores); const sel = a?.memberId === m.id; return (
+                  <button key={m.id} onClick={() => setAssignee(c.id, m.id)} className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium transition ${sel ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{m.name}{s != null && <span className={`text-xs ${sel ? "text-white/70" : "text-slate-400"}`}>· {s}</span>}</button>
+                ); })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function memberTotals(members, list, ratings, assignments, useScores) {
+  const totals = {}; for (const m of members) totals[m.id] = 0;
+  for (const c of list) { const a = assignments[c.id]; if (!a?.memberId) continue; const s = choreScore(ratings, c.id, a.memberId, useScores); if (s != null && totals[a.memberId] != null) totals[a.memberId] += s; }
+  return totals;
+}
+
+function StepBalance({ members, list, ratings, assignments, meta, onSave, onFinish }) {
+  const totals = memberTotals(members, list, ratings, assignments, meta.useScores);
+  const max = Math.max(1, ...Object.values(totals));
+  const move = (choreId, toId) => onSave({ ...assignments, [choreId]: { ...(assignments[choreId] || {}), memberId: toId } });
+  const colors = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#8b5cf6"];
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Баланс по складності</h2>
+      <p className="mb-3 text-sm text-slate-500">Рівняй за <b>сумарною складністю</b>, а не за кількістю: одна «10» переважує п'ять «2». Переноси справи, поки суми не стануть чесними.</p>
+
+      <div className="mb-4 space-y-2">
+        {members.map((m, i) => (
+          <div key={m.id}>
+            <div className="mb-1 flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">{m.name}</span><span className="font-bold tabular-nums" style={{ color: colors[i % colors.length] }}>{totals[m.id]}</span></div>
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full transition-all" style={{ width: `${(totals[m.id] / max) * 100}%`, backgroundColor: colors[i % colors.length] }} /></div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-3">
+        {members.map((m) => (
+          <div key={m.id} className="rounded-xl border border-slate-100 p-3">
+            <div className="mb-1.5 text-sm font-bold text-slate-700">{m.name}</div>
+            <div className="space-y-1">
+              {list.filter((c) => assignments[c.id]?.memberId === m.id).map((c) => {
+                const s = choreScore(ratings, c.id, m.id, meta.useScores);
+                const others = members.filter((x) => x.id !== m.id);
+                return (
+                  <div key={c.id} className="flex items-center gap-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate text-slate-700">{c.text} {s != null && <span className="text-xs text-slate-400">· {s}</span>} {assignments[c.id]?.delegate && <span className="text-xs text-green-600">↔</span>}</span>
+                    {others.map((o) => <button key={o.id} onClick={() => move(c.id, o.id)} title={`Перенести до ${o.name}`} className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-200">→ {o.name}</button>)}
+                  </div>
+                );
+              })}
+              {list.filter((c) => assignments[c.id]?.memberId === m.id).length === 0 && <div className="text-xs text-slate-300">поки нічого</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={onFinish} className="mt-4 w-full rounded-2xl bg-indigo-600 py-3 font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-700">Готово — показати дошку 📋</button>
+    </div>
+  );
+}
+
+function ChoreBoard({ members, list, ratings, assignments, meta, saveMeta, onEdit }) {
+  const totals = memberTotals(members, list, ratings, assignments, meta.useScores);
+  const colors = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#8b5cf6"];
+  return (
+    <div>
+      <div className="mb-1 flex items-center gap-2"><span className="text-2xl">📋</span><h1 className="text-2xl font-extrabold text-slate-900">Наша дошка справ</h1></div>
+      <p className="mb-4 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-800">📌 Повісь це на видному місці у спільному просторі (холодильник, коридор). З СДУГ: <b>з очей — з голови</b>. Зелене — можна делегувати на важкий день.</p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {members.map((m, i) => {
+          const mine = list.filter((c) => assignments[c.id]?.memberId === m.id);
+          return (
+            <div key={m.id} className="rounded-2xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: colors[i % colors.length] + "55" }}>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-lg font-extrabold" style={{ color: colors[i % colors.length] }}>{m.name}</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold tabular-nums text-slate-500">склад. {totals[m.id]}</span>
+              </div>
+              <ul className="space-y-1.5">
+                {mine.map((c) => { const deleg = assignments[c.id]?.delegate; return (
+                  <li key={c.id} className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm ${deleg ? "bg-green-50 text-green-800" : "bg-slate-50 text-slate-700"}`}>
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${deleg ? "bg-green-500" : "bg-slate-300"}`} />
+                    <span className="flex-1">{c.text}</span>
+                    {deleg && <span className="text-[10px] font-semibold uppercase text-green-600">делег.</span>}
+                  </li>
+                ); })}
+                {mine.length === 0 && <li className="px-2 py-1 text-sm text-slate-300">—</li>}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button onClick={onEdit} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Pencil className="h-4 w-4" /> Редагувати розподіл</button>
+        <button onClick={() => saveMeta({ finished: false, step: 1 })} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><RefreshCw className="h-4 w-4" /> Пройти заново</button>
       </div>
     </div>
   );
