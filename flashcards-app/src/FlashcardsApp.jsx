@@ -166,7 +166,7 @@ function cardScheduleText(card, now = Date.now()) {
 /* ------------------------------------------------------------------ */
 // Ordered stages from short (hot) to long (cool). `max` is in days.
 const INTERVAL_STAGES = [
-  { id: "learning", label: "Learning", max: 0, dot: "#e11d48", bg: "bg-rose-100", text: "text-rose-700" },
+  { id: "learning", label: "Learning", max: 0, dot: "#e11d48", bg: "bg-red-100", text: "text-red-700" },
   { id: "1d", label: "1 day", max: 1, dot: "#f97316", bg: "bg-orange-100", text: "text-orange-700" },
   { id: "3d", label: "3 days", max: 3, dot: "#f59e0b", bg: "bg-amber-100", text: "text-amber-700" },
   { id: "1w", label: "1 week", max: 7, dot: "#eab308", bg: "bg-yellow-100", text: "text-yellow-700" },
@@ -216,7 +216,7 @@ function daysUntil(ms, now = Date.now()) {
 }
 
 const GRADES = [
-  { key: "again", label: "Again", hint: "1", cls: "bg-rose-600 hover:bg-rose-700", ring: "ring-rose-300" },
+  { key: "again", label: "Again", hint: "1", cls: "bg-red-600 hover:bg-red-700", ring: "ring-red-300" },
   { key: "hard", label: "Hard", hint: "2", cls: "bg-amber-500 hover:bg-amber-600", ring: "ring-amber-300" },
   { key: "good", label: "Good", hint: "3", cls: "bg-green-600 hover:bg-green-700", ring: "ring-green-300" },
   { key: "easy", label: "Easy", hint: "4", cls: "bg-blue-600 hover:bg-blue-700", ring: "ring-blue-300" },
@@ -1841,7 +1841,7 @@ export default function FlashcardsApp() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500">
         <div className="flex flex-col items-center gap-3">
-          <Brain className="h-8 w-8 animate-pulse text-indigo-500" />
+          <Brain className="h-8 w-8 animate-pulse text-rose-500" />
           <div className="text-sm">{loadMsg}</div>
         </div>
       </div>
@@ -1896,7 +1896,7 @@ export default function FlashcardsApp() {
           >
             <span className="text-base">Studying</span>
             {totalDue > 0 && view === "home" && (
-              <CountPill n={totalDue} cls="bg-indigo-100 text-indigo-700 ml-1" />
+              <CountPill n={totalDue} cls="bg-rose-100 text-rose-700 ml-1" />
             )}
           </button>
 
@@ -2091,10 +2091,10 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
           const active = section === it.id;
           return (
             <button key={it.id} onClick={() => onSection(it.id)} title={it.label}
-              className={`relative flex flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium transition ${active ? "text-indigo-600" : "text-slate-400"}`}>
+              className={`relative flex flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium transition ${active ? "text-rose-600" : "text-slate-400"}`}>
               <span className="relative">
                 <it.icon className="h-5 w-5" />
-                {it.badge > 0 && <span className="absolute -right-1.5 -top-1 min-w-[14px] rounded-full bg-indigo-500 px-1 text-center text-[9px] font-bold leading-[14px] text-white">{it.badge > 99 ? "99+" : it.badge}</span>}
+                {it.badge > 0 && <span className="absolute -right-1.5 -top-1 min-w-[14px] rounded-full bg-rose-500 px-1 text-center text-[9px] font-bold leading-[14px] text-white">{it.badge > 99 ? "99+" : it.badge}</span>}
               </span>
               <span className="max-w-full truncate px-0.5">{it.label}</span>
             </button>
@@ -2110,7 +2110,7 @@ function NavButton({ active, onClick, icon: Icon, children }) {
     <button
       onClick={onClick}
       className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-        active ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+        active ? "bg-rose-50 text-rose-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
       }`}
     >
       <Icon className="h-4 w-4" />
@@ -2137,7 +2137,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
   return (
     <aside className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-all lg:flex ${collapsed ? "lg:w-16" : "lg:w-60"}`}>
       <div className="flex h-14 items-center gap-2 px-4">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-indigo-600 text-white">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-rose-600 text-white">
           <Brain className="h-4 w-4" />
         </span>
         {wide && <span className="hidden text-lg font-bold tracking-tight text-slate-900 lg:inline">Recall</span>}
@@ -2152,15 +2152,15 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
               onClick={() => onSection(it.id)}
               title={it.label}
               className={`flex items-center gap-3 rounded-lg px-2.5 py-2.5 text-sm font-medium transition ${
-                active ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                active ? "bg-rose-50 text-rose-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
               }`}
             >
               <span className="relative shrink-0">
                 <it.icon className="h-5 w-5" />
-                {it.badge > 0 && collapsed && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-indigo-500" />}
+                {it.badge > 0 && collapsed && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-rose-500" />}
               </span>
               {wide && <span className="hidden flex-1 text-left lg:inline">{it.label}</span>}
-              {wide && it.badge > 0 && <span className="hidden lg:inline"><CountPill n={it.badge} cls="bg-indigo-100 text-indigo-700" /></span>}
+              {wide && it.badge > 0 && <span className="hidden lg:inline"><CountPill n={it.badge} cls="bg-rose-100 text-rose-700" /></span>}
             </button>
           );
         })}
@@ -2226,7 +2226,7 @@ function HomeView({
   if (!decks.length && !groups.length) {
     return (
       <div className="mx-auto max-w-md py-16 text-center">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-indigo-600 text-white">
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-rose-600 text-white">
           <Brain className="h-8 w-8" />
         </div>
         <h1 className="mt-5 text-2xl font-bold text-slate-900">Study anything, remembered.</h1>
@@ -2241,14 +2241,14 @@ function HomeView({
             </button>
           )}
           <div className="flex gap-3">
-            <button onClick={onNewDeck} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-indigo-700">
+            <button onClick={onNewDeck} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700">
               <Plus className="h-4 w-4" /> New deck
             </button>
             <button onClick={onImport} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
               <Upload className="h-4 w-4" /> Import
             </button>
           </div>
-          <button onClick={onSample} className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-indigo-600">
+          <button onClick={onSample} className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-rose-600">
             <Sparkles className="h-4 w-4" /> or load a sample deck
           </button>
         </div>
@@ -2270,7 +2270,7 @@ function HomeView({
     <div className="space-y-6">
       {/* summary strip */}
       <div className="flex flex-wrap gap-3">
-        <StatTile icon={Target} label="Due today" value={totalDue} tint={totalDue ? "text-indigo-600" : "text-slate-400"} sub={totalDue ? "cards waiting" : "all caught up"} />
+        <StatTile icon={Target} label="Due today" value={totalDue} tint={totalDue ? "text-rose-600" : "text-slate-400"} sub={totalDue ? "cards waiting" : "all caught up"} />
         <StatTile icon={Check} label="Studied today" value={studiedToday} tint="text-slate-700" sub="reviews done" />
         <StatTile icon={Flame} label="Streak" value={streak} tint={streak ? "text-orange-500" : "text-slate-400"} sub={streak === 1 ? "day" : "days"} />
         <StatTile icon={Layers} label="Decks" value={decks.length} tint="text-slate-700" />
@@ -2278,7 +2278,7 @@ function HomeView({
 
       {/* actions */}
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={onStudyAll} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">
+        <button onClick={onStudyAll} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700">
           <Play className="h-4 w-4" /> Study
         </button>
         <button onClick={onNewDeck} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
@@ -2319,7 +2319,7 @@ function HomeView({
 
       {/* ungrouped decks */}
       {(ungrouped.length > 0 || (dragId && groups.length > 0)) && (
-        <div {...dropProps("ungrouped")} className={`rounded-xl transition ${overTarget === "ungrouped" ? "ring-2 ring-indigo-300 ring-offset-2" : ""}`}>
+        <div {...dropProps("ungrouped")} className={`rounded-xl transition ${overTarget === "ungrouped" ? "ring-2 ring-rose-300 ring-offset-2" : ""}`}>
           {groups.length > 0 && (
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
               <Layers className="h-3.5 w-3.5" /> Ungrouped <span className="text-slate-300">· {ungrouped.length}</span>
@@ -2335,7 +2335,7 @@ function HomeView({
 
       <div className="flex items-center gap-4 pt-2 text-xs text-slate-400">
         <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-400" /> new</span>
-        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-rose-400" /> learning</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> learning</span>
         <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-400" /> review</span>
       </div>
     </div>
@@ -2347,7 +2347,7 @@ function GroupFolder({ group, rollup, decks, renderDeck, onStudyGroup, onEditGro
   const r = rollup || { due: 0, total: 0, deckCount: decks.length };
   const open = !group.collapsed;
   return (
-    <div {...dropProps} className={`overflow-hidden rounded-xl border bg-white shadow-sm transition ${highlight ? "border-indigo-400 ring-2 ring-indigo-200" : "border-slate-200"}`}>
+    <div {...dropProps} className={`overflow-hidden rounded-xl border bg-white shadow-sm transition ${highlight ? "border-rose-400 ring-2 ring-rose-200" : "border-slate-200"}`}>
       <div className="group flex items-center gap-2 px-3 py-2.5">
         <button onClick={() => onToggle(group.id)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
           <ChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
@@ -2360,7 +2360,7 @@ function GroupFolder({ group, rollup, decks, renderDeck, onStudyGroup, onEditGro
           </span>
         </button>
         {r.due > 0 && (
-          <button onClick={() => onStudyGroup(group.id)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-700">
+          <button onClick={() => onStudyGroup(group.id)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-rose-700">
             <Play className="h-3.5 w-3.5" /> {r.due}
           </button>
         )}
@@ -2369,7 +2369,7 @@ function GroupFolder({ group, rollup, decks, renderDeck, onStudyGroup, onEditGro
         </button>
         <button
           onClick={() => { if (confirm(`Delete group “${group.name}”? Its decks are kept and moved to Ungrouped.`)) onDeleteGroup(group.id); }}
-          className="rounded-md p-1.5 text-slate-300 transition hover:bg-rose-50 hover:text-rose-500" title="Delete group"
+          className="rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="Delete group"
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -2398,7 +2398,7 @@ function DeckCard({ deck, s, groups = [], onOpen, onStudy, onEdit, onDelete, onM
       draggable
       onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", deck.id); onDragStart?.(); }}
       onDragEnd={() => onDragEnd?.()}
-      className={`group relative flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-indigo-200 hover:shadow ${dragging ? "opacity-40" : ""}`}
+      className={`group relative flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-rose-200 hover:shadow ${dragging ? "opacity-40" : ""}`}
     >
       <button onClick={() => onOpen(deck.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg ${color.bg} ${color.text}`}>
@@ -2415,7 +2415,7 @@ function DeckCard({ deck, s, groups = [], onOpen, onStudy, onEdit, onDelete, onM
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
             <CountPill n={sum.newDue} cls="bg-blue-100 text-blue-700" />
-            <CountPill n={sum.learn} cls="bg-rose-100 text-rose-700" />
+            <CountPill n={sum.learn} cls="bg-red-100 text-red-700" />
             <CountPill n={sum.review} cls="bg-green-100 text-green-700" />
             <span className="text-slate-400">{sum.total} card{sum.total === 1 ? "" : "s"}</span>
           </div>
@@ -2423,7 +2423,7 @@ function DeckCard({ deck, s, groups = [], onOpen, onStudy, onEdit, onDelete, onM
       </button>
       <div className="flex shrink-0 items-center gap-1">
         {sum.due > 0 ? (
-          <button onClick={() => onStudy(deck.id)} className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-700" title="Study">
+          <button onClick={() => onStudy(deck.id)} className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-rose-700" title="Study">
             <Play className="h-3.5 w-3.5" /> {sum.due}
           </button>
         ) : (
@@ -2439,7 +2439,7 @@ function DeckCard({ deck, s, groups = [], onOpen, onStudy, onEdit, onDelete, onM
         </button>
         <button
           onClick={() => { if (confirm(`Delete deck “${deck.name}” and its ${sum.total} cards?`)) onDelete(deck.id); }}
-          className="rounded-md p-1.5 text-slate-300 transition hover:bg-rose-50 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100" title="Delete deck"
+          className="rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100" title="Delete deck"
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -2457,7 +2457,7 @@ function DeckCard({ deck, s, groups = [], onOpen, onStudy, onEdit, onDelete, onM
             )}
             {groups.map((g) => (
               <button key={g.id} onClick={() => { onMove(deck.id, g.id); setMenu(false); }}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 ${deck.groupId === g.id ? "font-semibold text-indigo-600" : "text-slate-700"}`}>
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 ${deck.groupId === g.id ? "font-semibold text-rose-600" : "text-slate-700"}`}>
                 <span className="text-base">{g.emoji || "📁"}</span> <span className="truncate">{g.name}</span>
                 {deck.groupId === g.id && <Check className="ml-auto h-4 w-4" />}
               </button>
@@ -2535,7 +2535,7 @@ function SpeakerButton({ text, lang, size = "sm", onFallback }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); const r = speak(text, lang); if (!r.ok && onFallback) onFallback(); }}
-      className={`grid ${dim} shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-indigo-100 hover:text-indigo-600`}
+      className={`grid ${dim} shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-rose-100 hover:text-rose-600`}
       title="Read aloud (R)"
     >
       <Volume2 className={size === "lg" ? "h-4.5 w-4.5" : "h-4 w-4"} style={{ width: size === "lg" ? 18 : 15, height: size === "lg" ? 18 : 15 }} />
@@ -2623,7 +2623,7 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
           <StatTile icon={Check} label="Reviewed" value={session.done} />
           <StatTile icon={Target} label="Recalled" value={`${acc}%`} tint="text-green-600" />
         </div>
-        <button onClick={onExit} className="mt-8 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 font-semibold text-white transition hover:bg-indigo-700">
+        <button onClick={onExit} className="mt-8 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white transition hover:bg-rose-700">
           <ArrowLeft className="h-4 w-4" /> Back to decks
         </button>
       </div>
@@ -2648,7 +2648,7 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
             <span className="tabular-nums">{session.total - session.queue.length} / {session.total}</span>
           </div>
           <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200">
-            <div className="h-full rounded-full bg-indigo-600 transition-all duration-300" style={{ width: `${progress}%` }} />
+            <div className="h-full rounded-full bg-rose-600 transition-all duration-300" style={{ width: `${progress}%` }} />
           </div>
         </div>
       </div>
@@ -2666,8 +2666,8 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
       >
         {/* swipe hint overlay (mobile) */}
         {session.flipped && drag !== 0 && (
-          <div className={`pointer-events-none absolute inset-0 flex items-center justify-center ${drag > 0 ? "bg-green-500/10" : "bg-rose-500/10"}`} style={{ opacity: Math.min(1, Math.abs(drag) / 85) }}>
-            <span className={`rounded-full px-4 py-2 text-lg font-extrabold text-white shadow ${drag > 0 ? "bg-green-500" : "bg-rose-500"}`}>{drag > 0 ? "Знаю ✓" : "Ще раз"}</span>
+          <div className={`pointer-events-none absolute inset-0 flex items-center justify-center ${drag > 0 ? "bg-green-500/10" : "bg-red-500/10"}`} style={{ opacity: Math.min(1, Math.abs(drag) / 85) }}>
+            <span className={`rounded-full px-4 py-2 text-lg font-extrabold text-white shadow ${drag > 0 ? "bg-green-500" : "bg-red-500"}`}>{drag > 0 ? "Знаю ✓" : "Ще раз"}</span>
           </div>
         )}
         {card.tags && (
@@ -2700,7 +2700,7 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
               />
             )}
             <div className="flex items-center gap-2">
-              <div className="text-2xl font-medium text-indigo-700" style={{ textWrap: "balance" }}>{card.back}</div>
+              <div className="text-2xl font-medium text-rose-700" style={{ textWrap: "balance" }}>{card.back}</div>
               <SpeakerButton text={card.back} lang={lang} onFallback={() => setVoiceHint(true)} />
             </div>
             {card.notes && <div className="mt-4 max-w-md text-sm text-slate-500">{card.notes}</div>}
@@ -2796,7 +2796,7 @@ function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds
           <select
             value={setup.deckScope}
             onChange={(e) => onChange({ deckScope: e.target.value })}
-            className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-9 text-sm font-medium focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-9 text-sm font-medium focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
           >
             <option value="all">All decks — {cardsIn(decks.map((d) => d.id)).toLocaleString()} cards</option>
             {groups.length > 0 && (
@@ -2833,16 +2833,16 @@ function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds
                 key={m.id}
                 onClick={() => onChange({ mode: m.id })}
                 className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
-                  active ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-100" : "border-slate-200 bg-white hover:border-slate-300"
+                  active ? "border-rose-500 bg-rose-50 ring-2 ring-rose-100" : "border-slate-200 bg-white hover:border-slate-300"
                 }`}
               >
-                <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${active ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>
+                <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${active ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-500"}`}>
                   <Icon className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold text-slate-800">{m.label}</span>
-                    <span className={`shrink-0 text-xs font-semibold tabular-nums ${n ? "text-indigo-600" : "text-slate-300"}`}>{n.toLocaleString()}</span>
+                    <span className={`shrink-0 text-xs font-semibold tabular-nums ${n ? "text-rose-600" : "text-slate-300"}`}>{n.toLocaleString()}</span>
                   </div>
                   <p className="mt-0.5 text-xs leading-snug text-slate-500">{m.desc}</p>
                 </div>
@@ -2862,7 +2862,7 @@ function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds
             max={9999}
             value={setup.count}
             onChange={(e) => onChange({ count: Math.max(1, Math.min(9999, Number(e.target.value) || 1)) })}
-            className="w-24 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm tabular-nums focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            className="w-24 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm tabular-nums focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
           />
           <span className="text-xs text-slate-400">due cards come first</span>
         </div>
@@ -2872,7 +2872,7 @@ function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds
         <button
           onClick={() => onStart(setup)}
           disabled={!startCount}
-          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-2.5 font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-6 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           <Play className="h-4 w-4" /> Start · {startCount.toLocaleString()} card{startCount === 1 ? "" : "s"}
         </button>
@@ -2949,13 +2949,13 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
 
         <div className="space-y-4">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Name <span className="text-rose-500">*</span></span>
+            <span className="mb-1 block text-xs font-medium text-slate-500">Name <span className="text-red-500">*</span></span>
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Spanish verbs"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
             />
           </label>
 
@@ -2966,7 +2966,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
               onChange={(e) => setTopic(e.target.value)}
               list="topic-options"
               placeholder="Type or pick — e.g. Languages"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
             />
             <datalist id="topic-options">
               {topicOptions.map((t) => <option key={t} value={t} />)}
@@ -2980,7 +2980,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
               placeholder="What's in this deck?"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
             />
           </label>
 
@@ -3004,7 +3004,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
             <div className="flex flex-wrap gap-1.5">
               <button
                 onClick={() => setEmoji("")}
-                className={`grid h-9 w-9 place-items-center rounded-lg border text-slate-400 transition ${emoji === "" ? "border-indigo-500 bg-indigo-50" : "border-slate-200 hover:bg-slate-50"}`}
+                className={`grid h-9 w-9 place-items-center rounded-lg border text-slate-400 transition ${emoji === "" ? "border-rose-500 bg-rose-50" : "border-slate-200 hover:bg-slate-50"}`}
                 title="No icon"
               >
                 <GraduationCap className="h-4 w-4" />
@@ -3013,7 +3013,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
                 <button
                   key={e}
                   onClick={() => setEmoji(e)}
-                  className={`grid h-9 w-9 place-items-center rounded-lg border text-lg transition ${emoji === e ? "border-indigo-500 bg-indigo-50" : "border-slate-200 hover:bg-slate-50"}`}
+                  className={`grid h-9 w-9 place-items-center rounded-lg border text-lg transition ${emoji === e ? "border-rose-500 bg-rose-50" : "border-slate-200 hover:bg-slate-50"}`}
                 >
                   {e}
                 </button>
@@ -3026,7 +3026,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-500">Group</span>
               <div className="relative">
-                <select value={groupId} onChange={(e) => setGroupId(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                <select value={groupId} onChange={(e) => setGroupId(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100">
                   <option value="">No group (ungrouped)</option>
                   {groups.map((g) => (
                     <option key={g.id} value={g.id}>{g.emoji ? `${g.emoji} ` : ""}{g.name}</option>
@@ -3038,7 +3038,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
             <label className="block">
               <span className="mb-1 block text-xs font-medium text-slate-500">Audio language (TTS)</span>
               <div className="relative">
-                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100">
                   {DECK_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -3050,7 +3050,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
             <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
               <Volume2 className="h-4 w-4 text-slate-400" /> Auto-play audio when a card is shown
             </span>
-            <input type="checkbox" checked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} className="h-4 w-4 accent-indigo-600" />
+            <input type="checkbox" checked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} className="h-4 w-4 accent-rose-600" />
           </label>
 
           {/* scheduling goal */}
@@ -3064,9 +3064,9 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
                   <button
                     key={g.id}
                     onClick={() => setGoal(g.id)}
-                    className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition ${active ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                    className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition ${active ? "border-rose-500 bg-rose-50 ring-2 ring-rose-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
                   >
-                    <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${active ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"}`}>
+                    <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${active ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-500"}`}>
                       <Icon className="h-4 w-4" />
                     </div>
                     <div>
@@ -3098,7 +3098,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
           <button
             onClick={save}
             disabled={!name.trim()}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             <Check className="h-4 w-4" /> {deck ? "Save changes" : "Create deck"}
           </button>
@@ -3134,8 +3134,8 @@ function GroupEditor({ group, onClose, onSave }) {
 
         <div className="space-y-4">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Name <span className="text-rose-500">*</span></span>
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Languages" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+            <span className="mb-1 block text-xs font-medium text-slate-500">Name <span className="text-red-500">*</span></span>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Languages" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
           </label>
           <div>
             <span className="mb-1.5 block text-xs font-medium text-slate-500">Color</span>
@@ -3148,9 +3148,9 @@ function GroupEditor({ group, onClose, onSave }) {
           <div>
             <span className="mb-1.5 block text-xs font-medium text-slate-500">Icon (optional)</span>
             <div className="flex flex-wrap gap-1.5">
-              <button onClick={() => setEmoji("")} className={`grid h-9 w-9 place-items-center rounded-lg border text-slate-400 transition ${emoji === "" ? "border-indigo-500 bg-indigo-50" : "border-slate-200 hover:bg-slate-50"}`}><Folder className="h-4 w-4" /></button>
+              <button onClick={() => setEmoji("")} className={`grid h-9 w-9 place-items-center rounded-lg border text-slate-400 transition ${emoji === "" ? "border-rose-500 bg-rose-50" : "border-slate-200 hover:bg-slate-50"}`}><Folder className="h-4 w-4" /></button>
               {DECK_EMOJIS.map((e) => (
-                <button key={e} onClick={() => setEmoji(e)} className={`grid h-9 w-9 place-items-center rounded-lg border text-lg transition ${emoji === e ? "border-indigo-500 bg-indigo-50" : "border-slate-200 hover:bg-slate-50"}`}>{e}</button>
+                <button key={e} onClick={() => setEmoji(e)} className={`grid h-9 w-9 place-items-center rounded-lg border text-lg transition ${emoji === e ? "border-rose-500 bg-rose-50" : "border-slate-200 hover:bg-slate-50"}`}>{e}</button>
               ))}
             </div>
           </div>
@@ -3158,7 +3158,7 @@ function GroupEditor({ group, onClose, onSave }) {
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Cancel</button>
-          <button onClick={save} disabled={!name.trim()} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+          <button onClick={save} disabled={!name.trim()} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300">
             <Check className="h-4 w-4" /> {group ? "Save changes" : "Create group"}
           </button>
         </div>
@@ -3230,7 +3230,7 @@ function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onA
           <button onClick={onEditDeck} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
             <Settings className="h-4 w-4" /> <span className="hidden sm:inline">Settings</span>
           </button>
-          <button onClick={onStudy} disabled={!cards.length} className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:bg-slate-300">
+          <button onClick={onStudy} disabled={!cards.length} className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:bg-slate-300">
             <Play className="h-4 w-4" /> Study
           </button>
         </div>
@@ -3264,10 +3264,10 @@ function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onA
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search…"
-              className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 sm:w-56"
+              className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-56"
             />
           </div>
-          <button onClick={onAddCard} className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-700">
+          <button onClick={onAddCard} className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-rose-700">
             <Plus className="h-4 w-4" /> Add card
           </button>
         </div>
@@ -3275,7 +3275,7 @@ function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onA
         {cards.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white py-12 text-center text-slate-500">
             <p className="font-medium">No cards yet</p>
-            <button onClick={onAddCard} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700">
+            <button onClick={onAddCard} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700">
               <Plus className="h-4 w-4" /> Add your first card
             </button>
           </div>
@@ -3294,7 +3294,7 @@ function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onA
                 <button onClick={() => onEditCard(c)} className="rounded-md p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 sm:opacity-0 sm:group-hover:opacity-100" title="Edit card">
                   <Pencil className="h-4 w-4" />
                 </button>
-                <button onClick={() => { if (confirm("Delete this card?")) onDeleteCard(c.id); }} className="rounded-md p-1.5 text-slate-300 transition hover:bg-rose-50 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100" title="Delete card">
+                <button onClick={() => { if (confirm("Delete this card?")) onDeleteCard(c.id); }} className="rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100" title="Delete card">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -3380,7 +3380,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
       tabIndex={0}
       onClick={() => setPasteTarget(side)}
       onFocus={() => setPasteTarget(side)}
-      className={`rounded-lg border-2 border-dashed p-2 transition ${pasteTarget === side ? "border-indigo-400 bg-indigo-50/40" : "border-slate-200"}`}
+      className={`rounded-lg border-2 border-dashed p-2 transition ${pasteTarget === side ? "border-rose-400 bg-rose-50/40" : "border-slate-200"}`}
     >
       {img[side] ? (
         <div className="relative">
@@ -3395,7 +3395,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
           <div className="flex items-center gap-2 text-xs">
             <button
               onClick={() => (side === "front" ? frontFile : backFile).current?.click()}
-              className="font-medium text-indigo-600 hover:text-indigo-700"
+              className="font-medium text-rose-600 hover:text-rose-700"
             >
               Upload
             </button>
@@ -3417,7 +3417,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
           <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
         </div>
 
-        {err && <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{err}</div>}
+        {err && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
 
         <div className="grid gap-5 sm:grid-cols-2">
           {["front", "back"].map((side) => (
@@ -3431,7 +3431,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
                 onChange={(e) => (side === "front" ? setFront : setBack)(e.target.value)}
                 rows={3}
                 placeholder={side === "front" ? "Question / prompt" : "Answer"}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
               />
               <ImageSlot side={side} />
             </div>
@@ -3441,7 +3441,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
         <label className="mt-4 block">
           <span className="mb-1 block text-xs font-medium text-slate-500">Audio language override (optional)</span>
           <div className="relative sm:w-64">
-            <select value={lang} onChange={(e) => setLang(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+            <select value={lang} onChange={(e) => setLang(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100">
               {LANGUAGES.map((l) => <option key={l.code || "default"} value={l.code}>{l.code ? l.label : `Deck default (${DECK_LANGUAGES.find((x) => x.code === deck?.language)?.label || deck?.language || "—"})`}</option>)}
             </select>
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -3451,7 +3451,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
         <div className="mt-6 flex items-center justify-end gap-3">
           {busy && <span className="mr-auto text-xs text-slate-400">Processing image…</span>}
           <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Cancel</button>
-          <button onClick={save} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:bg-slate-300">
+          <button onClick={save} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:bg-slate-300">
             <Check className="h-4 w-4" /> {card ? "Save card" : "Add card"}
           </button>
         </div>
@@ -3652,7 +3652,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
       </div>
 
       {error && (
-        <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           <X className="mt-0.5 h-4 w-4 shrink-0" /> {error}
         </div>
       )}
@@ -3661,7 +3661,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
         <div>
           <button
             onClick={() => fileRef.current?.click()}
-            className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white py-12 text-slate-500 transition hover:border-indigo-400 hover:text-indigo-600"
+            className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white py-12 text-slate-500 transition hover:border-rose-400 hover:text-rose-600"
           >
             <Upload className="h-8 w-8" />
             <span className="font-medium">Choose a .xlsx, .xls or .csv file</span>
@@ -3687,7 +3687,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
           <div className="flex items-center justify-between">
             <p className="text-sm text-slate-500">Each sheet imports as its own deck. Untick any you don't want, or rename them.</p>
             <div className="flex shrink-0 gap-3 text-xs font-medium">
-              <button onClick={() => setAllSheets(true)} className="text-indigo-600 hover:text-indigo-700">All</button>
+              <button onClick={() => setAllSheets(true)} className="text-rose-600 hover:text-rose-700">All</button>
               <button onClick={() => setAllSheets(false)} className="text-slate-400 hover:text-slate-600">None</button>
             </div>
           </div>
@@ -3702,12 +3702,12 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
                   type="checkbox"
                   checked={s.include}
                   onChange={(e) => setSheet(i, { include: e.target.checked })}
-                  className="h-4 w-4 shrink-0 accent-indigo-600"
+                  className="h-4 w-4 shrink-0 accent-rose-600"
                 />
                 <input
                   value={s.deckName}
                   onChange={(e) => setSheet(i, { deckName: e.target.value })}
-                  className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-slate-800 hover:border-slate-200 focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                  className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-slate-800 hover:border-slate-200 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100"
                 />
                 <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-500">
                   {s.cards.length} cards
@@ -3720,7 +3720,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
             <button
               onClick={commitSheets}
               disabled={!includedCount}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <Check className="h-4 w-4" /> Import {includedCount.toLocaleString()} card{includedCount === 1 ? "" : "s"}
               <span className="opacity-80">· {includedSheets.length} deck{includedSheets.length === 1 ? "" : "s"}</span>
@@ -3758,12 +3758,12 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
               ].map(({ field, label, required }) => (
                 <label key={field} className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-500">
-                    {label} {required && <span className="text-rose-500">*</span>}
+                    {label} {required && <span className="text-red-500">*</span>}
                   </span>
                   <select
                     value={mapping[field]}
                     onChange={(e) => setMapping((m) => ({ ...m, [field]: e.target.value }))}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
                   >
                     <option value="">— none —</option>
                     {parsed.headers.map((h) => (
@@ -3816,7 +3816,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
             <button
               onClick={commitFile}
               disabled={!mapping.front || !validCount}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <Check className="h-4 w-4" /> Import {validCount} card{validCount === 1 ? "" : "s"}
             </button>
@@ -3839,13 +3839,13 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
               onChange={(e) => setPasteText(e.target.value)}
               rows={9}
               placeholder={"bonjour | hello\nmerci | thank you\nau revoir | goodbye"}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
             />
           </div>
           <button
             onClick={commitPaste}
             disabled={!pasteText.trim()}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             <Check className="h-4 w-4" /> Add cards
           </button>
@@ -3860,7 +3860,7 @@ function ModeTab({ active, onClick, icon: Icon, children }) {
     <button
       onClick={onClick}
       className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
-        active ? "bg-indigo-600 text-white" : "text-slate-500 hover:text-slate-800"
+        active ? "bg-rose-600 text-white" : "text-slate-500 hover:text-slate-800"
       }`}
     >
       <Icon className="h-4 w-4" /> {children}
@@ -3878,7 +3878,7 @@ function DeckTargetPicker({ decks, target, onChange, defaultName }) {
           <select
             value={target.deckId}
             onChange={(e) => onChange({ ...target, deckId: e.target.value })}
-            className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
           >
             <option value="">➕ Create a new deck…</option>
             {decks.length > 0 && <option disabled>──────────</option>}
@@ -3893,7 +3893,7 @@ function DeckTargetPicker({ decks, target, onChange, defaultName }) {
             value={target.name}
             onChange={(e) => onChange({ ...target, name: e.target.value })}
             placeholder={defaultName || "New deck name"}
-            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
           />
         )}
       </div>
@@ -3957,7 +3957,7 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
       <h1 className="text-xl font-bold text-slate-900">Your progress</h1>
 
       <div className="flex flex-wrap gap-3">
-        <StatTile icon={Check} label="Studied today" value={studiedToday} tint="text-indigo-600" />
+        <StatTile icon={Check} label="Studied today" value={studiedToday} tint="text-rose-600" />
         <StatTile icon={Flame} label="Streak" value={streak} tint={streak ? "text-orange-500" : "text-slate-400"} sub={streak === 1 ? "day" : "days"} />
         <StatTile icon={Target} label="Retention" value={retention == null ? "—" : `${retention}%`} tint="text-green-600" sub="last 30 days" />
         <StatTile icon={Inbox} label="Due now" value={totalDue} tint={totalDue ? "text-slate-700" : "text-slate-400"} />
@@ -4005,7 +4005,7 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
               <div key={i} className="flex flex-1 flex-col items-center gap-1">
                 <div className="flex w-full flex-1 items-end">
                   <div
-                    className="w-full rounded-t bg-indigo-500 transition-all"
+                    className="w-full rounded-t bg-rose-500 transition-all"
                     style={{ height: `${d.studied ? Math.max(6, h) : 0}%`, minHeight: d.studied ? 6 : 0 }}
                     title={`${d.studied} cards`}
                   />
@@ -4032,7 +4032,7 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
           <input
             type="number" min={0} max={999} value={newPerDay}
             onChange={(e) => onChangeNewPerDay(Math.max(0, Math.min(999, Number(e.target.value) || 0)))}
-            className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm tabular-nums focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm tabular-nums focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
           />
         </label>
         <div className="mt-4 flex flex-wrap gap-3">
@@ -4041,7 +4041,7 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
           </button>
           <button
             onClick={() => { if (confirm("Reset ALL data — decks, cards, stats AND your routine/habits? This cannot be undone.")) onReset(); }}
-            className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-4 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50"
+            className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
           >
             <RotateCcw className="h-4 w-4" /> Reset everything
           </button>
@@ -4102,19 +4102,19 @@ function CloudSyncPanel() {
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative flex-1 min-w-[200px]">
                 <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input type="email" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") doSend(); }} placeholder="you@email.com" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                <input type="email" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") doSend(); }} placeholder="you@email.com" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
               </div>
-              <button onClick={doSend} disabled={busy || !input.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:bg-slate-300">{busy ? "…" : "Надіслати код"}</button>
+              <button onClick={doSend} disabled={busy || !input.trim()} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:bg-slate-300">{busy ? "…" : "Надіслати код"}</button>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={(e) => { if (e.key === "Enter") doVerify(); }} placeholder="6-значний код" inputMode="numeric" className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm tracking-widest focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
-              <button onClick={doVerify} disabled={busy || code.length < 6} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:bg-slate-300">{busy ? "…" : "Підтвердити й синхронізувати"}</button>
+              <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={(e) => { if (e.key === "Enter") doVerify(); }} placeholder="6-значний код" inputMode="numeric" className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm tracking-widest focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
+              <button onClick={doVerify} disabled={busy || code.length < 6} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:bg-slate-300">{busy ? "…" : "Підтвердити й синхронізувати"}</button>
               <button onClick={() => { setStep("idle"); setCode(""); setErr(""); }} className="text-sm font-medium text-slate-400 hover:text-slate-600">Змінити пошту</button>
               <span className="w-full text-xs text-slate-400">Лист надіслано на {input} (перевір і спам). Введи код — або просто клікни посилання в листі, воно поверне тебе сюди вже залогіненою.</span>
             </div>
           )}
-          {err && <p className="mt-2 text-sm text-rose-600">{err}</p>}
+          {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
         </>
       )}
     </div>
@@ -4151,7 +4151,7 @@ const prettyDate = (ds) => new Date(ds + "T00:00:00").toLocaleDateString(undefin
 function GamifyBar({ xp, onRewards }) {
   const lp = levelProgress(xp);
   return (
-    <button onClick={onRewards} className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/80 p-3 text-left shadow-sm ring-1 ring-rose-100 transition hover:ring-rose-200">
+    <button onClick={onRewards} className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/80 p-3 text-left shadow-sm ring-1 ring-red-100 transition hover:ring-red-200">
       <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-pink-400 to-fuchsia-400 text-white shadow-sm">
         <span className="text-xs font-black leading-none">LVL</span>
       </span>
@@ -4173,7 +4173,7 @@ function ChallengesCard({ challenges, ctx, chDoc, onDismiss }) {
   const visible = challenges.filter((c) => !chDoc.dismissed?.[c.id]);
   if (!visible.length) return null;
   return (
-    <div className="mt-4 rounded-2xl bg-white/80 p-3.5 shadow-sm ring-1 ring-rose-100">
+    <div className="mt-4 rounded-2xl bg-white/80 p-3.5 shadow-sm ring-1 ring-red-100">
       <div className="mb-2 flex items-center gap-1.5 text-sm font-extrabold text-slate-800"><span>🎯</span> Челенджі дня</div>
       <div className="space-y-2">
         {visible.map((c) => {
@@ -4239,7 +4239,7 @@ function FocusMode({ tasks, doc, onClose, onDone, onSkip }) {
   );
   const p = getPastel(task.color);
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-rose-50 to-pink-100 p-6">
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-red-50 to-pink-100 p-6">
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-slate-400">Зараз · {idx + 1}/{tasks.length}</span>
         <button onClick={onClose} className="rounded-full bg-white/70 p-2 text-slate-500"><X className="h-5 w-5" /></button>
@@ -4287,7 +4287,7 @@ function RewardsPanel({ xp, rewards, onClose, onAdd, onUnlock, onDelete }) {
                 <span className="text-lg">{unlocked ? "🎉" : can ? "🔓" : "🔒"}</span>
                 <div className="min-w-0 flex-1"><div className={`truncate text-sm font-semibold ${unlocked ? "text-green-700" : "text-slate-700"}`}>{r.label}</div><div className="text-[11px] text-slate-400">{r.cost} XP{unlocked ? " · відкрито" : ""}</div></div>
                 {!unlocked && <button onClick={() => onUnlock(r.id)} disabled={!can} className="shrink-0 rounded-full bg-pink-500 px-3 py-1 text-xs font-bold text-white disabled:bg-slate-200 disabled:text-slate-400">Відкрити</button>}
-                <button onClick={() => onDelete(r.id)} className="shrink-0 rounded-full p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+                <button onClick={() => onDelete(r.id)} className="shrink-0 rounded-full p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
               </div>
             );
           })}
@@ -4604,7 +4604,7 @@ function RoutineSection() {
   const detailTask = detailId ? tasks.find((t) => t.id === detailId) : null;
 
   return (
-    <div className="min-h-screen flex-1 bg-gradient-to-b from-rose-50 to-pink-50/40" style={{ fontFamily: "inherit" }}>
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-red-50 to-pink-50/40" style={{ fontFamily: "inherit" }}>
       {rview === "today" && (
         <div className="mx-auto w-full max-w-2xl px-4 pb-28 pt-5">
           {/* header */}
@@ -4614,12 +4614,12 @@ function RoutineSection() {
               <p className="text-xs font-medium text-slate-400">{prettyDate(selDate)}</p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-rose-100">
+              <div className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-red-100">
                 <span className="text-lg">🔥</span>
                 <span className="text-sm font-bold tabular-nums text-orange-500">{streak.current}</span>
               </div>
               <div className="relative">
-                <button onClick={() => setMenuOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-rose-100 hover:text-slate-700"><Menu className="h-4 w-4" /></button>
+                <button onClick={() => setMenuOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-red-100 hover:text-slate-700"><Menu className="h-4 w-4" /></button>
                 {menuOpen && (<>
                   <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
                   <div className="absolute right-0 top-11 z-20 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
@@ -4645,9 +4645,9 @@ function RoutineSection() {
           {/* quick actions */}
           {isToday && dayTasks.length > 0 && (
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button onClick={() => notDone.length ? setWheelOpen(true) : flash("Усе на сьогодні закрито 🎉")} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-rose-100 hover:ring-rose-200">🎡 Колесо</button>
-              <button onClick={() => setFocusOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-rose-100 hover:ring-rose-200">🎯 Зараз</button>
-              <button onClick={() => setRecapOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-rose-100 hover:ring-rose-200">🌙 Підсумок</button>
+              <button onClick={() => notDone.length ? setWheelOpen(true) : flash("Усе на сьогодні закрито 🎉")} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-red-100 hover:ring-red-200">🎡 Колесо</button>
+              <button onClick={() => setFocusOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-red-100 hover:ring-red-200">🎯 Зараз</button>
+              <button onClick={() => setRecapOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-red-100 hover:ring-red-200">🌙 Підсумок</button>
               {dayTotalMin > 0 && <span className="ml-auto text-xs font-semibold text-slate-400">Сьогодні ≈ {fmtEst(dayTotalMin)}</span>}
             </div>
           )}
@@ -4661,7 +4661,7 @@ function RoutineSection() {
 
           {/* mood banner */}
           {isToday && !bannerDismissed && moods[today] == null && (
-            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/80 p-3 shadow-sm ring-1 ring-rose-100">
+            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/80 p-3 shadow-sm ring-1 ring-red-100">
               <span className="text-2xl">🌸</span>
               <div className="flex-1">
                 <div className="text-sm font-semibold text-slate-800">How is your day?</div>
@@ -4672,7 +4672,7 @@ function RoutineSection() {
             </div>
           )}
           {isToday && moods[today] != null && (
-            <button onClick={() => setMoodOpen(true)} className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/80 p-3 text-left shadow-sm ring-1 ring-rose-100">
+            <button onClick={() => setMoodOpen(true)} className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/80 p-3 text-left shadow-sm ring-1 ring-red-100">
               <span className="text-2xl">{MOODS.find((m) => m.score === moods[today])?.emoji}</span>
               <div className="flex-1"><div className="text-sm font-semibold text-slate-800">Feeling {MOODS.find((m) => m.score === moods[today])?.label.toLowerCase()}</div><div className="text-xs text-slate-400">Tap to change</div></div>
             </button>
@@ -4689,7 +4689,7 @@ function RoutineSection() {
 
           {/* progress line */}
           {dayTasks.length > 0 && (
-            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/70 p-3 ring-1 ring-rose-100">
+            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/70 p-3 ring-1 ring-red-100">
               <ProgressRing pct={dayPct} size={44} stroke={5}><span className="text-[11px] font-bold text-pink-600">{Math.round(dayPct * 100)}%</span></ProgressRing>
               <div className="text-sm font-medium text-slate-600">{dayDone} of {dayTasks.length} done{dayPct >= 1 ? " — all clear! 🎉" : ""}</div>
             </div>
@@ -4887,7 +4887,7 @@ function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onT
 
         {/* ADHD low-barrier start */}
         {!done && (
-          <div className="mb-3 rounded-2xl bg-rose-50/70 p-3">
+          <div className="mb-3 rounded-2xl bg-red-50/70 p-3">
             {task.twoMin && <div className="mb-2 text-sm text-slate-600"><span className="font-semibold text-slate-800">Версія на 2 хв:</span> {task.twoMin}</div>}
             <div className="flex gap-2">
               <button onClick={onTwoMin} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-pink-500 py-2.5 text-sm font-bold text-white hover:bg-pink-600">🌱 Почни з 2 хв</button>
@@ -4938,7 +4938,7 @@ function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onT
             {done ? <><RotateCcw className="h-4 w-4" /> Mark not done</> : <><Check className="h-4 w-4" /> Mark done</>}
           </button>
           <button onClick={onEdit} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Edit Task</button>
-          <button onClick={onDelete} className="rounded-xl border border-rose-200 px-3 py-2.5 text-rose-500 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
+          <button onClick={onDelete} className="rounded-xl border border-red-200 px-3 py-2.5 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
         </div>
       </div>
     </div>
@@ -5102,7 +5102,7 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
               {subs.map((s, i) => (
                 <div key={s.id} className="flex items-center gap-2">
                   <input value={s.text} onChange={(e) => setSubs((arr) => arr.map((x) => (x.id === s.id ? { ...x, text: e.target.value } : x)))} className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm" placeholder={`Step ${i + 1}`} />
-                  <button onClick={() => setSubs((arr) => arr.filter((x) => x.id !== s.id))} className="rounded p-1 text-slate-300 hover:text-rose-500"><X className="h-4 w-4" /></button>
+                  <button onClick={() => setSubs((arr) => arr.filter((x) => x.id !== s.id))} className="rounded p-1 text-slate-300 hover:text-red-500"><X className="h-4 w-4" /></button>
                 </div>
               ))}
             </div>
@@ -5143,7 +5143,7 @@ function CategoryManager({ categories, onClose, onAdd, onRename, onRecolor, onDe
               <select value={c.color} onChange={(e) => onRecolor(c.id, e.target.value)} className="rounded-lg border border-slate-200 px-1 py-1.5 text-xs">
                 {PASTELS.map((p) => <option key={p.id} value={p.id}>{p.id}</option>)}
               </select>
-              <button onClick={() => { if (confirm(`Delete “${c.name}”? Its tasks stay, just uncategorized.`)) onDelete(c.id); }} className="rounded p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={() => { if (confirm(`Delete “${c.name}”? Its tasks stay, just uncategorized.`)) onDelete(c.id); }} className="rounded p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
             </div>
           ))}
         </div>
@@ -5205,18 +5205,18 @@ function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-5">
       <div className="mb-4 flex items-center gap-2">
-        <button onClick={onBack} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-rose-100"><ArrowLeft className="h-4 w-4" /></button>
+        <button onClick={onBack} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-red-100"><ArrowLeft className="h-4 w-4" /></button>
         <h1 className="text-2xl font-extrabold text-slate-900">Stats</h1>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-rose-100"><div className="text-3xl">🔥</div><div className="text-2xl font-extrabold tabular-nums text-orange-500">{streak.current}</div><div className="text-[11px] text-slate-400">day streak</div></div>
-        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-rose-100"><div className="text-3xl">🏆</div><div className="text-2xl font-extrabold tabular-nums text-amber-500">{best}</div><div className="text-[11px] text-slate-400">best streak</div></div>
-        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-rose-100"><div className="text-3xl">✅</div><div className="text-2xl font-extrabold tabular-nums text-green-500">{total}</div><div className="text-[11px] text-slate-400">completed</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">🔥</div><div className="text-2xl font-extrabold tabular-nums text-orange-500">{streak.current}</div><div className="text-[11px] text-slate-400">day streak</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">🏆</div><div className="text-2xl font-extrabold tabular-nums text-amber-500">{best}</div><div className="text-[11px] text-slate-400">best streak</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">✅</div><div className="text-2xl font-extrabold tabular-nums text-green-500">{total}</div><div className="text-[11px] text-slate-400">completed</div></div>
       </div>
 
       {/* completion calendar */}
-      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-rose-100">
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-red-100">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-bold text-slate-700">{view.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
           <div className="flex gap-1">
@@ -5243,7 +5243,7 @@ function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
       </div>
 
       {/* mood calendar */}
-      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-rose-100">
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-red-100">
         <h2 className="mb-3 text-sm font-bold text-slate-700">Mood check-ins</h2>
         <div className="grid grid-cols-7 gap-1.5">
           {(() => {
@@ -5260,7 +5260,7 @@ function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
       </div>
 
       {/* weekly chart */}
-      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-rose-100">
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-red-100">
         <h2 className="mb-4 text-sm font-bold text-slate-700">This week</h2>
         <div className="h-48 w-full">
           <ResponsiveContainer width="100%" height="100%">
@@ -5368,7 +5368,7 @@ function CalmSection({ name, onRename }) {
           </div>
 
           {/* front door — I'm anxious right now */}
-          <button onClick={() => setAnxOpen(true)} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-rose-300 via-teal-300 to-sky-300 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:brightness-105">
+          <button onClick={() => setAnxOpen(true)} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-red-300 via-teal-300 to-sky-300 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:brightness-105">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/25"><HandHeart className="h-6 w-6" /></span>
             <span className="flex-1"><span className="block text-lg font-bold">Мені зараз тривожно</span><span className="block text-sm text-white/90">Тисни — і я підкажу, з чого почати.</span></span>
             <ArrowRight className="h-5 w-5" />
@@ -5631,19 +5631,19 @@ function GroundingPractice({ onExit, onDone }) {
       <p className="mb-4 text-sm text-slate-500">Помічай кожне поволі. Тапай, коли знайшла. Без поспіху.</p>
       <div className="space-y-4">
         {GROUND_SENSES.map((s) => (
-          <div key={s.key} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-50">
+          <div key={s.key} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
             <div className="mb-2 flex items-center gap-2"><span className="text-xl">{s.emoji}</span><span className="font-bold text-slate-800">{s.n} {s.label}</span></div>
             <div className="flex flex-wrap gap-2">
               {Array.from({ length: s.n }).map((_, i) => {
                 const on = (filled[s.key] || []).includes(i);
-                return <button key={i} onClick={() => tap(s.key, i)} className={`grid h-10 w-10 place-items-center rounded-full border-2 transition ${on ? "border-transparent bg-indigo-500 text-white" : "border-indigo-200 text-indigo-300 hover:border-indigo-400"}`}>{on ? <Check className="h-5 w-5" /> : <Circle className="h-4 w-4" />}</button>;
+                return <button key={i} onClick={() => tap(s.key, i)} className={`grid h-10 w-10 place-items-center rounded-full border-2 transition ${on ? "border-transparent bg-rose-500 text-white" : "border-rose-200 text-rose-300 hover:border-rose-400"}`}>{on ? <Check className="h-5 w-5" /> : <Circle className="h-4 w-4" />}</button>;
               })}
             </div>
           </div>
         ))}
       </div>
       {complete && (
-        <button onClick={() => onDone(Math.round((Date.now() - startRef.current) / 1000))} className="mt-5 w-full rounded-2xl bg-indigo-500 py-3.5 font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-600">Готово — я більше тут 🌿</button>
+        <button onClick={() => onDone(Math.round((Date.now() - startRef.current) / 1000))} className="mt-5 w-full rounded-2xl bg-rose-500 py-3.5 font-bold text-white shadow-lg shadow-rose-500/20 hover:bg-rose-600">Готово — я більше тут 🌿</button>
       )}
     </div>
   );
@@ -5654,7 +5654,7 @@ function GroundingPractice({ onExit, onDone }) {
 function TRField({ label, hint, rows = 2, value, onChange }) {
   return (
     <label className="block"><span className="mb-1 block text-sm font-semibold text-slate-700">{label}</span>{hint && <span className="mb-1 block text-xs text-slate-400">{hint}</span>}
-      <textarea value={value} onChange={onChange} rows={rows} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100" /></label>
+      <textarea value={value} onChange={onChange} rows={rows} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100" /></label>
   );
 }
 
@@ -5669,14 +5669,14 @@ function ThoughtGuide() {
     ["Врівноважена думка", "не «все чудово!» (це фальш, мозок не повірить), а тверезіший, добріший погляд, що враховує і «за», і «проти»: не «він мене ненавидить», а «можливо, він зайнятий; якщо є проблема — з'ясую, коли відповість»."],
   ];
   return (
-    <div className="mt-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-violet-100">
+    <div className="mt-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-pink-100">
       <h2 className="text-lg font-extrabold text-slate-900">Як працювати з журналом думок</h2>
       <p className="mt-2 text-sm leading-relaxed text-slate-600">Це техніка з когнітивно-поведінкової терапії. Тривожна думка здається фактом, а насправді це лише одна з версій. Коли ти виносиш її на папір і розкладаєш по поличках — вона втрачає владу.</p>
       <p className="mt-3 text-sm leading-relaxed text-slate-600"><b className="font-semibold text-slate-800">Головне:</b> заповнюй у момент, коли накрило, або одразу після — не «колись увечері». Свіжа емоція і є той матеріал, з яким працюєш. Іди полями зверху вниз.</p>
       <div className="mt-3 space-y-2.5">
         {rows.map(([name, body]) => (
-          <div key={name} className="rounded-xl bg-violet-50/60 p-3">
-            <span className="text-sm font-bold text-violet-800">{name}</span>
+          <div key={name} className="rounded-xl bg-pink-50/60 p-3">
+            <span className="text-sm font-bold text-pink-800">{name}</span>
             <span className="text-sm leading-relaxed text-slate-600"> — {body}</span>
           </div>
         ))}
@@ -5709,35 +5709,35 @@ function ThoughtRecord({ thoughts, onExit, onSave, onDelete }) {
         <TRField label="Ситуація" hint="Що відбувалося?" value={f.situation} onChange={setField("situation")} />
         <TRField label="Автоматична думка" hint="Що промайнуло в голові?" value={f.thought} onChange={setField("thought")} />
         <div className="rounded-xl bg-white p-3 ring-1 ring-slate-100">
-          <div className="mb-1 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Емоція</span><span className="text-sm font-bold text-violet-600 tabular-nums">{f.intensity}%</span></div>
-          <input value={f.emotion} onChange={(e) => setF((s) => ({ ...s, emotion: e.target.value }))} placeholder="напр. тривога, сум" className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-violet-400 focus:outline-none" />
-          <input type="range" min={0} max={100} value={f.intensity} onChange={(e) => setF((s) => ({ ...s, intensity: +e.target.value }))} className="w-full accent-violet-500" />
+          <div className="mb-1 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Емоція</span><span className="text-sm font-bold text-pink-600 tabular-nums">{f.intensity}%</span></div>
+          <input value={f.emotion} onChange={(e) => setF((s) => ({ ...s, emotion: e.target.value }))} placeholder="напр. тривога, сум" className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />
+          <input type="range" min={0} max={100} value={f.intensity} onChange={(e) => setF((s) => ({ ...s, intensity: +e.target.value }))} className="w-full accent-pink-500" />
         </div>
         <TRField label="Докази за цю думку" value={f.forEv} onChange={setField("forEv")} />
         <TRField label="Докази проти неї" value={f.against} onChange={setField("against")} />
         <TRField label="Врівноважена думка" hint="Добріший, реалістичніший погляд" value={f.balanced} onChange={setField("balanced")} />
-        <button onClick={save} className="w-full rounded-2xl bg-violet-500 py-3 font-bold text-white hover:bg-violet-600">Зберегти запис</button>
+        <button onClick={save} className="w-full rounded-2xl bg-pink-500 py-3 font-bold text-white hover:bg-pink-600">Зберегти запис</button>
       </div>
     </div>
   );
 
   return (
     <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
-      <CalmHeader title="Журнал думок" onExit={onExit} right={<button onClick={() => { startRef.current = Date.now(); setOpen(true); }} className="inline-flex items-center gap-1 rounded-full bg-violet-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-600"><Plus className="h-4 w-4" /> Новий</button>} />
-      <button onClick={toggleGuide} className="mb-1 inline-flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700">
+      <CalmHeader title="Журнал думок" onExit={onExit} right={<button onClick={() => { startRef.current = Date.now(); setOpen(true); }} className="inline-flex items-center gap-1 rounded-full bg-pink-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-pink-600"><Plus className="h-4 w-4" /> Новий</button>} />
+      <button onClick={toggleGuide} className="mb-1 inline-flex items-center gap-1 text-sm font-semibold text-pink-600 hover:text-pink-700">
         <Info className="h-4 w-4" /> Як це працює {guideOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
       </button>
       {guideOpen && <ThoughtGuide />}
       <div className="mt-3" />
       {thoughts.length === 0 ? (
-        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-violet-50">Записів ще немає. Злови тривожну думку і розплутай її.</div>
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-pink-50">Записів ще немає. Злови тривожну думку і розплутай її.</div>
       ) : (
         <div className="space-y-3">
           {thoughts.map((t) => (
-            <div key={t.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-violet-50">
-              <div className="mb-1 flex items-center justify-between"><span className="text-xs font-medium text-slate-400">{t.date}{t.emotion ? ` · ${t.emotion} ${t.intensity}%` : ""}</span><button onClick={() => onDelete(t.id)} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button></div>
+            <div key={t.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-50">
+              <div className="mb-1 flex items-center justify-between"><span className="text-xs font-medium text-slate-400">{t.date}{t.emotion ? ` · ${t.emotion} ${t.intensity}%` : ""}</span><button onClick={() => onDelete(t.id)} className="text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button></div>
               {t.thought && <div className="font-semibold text-slate-800">“{t.thought}”</div>}
-              {t.balanced && <div className="mt-1 rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-800">↪ {t.balanced}</div>}
+              {t.balanced && <div className="mt-1 rounded-lg bg-pink-50 px-3 py-2 text-sm text-pink-800">↪ {t.balanced}</div>}
             </div>
           ))}
         </div>
@@ -5798,7 +5798,7 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
                   <div className="min-w-0 flex-1"><div className="truncate font-bold text-slate-800">{f.title}</div>
                     <div className="text-xs text-slate-400">Зараз {last ?? f.intensity}/100{atts.length ? ` · ${atts.length} ${atts.length === 1 ? "спроба" : atts.length < 5 ? "спроби" : "спроб"}` : ""}{drop > 0 ? ` · ↓${drop}` : ""}</div></div>
                   <button onClick={() => { setLogId(f.id); setBefore(last ?? f.intensity); }} className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600">Записати спробу</button>
-                  <button onClick={() => { if (confirm("Прибрати цей страх?")) removeFear(f.id); }} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+                  <button onClick={() => { if (confirm("Прибрати цей страх?")) removeFear(f.id); }} className="text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {atts.length > 1 && (
                   <div className="mt-2 flex items-end gap-1">
@@ -5914,7 +5914,7 @@ function WorryTimer({ onExit, onDone }) {
   return (
     <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
       <div className="w-full"><CalmHeader title="Час для тривоги" onExit={stop} /></div>
-      <div className="my-10 grid h-64 w-64 place-items-center rounded-full bg-gradient-to-br from-pink-300 to-rose-300 text-white"><div className="text-6xl font-extrabold tabular-nums">{fmtClock(remaining)}</div></div>
+      <div className="my-10 grid h-64 w-64 place-items-center rounded-full bg-gradient-to-br from-pink-300 to-red-300 text-white"><div className="text-6xl font-extrabold tabular-nums">{fmtClock(remaining)}</div></div>
       <p className="mb-4 max-w-xs text-center text-sm text-slate-500">Хай усе підніметься зараз. Коли таймер закінчиться — ми зачинимо ці двері. Поки що.</p>
       <button onClick={stop} className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Check className="h-4 w-4" /> Я закінчила</button>
     </div>
@@ -6334,7 +6334,7 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
 
   return (
     <div>
-      <div className="rounded-3xl bg-gradient-to-br from-orange-400 to-rose-400 p-5 text-white shadow-sm">
+      <div className="rounded-3xl bg-gradient-to-br from-orange-400 to-red-400 p-5 text-white shadow-sm">
         <div className="text-sm font-semibold text-white/90">План — плавно й надовго</div>
         <div className="text-2xl font-extrabold">−{totalLoss || 30} кг за {months} міс</div>
         {ready ? <div className="text-sm text-white/90">≈ {perMonth.toFixed(1)} кг/міс · {perWeek.toFixed(2)} кг/тиждень {paceOk ? "✓ безпечний темп" : "⚠️ швидкувато"}</div>
@@ -6351,7 +6351,7 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
       {ready && (
         <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
           <div className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">Зараз {currentW} кг · скинуто {lostSoFar} кг з {totalLoss}</span>{delta != null && <span className={`font-bold ${delta <= 0.5 ? "text-green-600" : "text-amber-600"}`}>{delta <= 0.5 ? "у графіку ✓" : `+${delta} кг до плану`}</span>}</div>
-          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-orange-50"><div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-rose-400 transition-all" style={{ width: `${pctDone * 100}%` }} /></div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-orange-50"><div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-red-400 transition-all" style={{ width: `${pctDone * 100}%` }} /></div>
           <button onClick={onGoLog} className="mt-2 text-xs font-semibold text-orange-600">+ записати вагу сьогодні</button>
         </div>
       )}
@@ -6522,7 +6522,7 @@ function FastDiary({ diary, onNew, onEdit, onDelete }) {
                 {r.weight != null && <span className="ml-2 text-slate-500">{r.weight} кг{r.weightChange != null ? ` (${r.weightChange > 0 ? "+" : ""}${r.weightChange})` : ""}</span>}
                 {r.notes && <div className="truncate text-xs text-slate-400">{r.notes}</div>}
               </div>
-              <span onClick={(e) => { e.stopPropagation(); if (confirm("Видалити запис?")) onDelete(r.id); }} className="rounded p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></span>
+              <span onClick={(e) => { e.stopPropagation(); if (confirm("Видалити запис?")) onDelete(r.id); }} className="rounded p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></span>
             </button>
           ))}
         </div>
@@ -6608,21 +6608,21 @@ const SIDE_FX = [
 ];
 function FastReference() {
   const okIcon = { yes: "✅", warn: "⚠️", no: "❌" };
-  const okColor = { yes: "bg-green-50", warn: "bg-amber-50", no: "bg-rose-50" };
+  const okColor = { yes: "bg-green-50", warn: "bg-amber-50", no: "bg-red-50" };
   return (
     <div className="space-y-5">
       <h1 className="text-xl font-extrabold text-slate-900">Довідник</h1>
 
       {/* SAFETY — prominent, first */}
-      <div className="rounded-2xl border-2 border-rose-200 bg-rose-50/60 p-4">
-        <div className="mb-2 flex items-center gap-2 text-rose-700"><ShieldAlert className="h-5 w-5" /><h2 className="font-bold">Застереження та безпека</h2></div>
+      <div className="rounded-2xl border-2 border-red-200 bg-red-50/60 p-4">
+        <div className="mb-2 flex items-center gap-2 text-red-700"><ShieldAlert className="h-5 w-5" /><h2 className="font-bold">Застереження та безпека</h2></div>
         <div className="text-sm font-semibold text-slate-700">Кому НЕ можна голодувати (або лише під наглядом лікаря):</div>
-        <ul className="mt-1 space-y-1">{NO_FAST.map((x, i) => <li key={i} className="flex gap-2 text-sm text-slate-600"><span className="text-rose-400">•</span>{x}</li>)}</ul>
-        <div className="mt-4 overflow-hidden rounded-xl ring-1 ring-rose-100">
-          <div className="grid grid-cols-2 bg-rose-100/70 px-3 py-1.5 text-xs font-bold text-rose-700"><span>Симптом</span><span>Що робити</span></div>
-          {SIDE_FX.map(([s, w], i) => <div key={i} className={`grid grid-cols-2 gap-2 px-3 py-2 text-sm ${i % 2 ? "bg-white" : "bg-rose-50/40"}`}><span className="font-semibold text-slate-700">{s}</span><span className="text-slate-600">{w}</span></div>)}
+        <ul className="mt-1 space-y-1">{NO_FAST.map((x, i) => <li key={i} className="flex gap-2 text-sm text-slate-600"><span className="text-red-400">•</span>{x}</li>)}</ul>
+        <div className="mt-4 overflow-hidden rounded-xl ring-1 ring-red-100">
+          <div className="grid grid-cols-2 bg-red-100/70 px-3 py-1.5 text-xs font-bold text-red-700"><span>Симптом</span><span>Що робити</span></div>
+          {SIDE_FX.map(([s, w], i) => <div key={i} className={`grid grid-cols-2 gap-2 px-3 py-2 text-sm ${i % 2 ? "bg-white" : "bg-red-50/40"}`}><span className="font-semibold text-slate-700">{s}</span><span className="text-slate-600">{w}</span></div>)}
         </div>
-        <p className="mt-3 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white">❗ Негайно припини голодування і звернись по допомогу при: сильній слабкості, плутанині свідомості, серцебитті, непритомності.</p>
+        <p className="mt-3 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white">❗ Негайно припини голодування і звернись по допомогу при: сильній слабкості, плутанині свідомості, серцебитті, непритомності.</p>
         <p className="mt-2 text-xs text-slate-500">Це освітній матеріал за книгами д-ра Дж. Фанга, не медична порада. Перед голодуванням порадься з лікарем.</p>
       </div>
 
@@ -6657,8 +6657,8 @@ function mdInline(str, keyBase = "") {
   while ((m = re.exec(str))) {
     if (m.index > last) out.push(str.slice(last, m.index));
     if (m[1] != null) out.push(<strong key={keyBase + k++} className="font-semibold text-slate-900">{m[1]}</strong>);
-    else if (m[2] != null) out.push(<code key={keyBase + k++} className="rounded bg-slate-100 px-1 py-0.5 text-[0.85em] text-indigo-700">{m[2]}</code>);
-    else out.push(<span key={keyBase + k++} className="font-medium text-indigo-600">{m[3]}</span>);
+    else if (m[2] != null) out.push(<code key={keyBase + k++} className="rounded bg-slate-100 px-1 py-0.5 text-[0.85em] text-rose-700">{m[2]}</code>);
+    else out.push(<span key={keyBase + k++} className="font-medium text-rose-600">{m[3]}</span>);
     last = re.lastIndex;
   }
   if (last < str.length) out.push(str.slice(last));
@@ -6671,8 +6671,8 @@ function mdBlocks(text) {
   const flushPara = () => { if (para.length) { els.push(<p key={els.length} className="mb-3 leading-relaxed text-slate-600">{mdInline(para.join(" "), els.length + "p")}</p>); para = []; } };
   const flushList = () => {
     if (!list) return;
-    if (list.type === "ul") els.push(<ul key={els.length} className="mb-3 space-y-1.5">{list.items.map((it, i) => <li key={i} className="flex gap-2.5 text-slate-600"><span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-300" /><span className="leading-relaxed">{mdInline(it, els.length + "u" + i)}</span></li>)}</ul>);
-    else els.push(<ol key={els.length} className="mb-3 space-y-2">{list.items.map((it, i) => <li key={i} className="flex gap-2.5 text-slate-600"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-indigo-100 text-[11px] font-bold text-indigo-600">{i + 1}</span><span className="leading-relaxed">{mdInline(it, els.length + "o" + i)}</span></li>)}</ol>);
+    if (list.type === "ul") els.push(<ul key={els.length} className="mb-3 space-y-1.5">{list.items.map((it, i) => <li key={i} className="flex gap-2.5 text-slate-600"><span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-300" /><span className="leading-relaxed">{mdInline(it, els.length + "u" + i)}</span></li>)}</ul>);
+    else els.push(<ol key={els.length} className="mb-3 space-y-2">{list.items.map((it, i) => <li key={i} className="flex gap-2.5 text-slate-600"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-rose-100 text-[11px] font-bold text-rose-600">{i + 1}</span><span className="leading-relaxed">{mdInline(it, els.length + "o" + i)}</span></li>)}</ol>);
     list = null;
   };
   const flushQuote = () => { if (quote) { els.push(<blockquote key={els.length} className="mb-3 rounded-r-xl border-l-4 border-amber-300 bg-amber-50/70 px-4 py-2.5 text-slate-700">{mdInline(quote.join(" "), els.length + "q")}</blockquote>); quote = null; } };
@@ -6736,18 +6736,18 @@ function ManagementSection({ name, onRename }) {
   useEffect(() => { document.querySelector("main")?.scrollTo?.(0, 0); window.scrollTo(0, 0); }, [view]);
 
   if (error) return <div className="flex flex-1 items-center justify-center text-slate-400">{error}</div>;
-  if (!doc) return <div className="flex flex-1 items-center justify-center text-indigo-400"><div className="flex flex-col items-center gap-3"><BookMarked className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження конспекту…</span></div></div>;
+  if (!doc) return <div className="flex flex-1 items-center justify-center text-rose-400"><div className="flex flex-col items-center gap-3"><BookMarked className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження конспекту…</span></div></div>;
 
   const chapters = doc.chapters;
   const open = (i) => setView(i);
   const chapter = typeof view === "number" ? chapters[view] : null;
 
   return (
-    <div className="min-h-screen flex-1 bg-gradient-to-b from-indigo-50/50 via-slate-50 to-white">
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-rose-50/50 via-slate-50 to-white">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
           {renaming ? (
-            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-40 rounded-lg border border-indigo-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-40 rounded-lg border border-rose-200 px-2 py-1 text-base font-semibold focus:outline-none" />
           ) : (
             <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
           )}
@@ -6756,16 +6756,16 @@ function ManagementSection({ name, onRename }) {
       </header>
 
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
-        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-indigo-100">
-          <button onClick={() => setMtab("book")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${mtab === "book" ? "bg-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><BookMarked className="h-4 w-4" /> Книга</button>
-          <button onClick={() => setMtab("career")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${mtab === "career" ? "bg-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><TrendingUp className="h-4 w-4" /> Кар'єра</button>
+        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-rose-100">
+          <button onClick={() => setMtab("book")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${mtab === "book" ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><BookMarked className="h-4 w-4" /> Книга</button>
+          <button onClick={() => setMtab("career")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${mtab === "career" ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><TrendingUp className="h-4 w-4" /> Кар'єра</button>
         </div>
         {mtab === "career" ? <CareerView /> : view === "toc" ? (
           <>
             {/* book hero from intro */}
-            <div className="mb-6 rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm">
+            <div className="mb-6 rounded-3xl border border-rose-100 bg-white p-6 shadow-sm">
               <div className="flex items-start gap-4">
-                <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-white"><BookMarked className="h-7 w-7" /></span>
+                <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-rose-600 text-white"><BookMarked className="h-7 w-7" /></span>
                 <div className="min-w-0">
                   <h1 className="text-2xl font-extrabold leading-tight text-slate-900">Manage It!</h1>
                   <p className="text-sm font-medium text-slate-500">Johanna Rothman · конспект і лайфхаки по кожній главі</p>
@@ -6779,8 +6779,8 @@ function ManagementSection({ name, onRename }) {
               {chapters.map((c, i) => {
                 const special = !c.num;
                 return (
-                  <button key={i} onClick={() => open(i)} className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md ${special ? "border-amber-200 bg-amber-50/60 hover:border-amber-300" : "border-slate-100 bg-white hover:border-indigo-200"}`}>
-                    <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-extrabold ${special ? "bg-amber-400 text-white" : "bg-indigo-100 text-indigo-700"}`}>{special ? "🎯" : c.num}</span>
+                  <button key={i} onClick={() => open(i)} className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md ${special ? "border-amber-200 bg-amber-50/60 hover:border-amber-300" : "border-slate-100 bg-white hover:border-rose-200"}`}>
+                    <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-extrabold ${special ? "bg-amber-400 text-white" : "bg-rose-100 text-rose-700"}`}>{special ? "🎯" : c.num}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block font-bold text-slate-800">{c.title}</span>
                       {c.preview && <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-slate-400">{c.preview.replace(/\*\*/g, "")}</span>}
@@ -6817,7 +6817,7 @@ function ChapterReader({ chapter, index, total, onNav, onToc }) {
   return (
     <div>
       <div className="mb-5 flex items-center gap-3">
-        {chapter.num && <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-lg font-extrabold text-white">{chapter.num}</span>}
+        {chapter.num && <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-600 text-lg font-extrabold text-white">{chapter.num}</span>}
         <h1 className="text-2xl font-extrabold leading-tight text-slate-900">{chapter.title}</h1>
       </div>
 
@@ -6839,7 +6839,7 @@ function ChapterReader({ chapter, index, total, onNav, onToc }) {
       <div className="mt-8 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
         <button disabled={index <= 0} onClick={() => onNav(index - 1)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Назад</button>
         <button onClick={onToc} className="text-sm font-medium text-slate-400 hover:text-slate-600">Зміст</button>
-        <button disabled={index >= total - 1} onClick={() => onNav(index + 1)} className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
+        <button disabled={index >= total - 1} onClick={() => onNav(index + 1)} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
       </div>
     </div>
   );
@@ -7198,7 +7198,7 @@ function BudgetItemRow({ item, bought, inStock, onToggle, onToggleStock, onEdit,
         </button>
         <button onClick={onToggleStock} title="Вже є в запасі — докуповувати не треба" className={`shrink-0 rounded-md p-1 transition ${inStock ? "text-amber-500" : "text-slate-300 hover:text-amber-500"}`}><Package className="h-4 w-4" /></button>
         {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-emerald-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
-        <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
+        <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
       </div>
       {showNotes && item.notes && <div className="mt-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">{item.notes}</div>}
     </div>
@@ -7315,7 +7315,7 @@ function BudgetItemEditor({ item, cats, catId, onClose, onSave, onDelete }) {
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Нотатки (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
         <div className="flex gap-2">
           <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), qty: Number(qty) || 0, unit: unit.trim(), price: Number(price) || 0, notes: notes.trim() }, cid); }} className="flex-1 rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Зберегти</button>
-          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-rose-50 px-4 py-3 font-semibold text-rose-500 hover:bg-rose-100"><Trash2 className="h-5 w-5" /></button>}
+          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-red-50 px-4 py-3 font-semibold text-red-500 hover:bg-red-100"><Trash2 className="h-5 w-5" /></button>}
         </div>
       </div>
     </div>
@@ -7338,7 +7338,7 @@ function BudgetCatManager({ cats, onClose, onAdd, onRename, onDelete, onMove }) 
                 <button onClick={() => onMove(c.id, -1)} disabled={i === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 -rotate-90" /></button>
                 <button onClick={() => onMove(c.id, 1)} disabled={i === cats.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 rotate-90" /></button>
               </div>
-              <button onClick={() => { if (confirm(`Видалити «${c.name}» і всі її товари?`)) onDelete(c.id); }} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={() => { if (confirm(`Видалити «${c.name}» і всі її товари?`)) onDelete(c.id); }} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
             </div>
           ))}
         </div>
@@ -7495,14 +7495,14 @@ function InventorySection({ name, onRename }) {
     flash(`Додано в Budget: ${add.length} товар(и) 🛒`);
   };
 
-  if (loading) return <div className="flex flex-1 items-center justify-center text-indigo-400"><div className="flex flex-col items-center gap-3"><Home className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+  if (loading) return <div className="flex flex-1 items-center justify-center text-rose-400"><div className="flex flex-col items-center gap-3"><Home className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
 
   return (
-    <div className="min-h-screen flex-1 bg-gradient-to-b from-indigo-50/50 to-white">
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-rose-50/50 to-white">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
           {renaming ? (
-            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-indigo-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-rose-200 px-2 py-1 text-base font-semibold focus:outline-none" />
           ) : (
             <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
           )}
@@ -7519,9 +7519,9 @@ function InventorySection({ name, onRename }) {
       </header>
 
       <main className="mx-auto w-full max-w-3xl px-4 py-5">
-        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-indigo-100">
+        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-rose-100">
           {[["dash", "Готовність", BarChart3], ["browse", "Перелік", ListChecks], ["tobuy", "Купити", ShoppingCart]].map(([k, label, Icon]) => (
-            <button key={k} onClick={() => setView(k)} className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${view === k ? "bg-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4" /> {label}{k === "tobuy" && toBuy.length > 0 && <span className={`ml-0.5 rounded-full px-1.5 text-[10px] font-bold ${view === k ? "bg-white/25" : "bg-amber-100 text-amber-700"}`}>{toBuy.length}</span>}</button>
+            <button key={k} onClick={() => setView(k)} className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${view === k ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4" /> {label}{k === "tobuy" && toBuy.length > 0 && <span className={`ml-0.5 rounded-full px-1.5 text-[10px] font-bold ${view === k ? "bg-white/25" : "bg-amber-100 text-amber-700"}`}>{toBuy.length}</span>}</button>
           ))}
         </div>
 
@@ -7545,24 +7545,24 @@ function InventorySection({ name, onRename }) {
 function InvDashboard({ rooms, overall, roomStats, onRoom }) {
   return (
     <div className="space-y-4">
-      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-indigo-100">
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-rose-100">
         <div className="flex items-center gap-4">
-          <ProgressRing pct={overall.pct} size={72} stroke={8}><span className="text-sm font-extrabold text-indigo-600">{Math.round(overall.pct * 100)}%</span></ProgressRing>
+          <ProgressRing pct={overall.pct} size={72} stroke={8}><span className="text-sm font-extrabold text-rose-600">{Math.round(overall.pct * 100)}%</span></ProgressRing>
           <div>
             <div className="text-lg font-extrabold text-slate-900">Готовність дому</div>
             <div className="text-sm text-slate-500">{overall.handled} з {overall.total} позицій вирішено</div>
           </div>
         </div>
-        <p className="mt-3 rounded-xl bg-indigo-50/60 px-3 py-2 text-xs leading-relaxed text-indigo-800">Готовність = (Є + Не потрібно) ÷ усі позиції. Тобто скільки речей уже вирішено — куплено/є або свідомо не треба.</p>
+        <p className="mt-3 rounded-xl bg-rose-50/60 px-3 py-2 text-xs leading-relaxed text-rose-800">Готовність = (Є + Не потрібно) ÷ усі позиції. Тобто скільки речей уже вирішено — куплено/є або свідомо не треба.</p>
       </div>
       <div className="space-y-2.5">
         {rooms.map((r) => { const c = roomStats(r.id); return (
-          <button key={r.id} onClick={() => onRoom(r.id)} className="block w-full rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-indigo-50 hover:ring-indigo-200">
+          <button key={r.id} onClick={() => onRoom(r.id)} className="block w-full rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-rose-50 hover:ring-rose-200">
             <div className="flex items-center justify-between">
               <span className="font-bold text-slate-800">{r.name}</span>
-              <span className="text-sm font-bold tabular-nums text-indigo-600">{Math.round(c.readiness * 100)}%</span>
+              <span className="text-sm font-bold tabular-nums text-rose-600">{Math.round(c.readiness * 100)}%</span>
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-indigo-50"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${c.readiness * 100}%` }} /></div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-rose-50"><div className="h-full rounded-full bg-rose-500 transition-all" style={{ width: `${c.readiness * 100}%` }} /></div>
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
               <span>усього {c.total}</span>
               <span className="text-green-600">Є {c.є}</span>
@@ -7601,9 +7601,9 @@ function InvItemRow({ item, onStatus, onEdit, onDelete }) {
             {item.where && <span>· вдома: <span className="text-slate-500">{item.where}</span></span>}
           </div>
         </button>
-        {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-indigo-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
+        {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-rose-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
         <InvStatusSelect value={item.status} onChange={(st) => onStatus(item.id, st)} />
-        <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
+        <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
       </div>
       {showNotes && item.notes && <div className="mt-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">{item.notes}</div>}
     </div>
@@ -7618,7 +7618,7 @@ function InvBrowse({ rooms, items, collapsed, setCollapsed, statusFilter, setSta
     <div className="space-y-3">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Пошук предмета по всьому дому…" className="w-full rounded-2xl border border-indigo-100 bg-white py-2.5 pl-10 pr-9 text-sm shadow-sm focus:border-indigo-300 focus:outline-none" />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Пошук предмета по всьому дому…" className="w-full rounded-2xl border border-rose-100 bg-white py-2.5 pl-10 pr-9 text-sm shadow-sm focus:border-rose-300 focus:outline-none" />
         {query && <button onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"><X className="h-4 w-4" /></button>}
       </div>
       <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
@@ -7631,10 +7631,10 @@ function InvBrowse({ rooms, items, collapsed, setCollapsed, statusFilter, setSta
         if (!roomItems.length && (statusFilter || q)) return null;
         const c = roomStats(r.id); const decided = c.total - c.undec;
         return (
-          <div key={r.id} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-indigo-50">
+          <div key={r.id} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-rose-50">
             <button onClick={() => setCollapsed((m) => ({ ...m, [r.id]: !m[r.id] }))} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
               <span className="min-w-0 flex-1"><span className="block truncate font-extrabold text-slate-800">{r.name}</span><span className="block text-xs text-slate-400">{decided} з {c.total} вирішено</span></span>
-              <span className="text-sm font-bold tabular-nums text-indigo-600">{Math.round(c.readiness * 100)}%</span>
+              <span className="text-sm font-bold tabular-nums text-rose-600">{Math.round(c.readiness * 100)}%</span>
               {collapsed[r.id] ? <ChevronRight className="h-4 w-4 text-slate-300" /> : <ChevronDown className="h-4 w-4 text-slate-300" />}
             </button>
             {!collapsed[r.id] && (
@@ -7649,7 +7649,7 @@ function InvBrowse({ rooms, items, collapsed, setCollapsed, statusFilter, setSta
                       <div className="flex items-center justify-between bg-slate-50/70 px-4 py-1.5"><span className="text-xs font-bold text-slate-500">{sec.name}</span><span className="text-[11px] text-slate-400">{sDecided}/{sTotal}</span></div>
                       <div className="divide-y divide-slate-50">
                         {secItems.map((it) => <InvItemRow key={it.id} item={it} onStatus={onStatus} onEdit={() => onEdit(it)} onDelete={() => onDelete(it.id)} />)}
-                        {!statusFilter && !q && <button onClick={() => onAddItem(r.id, sec.id)} className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-xs font-medium text-indigo-600 hover:bg-indigo-50"><Plus className="h-3.5 w-3.5" /> Предмет</button>}
+                        {!statusFilter && !q && <button onClick={() => onAddItem(r.id, sec.id)} className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-xs font-medium text-rose-600 hover:bg-rose-50"><Plus className="h-3.5 w-3.5" /> Предмет</button>}
                       </div>
                     </div>
                   );
@@ -7666,15 +7666,15 @@ function InvBrowse({ rooms, items, collapsed, setCollapsed, statusFilter, setSta
 function InvToBuy({ rooms, toBuy, onAcquire, onCopy, onSendBudget }) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-100">
+      <div className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
         <div><div className="text-lg font-extrabold text-slate-900">Купити для дому</div><div className="text-sm text-slate-400">{toBuy.length} позицій · познач ✓ коли придбала</div></div>
         <ShoppingCart className="h-8 w-8 text-amber-400" />
       </div>
       {toBuy.length === 0 ? (
-        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-indigo-50">Нічого купувати 🎉 Постав комусь статус «Купити» в переліку.</div>
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-rose-50">Нічого купувати 🎉 Постав комусь статус «Купити» в переліку.</div>
       ) : (<>
         <div className="flex gap-2">
-          <button onClick={onCopy} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:ring-indigo-200"><ClipboardPaste className="h-4 w-4" /> Копіювати списком</button>
+          <button onClick={onCopy} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:ring-rose-200"><ClipboardPaste className="h-4 w-4" /> Копіювати списком</button>
           <button onClick={onSendBudget} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:ring-emerald-200"><ShoppingBasket className="h-4 w-4" /> У Budget</button>
         </div>
         {rooms.map((r) => { const list = toBuy.filter((it) => it.roomId === r.id); if (!list.length) return null; return (
@@ -7708,20 +7708,20 @@ function InvItemEditor({ item, rooms, roomId, secId, onClose, onSave, onDelete }
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{item ? "Редагувати" : "Новий предмет"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва предмета" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-indigo-400 focus:outline-none" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва предмета" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-rose-400 focus:outline-none" />
         <div className="mb-3 grid grid-cols-2 gap-2">
-          <label className="block"><span className="mb-1 block text-xs text-slate-500">Рекомендовано</span><input value={rec} onChange={(e) => setRec(e.target.value)} placeholder="напр. 2–4" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Рекомендовано</span><input value={rec} onChange={(e) => setRec(e.target.value)} placeholder="напр. 2–4" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-rose-400 focus:outline-none" /></label>
           <label className="block"><span className="mb-1 block text-xs text-slate-500">Статус</span><select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{INV_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
         </div>
-        <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Де є вдома</span><input value={where} onChange={(e) => setWhere(e.target.value)} placeholder="напр. в шафі на верхній полиці" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none" /></label>
+        <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Де є вдома</span><input value={where} onChange={(e) => setWhere(e.target.value)} placeholder="напр. в шафі на верхній полиці" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-rose-400 focus:outline-none" /></label>
         <div className="mb-3 grid grid-cols-2 gap-2">
           <label className="block"><span className="mb-1 block text-xs text-slate-500">Кімната</span><select value={rid} onChange={(e) => { setRid(e.target.value); const rr = rooms.find((x) => x.id === e.target.value); setSid(rr?.sections[0]?.id); }} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
           <label className="block"><span className="mb-1 block text-xs text-slate-500">Розділ</span><select value={sid} onChange={(e) => setSid(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{(room?.sections || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
         </div>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Нотатки (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Нотатки (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
         <div className="flex gap-2">
-          <button onClick={() => { if (name.trim() && rid && sid) onSave({ name: name.trim(), rec: rec.trim(), where: where.trim(), status, notes: notes.trim(), roomId: rid, secId: sid }); }} className="flex-1 rounded-2xl bg-indigo-500 py-3 font-bold text-white hover:bg-indigo-600">Зберегти</button>
-          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-rose-50 px-4 py-3 font-semibold text-rose-500 hover:bg-rose-100"><Trash2 className="h-5 w-5" /></button>}
+          <button onClick={() => { if (name.trim() && rid && sid) onSave({ name: name.trim(), rec: rec.trim(), where: where.trim(), status, notes: notes.trim(), roomId: rid, secId: sid }); }} className="flex-1 rounded-2xl bg-rose-500 py-3 font-bold text-white hover:bg-rose-600">Зберегти</button>
+          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-red-50 px-4 py-3 font-semibold text-red-500 hover:bg-red-100"><Trash2 className="h-5 w-5" /></button>}
         </div>
       </div>
     </div>
@@ -7740,28 +7740,28 @@ function InvManager({ rooms, onClose, onAddRoom, onRenameRoom, onDeleteRoom, onM
           {rooms.map((r, i) => (
             <div key={r.id} className="rounded-xl bg-slate-50 p-2">
               <div className="flex items-center gap-2">
-                <input value={r.name} onChange={(e) => onRenameRoom(r.id, e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-semibold focus:border-indigo-400 focus:outline-none" />
+                <input value={r.name} onChange={(e) => onRenameRoom(r.id, e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-semibold focus:border-rose-400 focus:outline-none" />
                 <div className="flex shrink-0 flex-col"><button onClick={() => onMoveRoom(r.id, -1)} disabled={i === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 -rotate-90" /></button><button onClick={() => onMoveRoom(r.id, 1)} disabled={i === rooms.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 rotate-90" /></button></div>
-                <button onClick={() => setOpenRoom(openRoom === r.id ? null : r.id)} className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-indigo-500 hover:bg-indigo-50">розділи</button>
-                <button onClick={() => { if (confirm(`Видалити «${r.name}» і всі її предмети?`)) onDeleteRoom(r.id); }} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+                <button onClick={() => setOpenRoom(openRoom === r.id ? null : r.id)} className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-rose-500 hover:bg-rose-50">розділи</button>
+                <button onClick={() => { if (confirm(`Видалити «${r.name}» і всі її предмети?`)) onDeleteRoom(r.id); }} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
               </div>
               {openRoom === r.id && (
                 <div className="mt-2 space-y-1.5 border-t border-slate-200 pt-2">
                   {r.sections.map((s, si) => (
                     <div key={s.id} className="flex items-center gap-2">
-                      <input value={s.name} onChange={(e) => onRenameSection(r.id, s.id, e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none" />
+                      <input value={s.name} onChange={(e) => onRenameSection(r.id, s.id, e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs focus:border-rose-400 focus:outline-none" />
                       <div className="flex shrink-0 flex-col"><button onClick={() => onMoveSection(r.id, s.id, -1)} disabled={si === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3 w-3 -rotate-90" /></button><button onClick={() => onMoveSection(r.id, s.id, 1)} disabled={si === r.sections.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3 w-3 rotate-90" /></button></div>
-                      <button onClick={() => { if (confirm("Видалити розділ і його предмети?")) onDeleteSection(r.id, s.id); }} className="shrink-0 text-slate-300 hover:text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => { if (confirm("Видалити розділ і його предмети?")) onDeleteSection(r.id, s.id); }} className="shrink-0 text-slate-300 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   ))}
-                  <div className="flex items-center gap-2"><input value={openRoom === r.id ? newSec : ""} onChange={(e) => setNewSec(e.target.value)} placeholder="Новий розділ" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none" /><button onClick={() => { if (newSec.trim()) { onAddSection(r.id, newSec); setNewSec(""); } }} className="shrink-0 rounded-full bg-slate-700 px-2.5 py-1 text-xs font-semibold text-white">+</button></div>
+                  <div className="flex items-center gap-2"><input value={openRoom === r.id ? newSec : ""} onChange={(e) => setNewSec(e.target.value)} placeholder="Новий розділ" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-rose-400 focus:outline-none" /><button onClick={() => { if (newSec.trim()) { onAddSection(r.id, newSec); setNewSec(""); } }} className="shrink-0 rounded-full bg-slate-700 px-2.5 py-1 text-xs font-semibold text-white">+</button></div>
                 </div>
               )}
             </div>
           ))}
         </div>
         <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-slate-300 p-2">
-          <input value={newRoom} onChange={(e) => setNewRoom(e.target.value)} placeholder="Нова кімната" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none" />
+          <input value={newRoom} onChange={(e) => setNewRoom(e.target.value)} placeholder="Нова кімната" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-rose-400 focus:outline-none" />
           <button onClick={() => { if (newRoom.trim()) { onAddRoom(newRoom); setNewRoom(""); } }} className="shrink-0 rounded-full bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-900">Додати</button>
         </div>
       </div>
@@ -7876,7 +7876,7 @@ function ReviewSection({ onGo }) {
   const StreakChips = () => (
     <div className="flex flex-wrap gap-2">
       <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ring-1 ring-slate-100"><span>🔥</span><span className="tabular-nums text-orange-500">{routine.streak.current}</span> рутина</span>
-      <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ring-1 ring-slate-100"><GraduationCap className="h-3.5 w-3.5 text-indigo-500" /><span className="tabular-nums text-indigo-500">{study.streak}</span> навчання</span>
+      <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ring-1 ring-slate-100"><GraduationCap className="h-3.5 w-3.5 text-rose-500" /><span className="tabular-nums text-rose-500">{study.streak}</span> навчання</span>
       <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ring-1 ring-slate-100"><Leaf className="h-3.5 w-3.5 text-teal-500" /><span className="tabular-nums text-teal-500">{calmStreakVal}</span> спокій</span>
     </div>
   );
@@ -7885,12 +7885,12 @@ function ReviewSection({ onGo }) {
     <div className="grid grid-cols-3 gap-2">
       <button onClick={() => onGo("routine")} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-slate-100 hover:ring-pink-200"><div className="text-2xl font-extrabold tabular-nums text-pink-500">{doneTasks.length}/{occurring.length}</div><div className="text-[11px] text-slate-400">справи</div></button>
       <button onClick={() => onGo("fasting")} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-slate-100 hover:ring-orange-200"><div className="text-2xl font-extrabold tabular-nums text-orange-500">{fasting ? `${Math.floor(fastElapsedH)}г` : "—"}</div><div className="text-[11px] text-slate-400">{fasting ? "голодування" : "не постишся"}</div></button>
-      <button onClick={() => onGo("studying")} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-slate-100 hover:ring-indigo-200"><div className="text-2xl font-extrabold tabular-nums text-indigo-500">{study.due}</div><div className="text-[11px] text-slate-400">карток на сьогодні</div></button>
+      <button onClick={() => onGo("studying")} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-slate-100 hover:ring-rose-200"><div className="text-2xl font-extrabold tabular-nums text-rose-500">{study.due}</div><div className="text-[11px] text-slate-400">карток на сьогодні</div></button>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex-1 bg-gradient-to-b from-amber-50/50 via-rose-50/30 to-white">
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-amber-50/50 via-red-50/30 to-white">
       <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
         {/* header */}
         <div className="mb-4 flex items-center justify-between">
@@ -7900,13 +7900,13 @@ function ReviewSection({ onGo }) {
           </div>
           <div className="flex gap-1 rounded-full bg-white p-1 shadow-sm ring-1 ring-slate-100">
             <button onClick={() => setMode("morning")} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${mode === "morning" ? "bg-amber-400 text-white" : "text-slate-400"}`}>🌅 Ранок</button>
-            <button onClick={() => setMode("evening")} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${mode === "evening" ? "bg-indigo-500 text-white" : "text-slate-400"}`}>🌙 Вечір</button>
+            <button onClick={() => setMode("evening")} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${mode === "evening" ? "bg-rose-500 text-white" : "text-slate-400"}`}>🌙 Вечір</button>
           </div>
         </div>
 
         {mode === "morning" ? (
           <div className="space-y-3">
-            <div className="rounded-3xl bg-gradient-to-r from-amber-300 to-rose-300 p-4 text-white shadow-sm">
+            <div className="rounded-3xl bg-gradient-to-r from-amber-300 to-red-300 p-4 text-white shadow-sm">
               <div className="text-lg font-extrabold">Доброго ранку 🌅</div>
               <div className="text-sm text-white/90">Хвилинка, щоб налаштуватись — без тиску.</div>
             </div>
@@ -7922,7 +7922,7 @@ function ReviewSection({ onGo }) {
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-3xl bg-gradient-to-r from-indigo-400 to-violet-400 p-4 text-white shadow-sm">
+            <div className="rounded-3xl bg-gradient-to-r from-rose-400 to-pink-400 p-4 text-white shadow-sm">
               <div className="text-lg font-extrabold">Як пройшов день? 🌙</div>
               <div className="text-sm text-white/90">Відзначимо, що вдалося — решта зачекає.</div>
             </div>
@@ -7948,7 +7948,7 @@ function ReviewSection({ onGo }) {
 
             <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
               <div className="mb-1.5 text-sm font-semibold text-slate-700">Як був день? (одним рядком)</div>
-              <textarea value={doc.note || ""} onChange={(e) => saveDoc({ note: e.target.value })} rows={2} placeholder="Що запам'яталось…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+              <textarea value={doc.note || ""} onChange={(e) => saveDoc({ note: e.target.value })} rows={2} placeholder="Що запам'яталось…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
             </div>
 
             <div className="mb-1 mt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Стан секцій</div>
@@ -8104,7 +8104,7 @@ function FinanceSection({ name, onRename, onGo, moneyTab, onMoneyTab }) {
                 <div className="mt-2 flex items-center gap-2">
                   {!done && <button onClick={() => setPayFor(d)} className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600">Внести оплату</button>}
                   <button onClick={() => setDebtEditor({ debt: d })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50">Редагувати</button>
-                  <button onClick={() => { if (confirm("Видалити борг?")) deleteDebt(d.id); }} className="ml-auto rounded-md p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+                  <button onClick={() => { if (confirm("Видалити борг?")) deleteDebt(d.id); }} className="ml-auto rounded-md p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
                 {isFocus && !done && <div className="mt-2 rounded-lg bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-700">Плати мінімум по всіх, а <b>сюди</b> — усе, що зможеш зверху. Один фокус за раз.</div>}
               </div>
@@ -8136,7 +8136,7 @@ function FinanceSection({ name, onRename, onGo, moneyTab, onMoneyTab }) {
             {periodExp.length > 0 && (
               <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-50">
                 <div className="mb-1.5 text-xs font-semibold text-slate-500">Витрати за період</div>
-                <div className="space-y-1">{periodExp.map((e) => <div key={e.id} className="group flex items-center gap-2 text-sm"><span className="tabular-nums font-semibold text-slate-700">{finFmt(e.amount)}</span><span className="min-w-0 flex-1 truncate text-slate-400">{e.note || "—"}</span><span className="text-[11px] text-slate-300">{e.date.slice(5)}</span><button onClick={() => delExpense(e.id)} className="text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>)}</div>
+                <div className="space-y-1">{periodExp.map((e) => <div key={e.id} className="group flex items-center gap-2 text-sm"><span className="tabular-nums font-semibold text-slate-700">{finFmt(e.amount)}</span><span className="min-w-0 flex-1 truncate text-slate-400">{e.note || "—"}</span><span className="text-[11px] text-slate-300">{e.date.slice(5)}</span><button onClick={() => delExpense(e.id)} className="text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>)}</div>
               </div>
             )}
             <button onClick={() => onGo && onGo("budget")} className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200 hover:ring-emerald-200"><ShoppingCart className="h-4 w-4" /> Щомісячні покупки — у вкладці Budget</button>
@@ -8187,7 +8187,7 @@ function FinDebtEditor({ debt, onClose, onSave, onDelete }) {
         </div>
         <div className="flex gap-2">
           <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), creditor: creditor.trim(), balance: Number(balance) || 0, rate: Number(rate) || 0, minPayment: Number(minPayment) || 0 }); }} className="flex-1 rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Зберегти</button>
-          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-rose-50 px-4 py-3 font-semibold text-rose-500 hover:bg-rose-100"><Trash2 className="h-5 w-5" /></button>}
+          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-red-50 px-4 py-3 font-semibold text-red-500 hover:bg-red-100"><Trash2 className="h-5 w-5" /></button>}
         </div>
       </div>
     </div>
@@ -8342,7 +8342,7 @@ function RecoveryView({ onExit, onQuickCalm }) {
             {reason.trim() && <div className="mt-3 rounded-2xl bg-teal-50 px-4 py-3 text-center text-sm text-teal-800"><span className="text-[11px] font-semibold uppercase tracking-wide text-teal-500">Моя причина</span><div className="mt-0.5">{reason}</div></div>}
             <div className="mt-4 space-y-2">
               <button onClick={() => { setUrgeOpen(false); onQuickCalm("breath"); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 hover:ring-sky-200"><span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-500 text-white"><Wind className="h-5 w-5" /></span><span className="flex-1"><span className="block font-bold text-slate-800">Подихати</span><span className="block text-xs text-slate-400">Сповільнити тіло за 2 хвилини</span></span><ArrowRight className="h-4 w-4 text-slate-300" /></button>
-              <button onClick={() => { setUrgeOpen(false); onQuickCalm("ground"); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 hover:ring-indigo-200"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500 text-white"><Anchor className="h-5 w-5" /></span><span className="flex-1"><span className="block font-bold text-slate-800">Заземлитися 5-4-3-2-1</span><span className="block text-xs text-slate-400">Повернутись у тіло й у момент</span></span><ArrowRight className="h-4 w-4 text-slate-300" /></button>
+              <button onClick={() => { setUrgeOpen(false); onQuickCalm("ground"); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 hover:ring-rose-200"><span className="grid h-10 w-10 place-items-center rounded-xl bg-rose-500 text-white"><Anchor className="h-5 w-5" /></span><span className="flex-1"><span className="block font-bold text-slate-800">Заземлитися 5-4-3-2-1</span><span className="block text-xs text-slate-400">Повернутись у тіло й у момент</span></span><ArrowRight className="h-4 w-4 text-slate-300" /></button>
               <button onClick={() => { setUrgeOpen(false); setLogForm({ substance: "alcohol", type: "urge" }); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 hover:ring-teal-200"><span className="grid h-10 w-10 place-items-center rounded-xl bg-teal-500 text-white"><NotebookPen className="h-5 w-5" /></span><span className="flex-1"><span className="block font-bold text-slate-800">Записати цей порив</span><span className="block text-xs text-slate-400">Що зараз коїться — для патернів</span></span><ArrowRight className="h-4 w-4 text-slate-300" /></button>
             </div>
             <button onClick={() => setUrgeOpen(false)} className="mt-3 w-full rounded-2xl py-2.5 text-sm font-semibold text-slate-400 hover:text-slate-600">Мені вже легше</button>
@@ -8443,7 +8443,7 @@ function RoutinePomodoro({ task, mode, settings, onClose, onLog, onSaveSettings 
   const isBreak = stage === "break";
   const done2 = mode === "2min" && stage === "done";
   return (
-    <div className="fixed inset-0 z-[55] flex flex-col bg-gradient-to-b from-rose-50 to-pink-100 p-6">
+    <div className="fixed inset-0 z-[55] flex flex-col bg-gradient-to-b from-red-50 to-pink-100 p-6">
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold text-slate-400">{mode === "2min" ? "Старт на 2 хвилини" : `Помодоро · коло ${cycles + 1}`}</span>
         <button onClick={finish} className="rounded-full bg-white/70 p-2 text-slate-500"><X className="h-5 w-5" /></button>
@@ -8514,12 +8514,12 @@ function WellbeingView({ onExit, moods, onMood }) {
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
       <div className="mb-4 flex items-center gap-3">
-        <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-rose-100"><ArrowLeft className="h-4 w-4" /></button>
+        <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-red-100"><ArrowLeft className="h-4 w-4" /></button>
         <h1 className="text-xl font-extrabold text-slate-900">Настрій і вдячність</h1>
       </div>
 
       {/* mood over time */}
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-red-100">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm font-bold text-slate-700">Настрій у часі{avg != null ? ` · середнє ${avg.toFixed(1)}` : ""}</span>
           <div className="flex gap-1 rounded-full bg-slate-100 p-0.5">{[14, 30, 90].map((r) => <button key={r} onClick={() => setRange(r)} className={`rounded-full px-2 py-0.5 text-xs font-bold ${range === r ? "bg-pink-500 text-white" : "text-slate-500"}`}>{r}д</button>)}</div>
@@ -8540,7 +8540,7 @@ function WellbeingView({ onExit, moods, onMood }) {
       </div>
 
       {/* today mood + tag */}
-      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-red-100">
         <div className="mb-2 text-sm font-bold text-slate-700">Сьогодні</div>
         <div className="flex justify-between">{MOODS.map((m) => <button key={m.score} onClick={() => onMood(m.score)} className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-1.5 transition hover:scale-110 ${moods[today] === m.score ? "bg-pink-50 ring-2 ring-pink-300" : ""}`}><span className="text-2xl">{m.emoji}</span><span className="text-[9px] text-slate-400">{m.label}</span></button>)}</div>
         <div className="mt-3 text-xs font-semibold text-slate-500">Що вплинуло?</div>
@@ -8549,21 +8549,21 @@ function WellbeingView({ onExit, moods, onMood }) {
       </div>
 
       {/* gratitude */}
-      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-red-100">
         <div className="mb-2 text-sm font-bold text-slate-700">🙏 3 речі, за які вдячна сьогодні</div>
         <div className="space-y-2">{[0, 1, 2].map((i) => <input key={i} value={gInputs[i] || ""} onChange={(e) => setGInputs((a) => { const n = [...a]; n[i] = e.target.value; return n; })} onBlur={saveGratitude} placeholder={`${i + 1}…`} className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />)}</div>
         {Object.keys(gratitude).filter((d) => d !== today).length > 0 && <div className="mt-2 text-[11px] text-slate-400">записів вдячності: {Object.keys(gratitude).length}</div>}
       </div>
 
       {/* behavioral activation */}
-      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-red-100">
         <div className="mb-1 text-sm font-bold text-slate-700">Маленькі дії на день без сил</div>
         <p className="mb-2 text-xs text-slate-400">Коли енергії нема, не обирай — хай застосунок підкаже одну маленьку дію.</p>
         <button onClick={pickAction} className="w-full rounded-2xl bg-gradient-to-r from-pink-400 to-fuchsia-400 py-3 font-bold text-white shadow-sm">🎲 Мало енергії — обери за мене</button>
         {picked && <div className="mt-2 rounded-2xl bg-pink-50 px-4 py-3 text-center"><div className="text-[11px] font-semibold uppercase tracking-wide text-pink-500">спробуй це</div><div className="mt-0.5 text-lg font-bold text-slate-800">{picked.text}</div></div>}
         <div className="mt-3 space-y-1.5">
           {activation.map((a) => (
-            <div key={a.id} className="group flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm text-slate-600"><span className="flex-1">{a.text}</span><button onClick={() => saveActivation(activation.filter((x) => x.id !== a.id))} className="text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>
+            <div key={a.id} className="group flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm text-slate-600"><span className="flex-1">{a.text}</span><button onClick={() => saveActivation(activation.filter((x) => x.id !== a.id))} className="text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>
           ))}
         </div>
         <div className="mt-2 flex gap-2"><input value={newAct} onChange={(e) => setNewAct(e.target.value)} placeholder="Додати свою дію…" onKeyDown={(e) => { if (e.key === "Enter" && newAct.trim()) { saveActivation([...activation, { id: ruid("ba"), text: newAct.trim() }]); setNewAct(""); } }} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" /><button onClick={() => { if (newAct.trim()) { saveActivation([...activation, { id: ruid("ba"), text: newAct.trim() }]); setNewAct(""); } }} className="rounded-lg bg-slate-800 px-3 text-sm font-semibold text-white">+</button></div>
@@ -8616,7 +8616,7 @@ function MovementCard({ flash }) {
           </div>
         </div>
       )}
-      <div className="flex items-center gap-3 rounded-2xl bg-white/80 p-3 shadow-sm ring-1 ring-rose-100">
+      <div className="flex items-center gap-3 rounded-2xl bg-white/80 p-3 shadow-sm ring-1 ring-red-100">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-lime-100 text-xl">🚶</span>
         <div className="flex-1"><div className="text-sm font-bold text-slate-700">Рух сьогодні: {count}</div><div className="text-[11px] text-slate-400">проти сидіння 9–18 · нагадування {cfg.remindersOn ? "увімкнені" : "вимкнені"}</div></div>
         <button onClick={() => saveCount(count + 1)} className="rounded-full bg-lime-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-lime-600">+ Порухалась</button>
@@ -8652,18 +8652,18 @@ function MedsView({ onExit }) {
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
       <div className="mb-3 flex items-center gap-3">
-        <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-rose-100"><ArrowLeft className="h-4 w-4" /></button>
+        <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-red-100"><ArrowLeft className="h-4 w-4" /></button>
         <h1 className="text-xl font-extrabold text-slate-900">Ліки й самопочуття</h1>
       </div>
       <p className="mb-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">Зміни дози — лише разом із лікарем. Застосунок нічого не призначає й не радить схем: він лише веде облік того, що призначив лікар, і як ти почуваєшся.</p>
 
       {/* meds list */}
       <div className="space-y-2">
-        {meds.length === 0 ? <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-rose-50">Додай ліки, щоб бачити запас і вести журнал самопочуття.</div> : meds.map((m) => {
+        {meds.length === 0 ? <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-red-50">Додай ліки, щоб бачити запас і вести журнал самопочуття.</div> : meds.map((m) => {
           const daysLeft = m.perDay > 0 ? Math.floor((Number(m.supply) || 0) / m.perDay) : null;
           const low = daysLeft != null && daysLeft <= 5;
           return (
-            <div key={m.id} className={`rounded-2xl bg-white p-4 shadow-sm ring-1 ${low ? "ring-2 ring-amber-300" : "ring-rose-50"}`}>
+            <div key={m.id} className={`rounded-2xl bg-white p-4 shadow-sm ring-1 ${low ? "ring-2 ring-amber-300" : "ring-red-50"}`}>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0"><div className="font-bold text-slate-800">{m.name}</div><div className="text-xs text-slate-400">{m.dose}{m.perDay ? ` · ${m.perDay}×/день` : ""}</div></div>
                 <button onClick={() => setTaken(m.id, !todayLog.taken?.[m.id])} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${todayLog.taken?.[m.id] ? "bg-green-500 text-white" : "bg-slate-100 text-slate-500"}`}>{todayLog.taken?.[m.id] ? "✓ прийнято" : "прийняти"}</button>
@@ -8683,16 +8683,16 @@ function MedsView({ onExit }) {
               <div className="mt-2 flex gap-2">
                 <button onClick={() => setEditor({ med: m })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">Редагувати</button>
                 <button onClick={() => setTaperFor(m)} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-sky-600 ring-1 ring-sky-200">Схема лікаря</button>
-                <button onClick={() => { if (confirm("Видалити?")) delMed(m.id); }} className="ml-auto text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+                <button onClick={() => { if (confirm("Видалити?")) delMed(m.id); }} className="ml-auto text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
               </div>
             </div>
           );
         })}
-        <button onClick={() => setEditor({ med: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-rose-300 py-3 text-sm font-semibold text-rose-500 hover:bg-rose-50"><Plus className="h-4 w-4" /> Додати ліки</button>
+        <button onClick={() => setEditor({ med: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-red-300 py-3 text-sm font-semibold text-red-500 hover:bg-red-50"><Plus className="h-4 w-4" /> Додати ліки</button>
       </div>
 
       {/* wellbeing log */}
-      <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+      <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-red-100">
         <div className="mb-2 text-sm font-bold text-slate-700">Самопочуття сьогодні</div>
         <div className="flex justify-between">{MOODS.map((m) => <button key={m.score} onClick={() => setWell({ wellbeing: m.score })} className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-1.5 hover:scale-110 ${todayLog.wellbeing === m.score ? "bg-pink-50 ring-2 ring-pink-300" : ""}`}><span className="text-2xl">{m.emoji}</span></button>)}</div>
         <div className="mt-2 text-xs font-semibold text-slate-500">Побічні ефекти</div>
@@ -8751,7 +8751,7 @@ function TaperEditor({ med, onClose, onSave }) {
             <input type="date" value={r.date} onChange={(e) => upd(i, "date", e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs" />
             <input value={r.dose} onChange={(e) => upd(i, "dose", e.target.value)} placeholder="доза" className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
             <input value={r.note} onChange={(e) => upd(i, "note", e.target.value)} placeholder="нотатка" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
-            <button onClick={() => setRows((rr) => rr.filter((_, j) => j !== i))} className="text-slate-300 hover:text-rose-500"><X className="h-4 w-4" /></button>
+            <button onClick={() => setRows((rr) => rr.filter((_, j) => j !== i))} className="text-slate-300 hover:text-red-500"><X className="h-4 w-4" /></button>
           </div>
         ))}</div>
         <button onClick={() => setRows((r) => [...r, { date: dateKey(Date.now()), dose: "", note: "" }])} className="mt-2 text-sm font-semibold text-sky-600">+ Рядок</button>
@@ -8812,9 +8812,9 @@ function CareerView() {
 
   return (
     <div>
-      <div className="mb-4 flex gap-1.5 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-indigo-100">
+      <div className="mb-4 flex gap-1.5 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-rose-100">
         {[["path", "Шлях", GraduationCap], ["skills", "Цілі", Target], ["wins", "Досягнення", Trophy], ["review", "Огляд", CalendarDays]].map(([k, label, Icon]) => (
-          <button key={k} onClick={() => setTab(k)} className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold transition sm:text-sm ${tab === k ? "bg-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4 shrink-0" /> {label}</button>
+          <button key={k} onClick={() => setTab(k)} className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold transition sm:text-sm ${tab === k ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4 shrink-0" /> {label}</button>
         ))}
       </div>
 
@@ -8822,42 +8822,42 @@ function CareerView() {
 
       {tab === "skills" && (
         <div className="space-y-2">
-          {skills.length === 0 && <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-indigo-50">Що вчиш чи прокачуєш? Додай ціль із дедлайном і відстежуй прогрес.</div>}
+          {skills.length === 0 && <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-rose-50">Що вчиш чи прокачуєш? Додай ціль із дедлайном і відстежуй прогрес.</div>}
           {skills.map((s) => (
-            <div key={s.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-50">
+            <div key={s.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0"><div className="font-bold text-slate-800">{s.name}</div>{(s.target || s.deadline) && <div className="text-xs text-slate-400">{s.target}{s.deadline ? ` · до ${s.deadline}` : ""}</div>}</div>
-                <span className="shrink-0 text-sm font-bold tabular-nums text-indigo-600">{s.progress || 0}%</span>
+                <span className="shrink-0 text-sm font-bold tabular-nums text-rose-600">{s.progress || 0}%</span>
               </div>
-              <input type="range" min={0} max={100} step={5} value={s.progress || 0} onChange={(e) => setProgress(s.id, +e.target.value)} className="mt-2 w-full accent-indigo-500" />
-              <div className="mt-1 flex gap-2"><button onClick={() => setSkillEd({ skill: s })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">Редагувати</button><button onClick={() => { if (confirm("Видалити ціль?")) saveSkills(skills.filter((x) => x.id !== s.id)); }} className="ml-auto text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button></div>
+              <input type="range" min={0} max={100} step={5} value={s.progress || 0} onChange={(e) => setProgress(s.id, +e.target.value)} className="mt-2 w-full accent-rose-500" />
+              <div className="mt-1 flex gap-2"><button onClick={() => setSkillEd({ skill: s })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">Редагувати</button><button onClick={() => { if (confirm("Видалити ціль?")) saveSkills(skills.filter((x) => x.id !== s.id)); }} className="ml-auto text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button></div>
             </div>
           ))}
-          <button onClick={() => setSkillEd({ skill: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-indigo-300 py-3 text-sm font-semibold text-indigo-600 hover:bg-indigo-50"><Plus className="h-4 w-4" /> Ціль / навичка</button>
+          <button onClick={() => setSkillEd({ skill: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-rose-300 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-50"><Plus className="h-4 w-4" /> Ціль / навичка</button>
         </div>
       )}
 
       {tab === "wins" && (
         <div className="space-y-3">
-          <div className="rounded-2xl bg-indigo-50/60 px-4 py-3 text-xs leading-relaxed text-indigo-800">Занотовуй робочі перемоги — великі й малі. Це і для резюме, і щоб на важкий день згадати: ти багато можеш.</div>
-          <div className="flex gap-2"><input value={winText} onChange={(e) => setWinText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addWin(); }} placeholder="Що вдалося? (напр. закрила складний баг)" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" /><button onClick={addWin} className="shrink-0 rounded-xl bg-indigo-500 px-4 text-sm font-bold text-white hover:bg-indigo-600">+</button></div>
-          {wins.length === 0 ? <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-indigo-50">Ще порожньо. Перша перемога вже сьогодні? 🏆</div> : (
-            <div className="space-y-2">{wins.map((w) => <div key={w.id} className="group flex items-start gap-2 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-indigo-50"><span className="text-lg">🏆</span><span className="min-w-0 flex-1"><span className="block text-sm text-slate-700">{w.text}</span><span className="text-[11px] text-slate-400">{w.date}</span></span><button onClick={() => saveWins(wins.filter((x) => x.id !== w.id))} className="text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-4 w-4" /></button></div>)}</div>
+          <div className="rounded-2xl bg-rose-50/60 px-4 py-3 text-xs leading-relaxed text-rose-800">Занотовуй робочі перемоги — великі й малі. Це і для резюме, і щоб на важкий день згадати: ти багато можеш.</div>
+          <div className="flex gap-2"><input value={winText} onChange={(e) => setWinText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addWin(); }} placeholder="Що вдалося? (напр. закрила складний баг)" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" /><button onClick={addWin} className="shrink-0 rounded-xl bg-rose-500 px-4 text-sm font-bold text-white hover:bg-rose-600">+</button></div>
+          {wins.length === 0 ? <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-rose-50">Ще порожньо. Перша перемога вже сьогодні? 🏆</div> : (
+            <div className="space-y-2">{wins.map((w) => <div key={w.id} className="group flex items-start gap-2 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-rose-50"><span className="text-lg">🏆</span><span className="min-w-0 flex-1"><span className="block text-sm text-slate-700">{w.text}</span><span className="text-[11px] text-slate-400">{w.date}</span></span><button onClick={() => saveWins(wins.filter((x) => x.id !== w.id))} className="text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-4 w-4" /></button></div>)}</div>
           )}
         </div>
       )}
 
       {tab === "review" && (
         <div className="space-y-3">
-          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-100">
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
             <div className="mb-1 text-sm font-bold text-slate-700">Тиждень від {week}</div>
             <p className="mb-2 text-xs text-slate-400">Що вдалося на роботі цього тижня? Навіть одне речення рахується.</p>
-            <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} onBlur={saveReview} rows={3} placeholder="Три речі, якими пишаюся цього тижня…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+            <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} onBlur={saveReview} rows={3} placeholder="Три речі, якими пишаюся цього тижня…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
           </div>
           {reviews.filter((r) => r.week !== week).length > 0 && (
             <div className="space-y-2">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Минулі тижні</div>
-              {reviews.filter((r) => r.week !== week).slice().reverse().map((r) => <div key={r.week} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-indigo-50"><div className="text-[11px] font-semibold text-slate-400">від {r.week}</div><div className="mt-0.5 whitespace-pre-wrap text-sm text-slate-600">{r.text}</div></div>)}
+              {reviews.filter((r) => r.week !== week).slice().reverse().map((r) => <div key={r.week} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-rose-50"><div className="text-[11px] font-semibold text-slate-400">від {r.week}</div><div className="mt-0.5 whitespace-pre-wrap text-sm text-slate-600">{r.text}</div></div>)}
             </div>
           )}
         </div>
@@ -8876,10 +8876,10 @@ function SkillEditor({ skill, onClose, onSave }) {
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{skill ? "Редагувати ціль" : "Нова ціль"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400"><X className="h-5 w-5" /></button></div>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Що вчу / прокачую (напр. System Design)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-indigo-400 focus:outline-none" />
-        <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Ціль (напр. пройти курс, зробити pet-проєкт)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Що вчу / прокачую (напр. System Design)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-rose-400 focus:outline-none" />
+        <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Ціль (напр. пройти курс, зробити pet-проєкт)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
         <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Дедлайн (необов'язково)</span><input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
-        <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), target: target.trim(), deadline }); }} className="w-full rounded-2xl bg-indigo-500 py-3 font-bold text-white hover:bg-indigo-600">Зберегти</button>
+        <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), target: target.trim(), deadline }); }} className="w-full rounded-2xl bg-rose-500 py-3 font-bold text-white hover:bg-rose-600">Зберегти</button>
       </div>
     </div>
   );
@@ -8887,11 +8887,11 @@ function SkillEditor({ skill, onClose, onSave }) {
 
 /* ---------- Career: Duolingo-style learning path ---------- */
 const PATH_STEP_META = {
-  learn:   { icon: BookOpen,   ring: "bg-indigo-500",  label: "Урок" },
+  learn:   { icon: BookOpen,   ring: "bg-rose-500",  label: "Урок" },
   read:    { icon: BookMarked, ring: "bg-sky-500",     label: "Читання" },
   explain: { icon: Lightbulb,  ring: "bg-amber-500",   label: "Поясни" },
   build:   { icon: Wrench,     ring: "bg-emerald-500", label: "Практика" },
-  quiz:    { icon: HelpCircle, ring: "bg-violet-500",  label: "Тест" },
+  quiz:    { icon: HelpCircle, ring: "bg-pink-500",  label: "Тест" },
 };
 
 // Learning content is baked in (versioned in code); only per-step completion is stored.
@@ -9551,11 +9551,11 @@ function CareerPath({ progress, onDone }) {
   const openMod = open ? PM_PATH[open.modIdx] : null;
   const openStep = openMod ? openMod.steps[open.stepIdx] : null;
 
-  if (!PM_PATH.length) return <div className="rounded-2xl bg-white py-10 text-center text-sm text-slate-400 ring-1 ring-indigo-50">Шлях готується…</div>;
+  if (!PM_PATH.length) return <div className="rounded-2xl bg-white py-10 text-center text-sm text-slate-400 ring-1 ring-rose-50">Шлях готується…</div>;
 
   return (
     <div className="space-y-5">
-      <div className="rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-500 p-5 text-white shadow-sm">
+      <div className="rounded-3xl bg-gradient-to-br from-rose-500 to-pink-500 p-5 text-white shadow-sm">
         <div className="flex items-center gap-2 text-sm font-semibold text-white/90"><GraduationCap className="h-4 w-4" /> Шлях: технічний PM з AI</div>
         <div className="mt-1 text-2xl font-extrabold tabular-nums">{doneCount} / {totalSteps} кроків</div>
         <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/25"><div className="h-full rounded-full bg-white transition-all" style={{ width: `${totalSteps ? (doneCount / totalSteps) * 100 : 0}%` }} /></div>
@@ -9566,14 +9566,14 @@ function CareerPath({ progress, onDone }) {
         const mDone = mod.steps.filter((_, i) => progress[pathStepId(mod.slug, i)]).length;
         const modDone = mDone === mod.steps.length;
         return (
-          <div key={mod.slug} className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-indigo-50">
+          <div key={mod.slug} className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
             <div className="mb-3 flex items-center gap-3">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-100 text-2xl">{mod.emoji}</span>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-100 text-2xl">{mod.emoji}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2"><span className="font-bold text-slate-800">{mod.title}</span>{modDone && <Trophy className="h-4 w-4 shrink-0 text-amber-400" />}</div>
                 <div className="text-xs leading-snug text-slate-400">{mod.intro}</div>
               </div>
-              <span className="shrink-0 text-xs font-bold tabular-nums text-indigo-500">{mDone}/{mod.steps.length}</span>
+              <span className="shrink-0 text-xs font-bold tabular-nums text-rose-500">{mDone}/{mod.steps.length}</span>
             </div>
             <div className="relative">
               <span className="pointer-events-none absolute bottom-4 left-[18px] top-4 w-0.5 bg-slate-100" aria-hidden />
@@ -9629,11 +9629,11 @@ function PathLessonModal({ step, done, onClose, onDone }) {
         {step.body && <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{step.body}</p>}
 
         {step.resource?.url && (
-          <a href={step.resource.url} target="_blank" rel="noreferrer" className="mt-3 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-100"><BookOpen className="h-4 w-4 shrink-0" /> <span className="min-w-0 flex-1 truncate">{step.resource.label || "Джерело"}</span> <ArrowRight className="h-4 w-4 shrink-0" /></a>
+          <a href={step.resource.url} target="_blank" rel="noreferrer" className="mt-3 flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-100"><BookOpen className="h-4 w-4 shrink-0" /> <span className="min-w-0 flex-1 truncate">{step.resource.label || "Джерело"}</span> <ArrowRight className="h-4 w-4 shrink-0" /></a>
         )}
 
         {step.type === "explain" && (
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Поясни своїми словами (для себе — не зберігається)…" className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Поясни своїми словами (для себе — не зберігається)…" className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
         )}
 
         {isQuiz && (
@@ -9643,14 +9643,14 @@ function PathLessonModal({ step, done, onClose, onDone }) {
               const reveal = picked != null;
               const isRight = i === step.quiz.answerIndex;
               const chosen = picked === i;
-              const cls = reveal ? (isRight ? "border-emerald-400 bg-emerald-50 text-emerald-800" : chosen ? "border-rose-300 bg-rose-50 text-rose-700" : "border-slate-200 text-slate-400") : "border-slate-200 text-slate-700 hover:border-indigo-300";
+              const cls = reveal ? (isRight ? "border-emerald-400 bg-emerald-50 text-emerald-800" : chosen ? "border-red-300 bg-red-50 text-red-700" : "border-slate-200 text-slate-400") : "border-slate-200 text-slate-700 hover:border-rose-300";
               return <button key={i} disabled={reveal && correct} onClick={() => setPicked(i)} className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition ${cls}`}><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-bold">{String.fromCharCode(65 + i)}</span><span className="min-w-0 flex-1">{opt}</span>{reveal && isRight && <Check className="h-4 w-4 shrink-0" />}</button>;
             })}
             {picked != null && <div className={`rounded-xl px-3 py-2 text-sm ${correct ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{correct ? "✓ " : "Майже. "}{step.quiz.explanation}</div>}
           </div>
         )}
 
-        <button disabled={!canFinish} onClick={() => onDone(true)} className="mt-4 w-full rounded-2xl bg-indigo-500 py-3 font-bold text-white transition hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400">{done ? "Пройдено ✓ · закрити" : isQuiz && !correct ? "Обери правильну відповідь" : "Готово ✓"}</button>
+        <button disabled={!canFinish} onClick={() => onDone(true)} className="mt-4 w-full rounded-2xl bg-rose-500 py-3 font-bold text-white transition hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-400">{done ? "Пройдено ✓ · закрити" : isQuiz && !correct ? "Обери правильну відповідь" : "Готово ✓"}</button>
         {done && <button onClick={() => onDone(false)} className="mt-2 w-full text-center text-xs font-semibold text-slate-400">Скинути крок</button>}
       </div>
     </div>
@@ -9696,14 +9696,14 @@ function ToolkitSection({ name, onRename }) {
   const saveAssignments = useCallback(async (n) => { setAssignments(n); await store.set(TKEYS.assignments, n); }, []);
   const saveMeta = useCallback(async (patch) => { const n = { ...meta, ...patch }; setMeta(n); await store.set(TKEYS.meta, n); }, [meta]);
 
-  if (loading) return <div className="flex flex-1 items-center justify-center text-slate-400"><div className="flex flex-col items-center gap-3"><Wrench className="h-8 w-8 animate-pulse text-indigo-400" /><span className="text-sm">Завантаження…</span></div></div>;
+  if (loading) return <div className="flex flex-1 items-center justify-center text-slate-400"><div className="flex flex-col items-center gap-3"><Wrench className="h-8 w-8 animate-pulse text-rose-400" /><span className="text-sm">Завантаження…</span></div></div>;
 
   return (
     <div className="min-h-screen flex-1 bg-gradient-to-b from-slate-50 to-white">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
           {renaming ? (
-            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-indigo-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-rose-200 px-2 py-1 text-base font-semibold focus:outline-none" />
           ) : (
             <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
           )}
@@ -9716,8 +9716,8 @@ function ToolkitSection({ name, onRename }) {
           <div className="space-y-4">
             <h1 className="text-2xl font-extrabold text-slate-900">Інструменти</h1>
             <p className="text-sm text-slate-500">Практичні помічники для щоденного життя.</p>
-            <button onClick={() => setTool("chores")} className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-indigo-200 hover:shadow-md">
-              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-indigo-100 text-2xl">🧹</span>
+            <button onClick={() => setTool("chores")} className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-rose-200 hover:shadow-md">
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-rose-100 text-2xl">🧹</span>
               <span className="min-w-0 flex-1"><span className="block text-lg font-bold text-slate-800">Chore Splitter</span><span className="block text-sm text-slate-400">7-крокова система, щоб чесно поділити хатні справи — по складності, а не по кількості.</span></span>
               <ChevronRight className="h-5 w-5 text-slate-300" />
             </button>
@@ -9801,9 +9801,9 @@ function ChoreSplitter(props) {
           const n = i + 1, active = n === step, done = n < step;
           return (
             <button key={s} onClick={() => setStep(n)} className="flex items-center gap-1">
-              {i > 0 && <span className={`h-0.5 w-3 ${done || active ? "bg-indigo-400" : "bg-slate-200"}`} />}
-              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold transition ${active ? "bg-indigo-600 text-white" : done ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>{done ? "✓" : n}</span>
-              <span className={`hidden whitespace-nowrap text-xs font-medium sm:inline ${active ? "text-indigo-700" : "text-slate-400"}`}>{s}</span>
+              {i > 0 && <span className={`h-0.5 w-3 ${done || active ? "bg-rose-400" : "bg-slate-200"}`} />}
+              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold transition ${active ? "bg-rose-600 text-white" : done ? "bg-rose-100 text-rose-600" : "bg-slate-100 text-slate-400"}`}>{done ? "✓" : n}</span>
+              <span className={`hidden whitespace-nowrap text-xs font-medium sm:inline ${active ? "text-rose-700" : "text-slate-400"}`}>{s}</span>
             </button>
           );
         })}
@@ -9823,7 +9823,7 @@ function ChoreSplitter(props) {
         <button disabled={step <= 1} onClick={() => setStep(step - 1)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Назад</button>
         <span className="text-xs text-slate-400">Крок {step} / 7</span>
         {step < 7
-          ? <button disabled={step === 2 && list.length === 0} onClick={() => setStep(step + 1)} className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
+          ? <button disabled={step === 2 && list.length === 0} onClick={() => setStep(step + 1)} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
           : <span />}
       </div>
     </div>
@@ -9838,9 +9838,9 @@ function StepMembers({ members, onSave }) {
       <div className="space-y-2">
         {members.map((m, i) => (
           <div key={m.id} className="flex items-center gap-2">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-100 text-sm font-bold text-indigo-600">{i + 1}</span>
-            <input value={m.name} onChange={(e) => onSave(members.map((x) => x.id === m.id ? { ...x, name: e.target.value } : x))} className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
-            {members.length > 2 && <button onClick={() => onSave(members.filter((x) => x.id !== m.id))} className="rounded p-1.5 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>}
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-rose-100 text-sm font-bold text-rose-600">{i + 1}</span>
+            <input value={m.name} onChange={(e) => onSave(members.map((x) => x.id === m.id ? { ...x, name: e.target.value } : x))} className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
+            {members.length > 2 && <button onClick={() => onSave(members.filter((x) => x.id !== m.id))} className="rounded p-1.5 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>}
           </div>
         ))}
       </div>
@@ -9859,8 +9859,8 @@ function StepBrainstorm({ list, onSave }) {
       <p className="mb-3 text-sm text-slate-500">💡 Розбивай великі справи на маленькі: «прання» → «завантажити» + «розвісити» + «скласти». Так нічого не загубиться й легше ділити.</p>
 
       <div className="mb-3 flex items-center gap-2">
-        <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { add(text); setText(""); } }} placeholder="Додати справу…" className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
-        <button onClick={() => { add(text); setText(""); }} className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"><Plus className="h-4 w-4" /></button>
+        <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { add(text); setText(""); } }} placeholder="Додати справу…" className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
+        <button onClick={() => { add(text); setText(""); }} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700"><Plus className="h-4 w-4" /></button>
       </div>
 
       <div className="mb-4 space-y-3">
@@ -9870,7 +9870,7 @@ function StepBrainstorm({ list, onSave }) {
             <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-slate-600"><Home className="h-3.5 w-3.5 text-slate-400" /> {r.room}</div>
             <div className="flex flex-wrap gap-1.5">
               {r.items.map((it) => { const added = has(it); return (
-                <button key={it} onClick={() => added ? onSave(list.filter((c) => c.text.toLowerCase() !== it.toLowerCase())) : add(it)} className={`rounded-full px-3 py-1 text-xs font-medium transition ${added ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{added ? "✓ " : "+ "}{it}</button>
+                <button key={it} onClick={() => added ? onSave(list.filter((c) => c.text.toLowerCase() !== it.toLowerCase())) : add(it)} className={`rounded-full px-3 py-1 text-xs font-medium transition ${added ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{added ? "✓ " : "+ "}{it}</button>
               ); })}
             </div>
           </div>
@@ -9882,7 +9882,7 @@ function StepBrainstorm({ list, onSave }) {
           <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Твій список · {list.length}</div>
           <div className="flex flex-wrap gap-1.5">
             {list.map((c) => (
-              <span key={c.id} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-sm text-indigo-700">{c.text}<button onClick={() => onSave(list.filter((x) => x.id !== c.id))} className="text-indigo-300 hover:text-rose-500"><X className="h-3.5 w-3.5" /></button></span>
+              <span key={c.id} className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-sm text-rose-700">{c.text}<button onClick={() => onSave(list.filter((x) => x.id !== c.id))} className="text-rose-300 hover:text-red-500"><X className="h-3.5 w-3.5" /></button></span>
             ))}
           </div>
         </div>
@@ -9905,7 +9905,7 @@ function StepRatings({ members, list, ratings, onSave }) {
       <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">🔒 Оцінюй чесно й наодинці. Відповіді іншого тут <b>не показуються</b> — по черзі, по одній людині.</p>
       <div className="mb-3 flex flex-wrap gap-2">
         {members.map((m, i) => (
-          <button key={m.id} onClick={() => setMi(i)} className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${i === mi ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{m.name} <span className="opacity-70">({ratedCount(m)}/{list.length})</span></button>
+          <button key={m.id} onClick={() => setMi(i)} className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${i === mi ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{m.name} <span className="opacity-70">({ratedCount(m)}/{list.length})</span></button>
         ))}
       </div>
       <div className="space-y-2">
@@ -9958,7 +9958,7 @@ function StepScores({ members, list, ratings, meta, onSaveRatings, onSaveMeta })
       <p className="mb-3 text-sm text-slate-500">Точніше за «подобається/терпимо/ненавиджу»: <b>1</b> = щиро подобається, <b>10</b> = «краще перееду, ніж робитиму це». Можна пропустити.</p>
       <label className="mb-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
         <span className="text-sm font-medium text-slate-700">Використати бали 1–10</span>
-        <input type="checkbox" checked={use} onChange={(e) => onSaveMeta({ useScores: e.target.checked })} className="h-4 w-4 accent-indigo-600" />
+        <input type="checkbox" checked={use} onChange={(e) => onSaveMeta({ useScores: e.target.checked })} className="h-4 w-4 accent-rose-600" />
       </label>
       {use && (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
@@ -9993,7 +9993,7 @@ function StepAssign({ members, list, ratings, assignments, meta, onSave }) {
     <div>
       <h2 className="mb-1 text-lg font-bold text-slate-900">Розподіл</h2>
       <p className="mb-3 text-sm text-slate-500">Кожну справу — тому, кому вона <b>найменш неприємна</b> (менший бал/ставлення). «Можна делегувати?» — підстрахування на важкий день.</p>
-      <button onClick={auto} className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"><SparklesIcon className="h-4 w-4" /> Призначити автоматично</button>
+      <button onClick={auto} className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"><SparklesIcon className="h-4 w-4" /> Призначити автоматично</button>
       <div className="space-y-2">
         {list.map((c) => {
           const a = assignments[c.id];
@@ -10005,7 +10005,7 @@ function StepAssign({ members, list, ratings, assignments, meta, onSave }) {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {members.map((m) => { const s = choreScore(ratings, c.id, m.id, meta.useScores); const sel = a?.memberId === m.id; return (
-                  <button key={m.id} onClick={() => setAssignee(c.id, m.id)} className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium transition ${sel ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{m.name}{s != null && <span className={`text-xs ${sel ? "text-white/70" : "text-slate-400"}`}>· {s}</span>}</button>
+                  <button key={m.id} onClick={() => setAssignee(c.id, m.id)} className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium transition ${sel ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{m.name}{s != null && <span className={`text-xs ${sel ? "text-white/70" : "text-slate-400"}`}>· {s}</span>}</button>
                 ); })}
               </div>
             </div>
@@ -10062,7 +10062,7 @@ function StepBalance({ members, list, ratings, assignments, meta, onSave, onFini
         ))}
       </div>
 
-      <button onClick={onFinish} className="mt-4 w-full rounded-2xl bg-indigo-600 py-3 font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-700">Готово — показати дошку 📋</button>
+      <button onClick={onFinish} className="mt-4 w-full rounded-2xl bg-rose-600 py-3 font-bold text-white shadow-lg shadow-rose-500/20 hover:bg-rose-700">Готово — показати дошку 📋</button>
     </div>
   );
 }
@@ -10073,7 +10073,7 @@ function ChoreBoard({ members, list, ratings, assignments, meta, saveMeta, onEdi
   return (
     <div>
       <div className="mb-1 flex items-center gap-2"><span className="text-2xl">📋</span><h1 className="text-2xl font-extrabold text-slate-900">Наша дошка справ</h1></div>
-      <p className="mb-4 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-800">📌 Повісь це на видному місці у спільному просторі (холодильник, коридор). З СДУГ: <b>з очей — з голови</b>. Зелене — можна делегувати на важкий день.</p>
+      <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">📌 Повісь це на видному місці у спільному просторі (холодильник, коридор). З СДУГ: <b>з очей — з голови</b>. Зелене — можна делегувати на важкий день.</p>
 
       <div className="grid gap-3 sm:grid-cols-2">
         {members.map((m, i) => {
