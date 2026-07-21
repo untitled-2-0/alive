@@ -2537,6 +2537,9 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
   const [imgs, setImgs] = useState({ front: null, back: null });
   const [lightbox, setLightbox] = useState(null);
   const [voiceHint, setVoiceHint] = useState(false);
+  const [drag, setDrag] = useState(0); // touch-swipe horizontal offset
+  const dragRef = useRef(null);
+  const dragging = !!dragRef.current;
 
   const say = useCallback((text) => {
     if (!text) return;
@@ -2578,6 +2581,19 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [session.flipped, card, say]);
+
+  // reset any swipe offset when the card changes
+  useEffect(() => { setDrag(0); dragRef.current = null; }, [card?.id, session.flipped]);
+  const onTouchStart = (e) => { const t = e.touches[0]; dragRef.current = { x0: t.clientX, y0: t.clientY, dx: 0, dy: 0 }; };
+  const onTouchMove = (e) => { if (!dragRef.current) return; const t = e.touches[0]; dragRef.current.dx = t.clientX - dragRef.current.x0; dragRef.current.dy = t.clientY - dragRef.current.y0; if (session.flipped) setDrag(dragRef.current.dx); };
+  const onTouchEnd = () => {
+    const st = dragRef.current; dragRef.current = null;
+    if (!st) return;
+    if (!session.flipped) { if (Math.abs(st.dx) > 45 || Math.abs(st.dy) > 45) onFlip(); setDrag(0); return; }
+    if (st.dx > 85) onAnswer("good");
+    else if (st.dx < -85) onAnswer("again");
+    else setDrag(0);
+  };
 
   if (finished || !card) {
     const acc = session.done ? Math.round((session.correct / session.done) * 100) : 0;
@@ -2627,8 +2643,18 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
         role="button"
         tabIndex={0}
         onClick={session.flipped ? undefined : onFlip}
-        className={`flex min-h-[300px] w-full flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm transition ${session.flipped ? "" : "cursor-pointer"}`}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{ transform: drag ? `translateX(${drag}px) rotate(${drag / 22}deg)` : undefined, transition: dragging ? "none" : "transform .25s ease", touchAction: "pan-y" }}
+        className={`relative flex min-h-[300px] w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm ${session.flipped ? "" : "cursor-pointer"}`}
       >
+        {/* swipe hint overlay (mobile) */}
+        {session.flipped && drag !== 0 && (
+          <div className={`pointer-events-none absolute inset-0 flex items-center justify-center ${drag > 0 ? "bg-green-500/10" : "bg-rose-500/10"}`} style={{ opacity: Math.min(1, Math.abs(drag) / 85) }}>
+            <span className={`rounded-full px-4 py-2 text-lg font-extrabold text-white shadow ${drag > 0 ? "bg-green-500" : "bg-rose-500"}`}>{drag > 0 ? "Знаю ✓" : "Ще раз"}</span>
+          </div>
+        )}
         {card.tags && (
           <span className="mb-3 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500">{card.tags}</span>
         )}
@@ -2678,6 +2704,11 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
           <span className="text-[11px] text-slate-400">No {lang || "matching"} voice installed — using the default.</span>
         )}
       </div>
+
+      {/* mobile swipe hint */}
+      {session.flipped && (
+        <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 sm:hidden">← свайп «Ще раз» · «Знаю» свайп →</div>
+      )}
 
       {/* rating buttons */}
       {session.flipped && (
@@ -4347,6 +4378,12 @@ function RoutineSection() {
       await store.set(RKEYS.tasks, seed.tasks);
       await store.set(RKEYS.seeded, true);
       d = await loadRoutineData();
+    }
+    // one-time: add the "shave" task on Tue + Fri
+    if (!(await store.get("routine:mig:shave", false))) {
+      const list = [...(d.tasks || []), { id: ruid("t"), emoji: "🪒", title: "Поголитися", note: "", time: null, color: "teal", categoryId: "", repeat: { type: "weekdays", days: [2, 5] }, goal: { type: "off" }, subtasks: [], created: Date.now(), date: dateKey(Date.now()) }];
+      await store.set(RKEYS.tasks, list); await store.set("routine:mig:shave", true);
+      d = { ...d, tasks: list };
     }
     setTasks(d.tasks || []); setCategories(d.categories || []); setCompletions(d.completions);
     setCindex(d.cindex); setStreakMeta(d.streak || { best: 0, lastCelebrated: "" }); setMoods(d.moods || {});
