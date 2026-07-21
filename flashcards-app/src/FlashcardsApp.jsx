@@ -18,6 +18,7 @@ import {
   Leaf, Pause, SkipForward, ListTree, Heart, Sparkle,
   Coffee, Droplet, Scale, ShieldAlert, Info, Square, TrendingDown,
   Utensils, GlassWater, LineChart as LineChartIcon, Cloud, CloudOff, LogOut, Mail,
+  Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft,
 } from "lucide-react";
 import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signOutCloud, refreshSession } from "./cloud.js";
 
@@ -930,6 +931,7 @@ export default function FlashcardsApp() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [calmName, setCalmName] = useState("Calm");
   const [fastingName, setFastingName] = useState("Fasting");
+  const [mgmtName, setMgmtName] = useState("Менеджмент");
   const [toast, setToast] = useState(null);
   const [deckEditor, setDeckEditor] = useState(null); // null | { deck } (deck=null → create)
   const [groupEditor, setGroupEditor] = useState(null); // null | { group } (group=null → create)
@@ -947,15 +949,17 @@ export default function FlashcardsApp() {
       const ui = await store.get("ui:prefs", { section: "studying", sidebarCollapsed: false });
       const calmSettings = await store.get(CKEYS.settings, { name: "Calm" });
       const fastingSettings = await store.get(FKEYS.settings, { name: "Fasting" });
+      const mgmtSettings = await store.get("mgmt:settings", { name: "Менеджмент" });
       const st = await store.get("stats", {
         history: {},
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["routine", "calm", "fasting"].includes(ui.section) ? ui.section : "studying");
+      setSection(["routine", "calm", "fasting", "management"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name || "Calm");
       setFastingName(fastingSettings?.name || "Fasting");
+      setMgmtName(mgmtSettings?.name || "Менеджмент");
       setStats(st);
       setGroups(gi.groups || []);
       setDecks(idx.decks || []);
@@ -1013,6 +1017,13 @@ export default function FlashcardsApp() {
     setFastingName(clean);
     const prev = await store.get(FKEYS.settings, { name: "Fasting" });
     await store.set(FKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameMgmt = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Менеджмент";
+    setMgmtName(clean);
+    const prev = await store.get("mgmt:settings", { name: "Менеджмент" });
+    await store.set("mgmt:settings", { ...prev, name: clean });
   }, []);
 
   /* ---------- derived: per-deck due summary ---------- */
@@ -1352,6 +1363,7 @@ export default function FlashcardsApp() {
     await clearRoutineData();
     await clearCalmData();
     await clearFastingData();
+    await store.remove("mgmt:settings");
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
@@ -1359,6 +1371,7 @@ export default function FlashcardsApp() {
     setView("home");
     setCalmName("Calm");
     setFastingName("Fasting");
+    setMgmtName("Менеджмент");
     flash("All data reset");
     window.dispatchEvent(new CustomEvent("routine-reset"));
     window.dispatchEvent(new CustomEvent("calm-reset"));
@@ -1369,9 +1382,10 @@ export default function FlashcardsApp() {
     const routine = await collectRoutineExport();
     const calm = await collectCalmExport();
     const fasting = await collectFastingExport();
+    const mgmt = await store.get("mgmt:settings", { name: "Менеджмент" });
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 4,
+      version: 5,
       decks,
       groups,
       cards: cardsByDeck,
@@ -1379,6 +1393,7 @@ export default function FlashcardsApp() {
       routine,
       calm,
       fasting,
+      mgmt,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1572,6 +1587,7 @@ export default function FlashcardsApp() {
         studyingDue={totalDue}
         calmName={calmName}
         fastingName={fastingName}
+        mgmtName={mgmtName}
       />
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
@@ -1581,6 +1597,8 @@ export default function FlashcardsApp() {
           <CalmSection name={calmName} onRename={renameCalm} />
         ) : section === "fasting" ? (
           <FastingSection name={fastingName} onRename={renameFasting} />
+        ) : section === "management" ? (
+          <ManagementSection name={mgmtName} onRename={renameMgmt} />
         ) : (
         <>
       {/* studying top bar */}
@@ -1764,12 +1782,13 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 /* ------------------------------------------------------------------ */
 /* Sidebar — top-level section navigation                              */
 /* ------------------------------------------------------------------ */
-function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName }) {
+function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName }) {
   const items = [
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
     { id: "calm", label: calmName || "Calm", icon: Leaf, badge: 0 },
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
+    { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
   ];
   const wide = !collapsed;
   return (
@@ -5610,6 +5629,199 @@ function FastReference() {
         <div className="space-y-2">{TIPS.map(([t, e], i) => (
           <div key={i} className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-100 text-sm font-bold text-amber-700">{i + 1}</span><div><div className="text-sm font-semibold text-slate-800">{t}</div><div className="text-xs text-slate-500">{e}</div></div></div>
         ))}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* MANAGEMENT — "Manage It!" book notes reader                        */
+/* ================================================================== */
+function mdInline(str, keyBase = "") {
+  const out = [];
+  const re = /\*\*(.+?)\*\*|`([^`]+)`|\[(.+?)\]\((.+?)\)/g;
+  let last = 0, m, k = 0;
+  while ((m = re.exec(str))) {
+    if (m.index > last) out.push(str.slice(last, m.index));
+    if (m[1] != null) out.push(<strong key={keyBase + k++} className="font-semibold text-slate-900">{m[1]}</strong>);
+    else if (m[2] != null) out.push(<code key={keyBase + k++} className="rounded bg-slate-100 px-1 py-0.5 text-[0.85em] text-indigo-700">{m[2]}</code>);
+    else out.push(<span key={keyBase + k++} className="font-medium text-indigo-600">{m[3]}</span>);
+    last = re.lastIndex;
+  }
+  if (last < str.length) out.push(str.slice(last));
+  return out;
+}
+function mdBlocks(text) {
+  const lines = (text || "").replace(/\r/g, "").split("\n");
+  const els = [];
+  let para = [], list = null, quote = null;
+  const flushPara = () => { if (para.length) { els.push(<p key={els.length} className="mb-3 leading-relaxed text-slate-600">{mdInline(para.join(" "), els.length + "p")}</p>); para = []; } };
+  const flushList = () => {
+    if (!list) return;
+    if (list.type === "ul") els.push(<ul key={els.length} className="mb-3 space-y-1.5">{list.items.map((it, i) => <li key={i} className="flex gap-2.5 text-slate-600"><span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-300" /><span className="leading-relaxed">{mdInline(it, els.length + "u" + i)}</span></li>)}</ul>);
+    else els.push(<ol key={els.length} className="mb-3 space-y-2">{list.items.map((it, i) => <li key={i} className="flex gap-2.5 text-slate-600"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-indigo-100 text-[11px] font-bold text-indigo-600">{i + 1}</span><span className="leading-relaxed">{mdInline(it, els.length + "o" + i)}</span></li>)}</ol>);
+    list = null;
+  };
+  const flushQuote = () => { if (quote) { els.push(<blockquote key={els.length} className="mb-3 rounded-r-xl border-l-4 border-amber-300 bg-amber-50/70 px-4 py-2.5 text-slate-700">{mdInline(quote.join(" "), els.length + "q")}</blockquote>); quote = null; } };
+  const flushAll = () => { flushPara(); flushList(); flushQuote(); };
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line.trim()) { flushAll(); continue; }
+    if (/^---+$/.test(line.trim())) { flushAll(); continue; }
+    const q = line.match(/^>\s?(.*)/); if (q) { flushPara(); flushList(); (quote = quote || []).push(q[1]); continue; }
+    const ul = line.match(/^[-*]\s+(.*)/); if (ul) { flushPara(); flushQuote(); if (!list || list.type !== "ul") { flushList(); list = { type: "ul", items: [] }; } list.items.push(ul[1]); continue; }
+    const ol = line.match(/^\d+\.\s+(.*)/); if (ol) { flushPara(); flushQuote(); if (!list || list.type !== "ol") { flushList(); list = { type: "ol", items: [] }; } list.items.push(ol[1]); continue; }
+    flushList(); flushQuote(); para.push(line.trim());
+  }
+  flushAll();
+  return els;
+}
+function parseSections(body) {
+  const parts = (body || "").split(/\n### /);
+  const lead = parts[0].trim();
+  const sections = [];
+  for (let i = 1; i < parts.length; i++) {
+    const nl = parts[i].indexOf("\n");
+    sections.push({ heading: parts[i].slice(0, nl).trim(), content: parts[i].slice(nl + 1) });
+  }
+  return { lead, sections };
+}
+function parseManageIt(md) {
+  const blocks = md.replace(/\r/g, "").split(/\n## /);
+  const intro = blocks[0];
+  const chapters = [];
+  for (let i = 1; i < blocks.length; i++) {
+    const nl = blocks[i].indexOf("\n");
+    const heading = blocks[i].slice(0, nl).trim();
+    const body = blocks[i].slice(nl + 1);
+    if (/^Зміст/.test(heading)) continue;
+    const m = heading.match(/^Глава\s+(\d+)\.\s+(.*)/);
+    const { lead, sections } = parseSections(body);
+    let preview = "";
+    const about = sections.find((s) => /Про що глава/i.test(s.heading));
+    if (about) preview = about.content.replace(/\r/g, "").split("\n").find((l) => l.trim()) || "";
+    chapters.push({ num: m ? m[1] : null, title: m ? m[2] : heading, heading, lead, sections, preview });
+  }
+  return { intro, chapters };
+}
+
+function ManagementSection({ name, onRename }) {
+  const [doc, setDoc] = useState(null);
+  const [error, setError] = useState("");
+  const [view, setView] = useState("toc"); // toc | number index
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/manage-it.md").then((r) => { if (!r.ok) throw new Error("not found"); return r.text(); })
+      .then((t) => { if (alive) setDoc(parseManageIt(t)); })
+      .catch(() => { if (alive) setError("Не вдалося завантажити конспект."); });
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => { document.querySelector("main")?.scrollTo?.(0, 0); window.scrollTo(0, 0); }, [view]);
+
+  if (error) return <div className="flex flex-1 items-center justify-center text-slate-400">{error}</div>;
+  if (!doc) return <div className="flex flex-1 items-center justify-center text-indigo-400"><div className="flex flex-col items-center gap-3"><BookMarked className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження конспекту…</span></div></div>;
+
+  const chapters = doc.chapters;
+  const open = (i) => setView(i);
+  const chapter = typeof view === "number" ? chapters[view] : null;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-indigo-50/50 via-slate-50 to-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-40 rounded-lg border border-indigo-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          {view !== "toc" && <button onClick={() => setView("toc")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"><ListTree className="h-4 w-4" /> Зміст</button>}
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-6">
+        {view === "toc" ? (
+          <>
+            {/* book hero from intro */}
+            <div className="mb-6 rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm">
+              <div className="flex items-start gap-4">
+                <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-white"><BookMarked className="h-7 w-7" /></span>
+                <div className="min-w-0">
+                  <h1 className="text-2xl font-extrabold leading-tight text-slate-900">Manage It!</h1>
+                  <p className="text-sm font-medium text-slate-500">Johanna Rothman · конспект і лайфхаки по кожній главі</p>
+                </div>
+              </div>
+              <div className="mt-4 text-[15px]">{mdBlocks(introBody(doc.intro))}</div>
+            </div>
+
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-400"><ListTree className="h-4 w-4" /> Зміст — {chapters.length} розділів</h2>
+            <div className="space-y-2">
+              {chapters.map((c, i) => {
+                const special = !c.num;
+                return (
+                  <button key={i} onClick={() => open(i)} className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md ${special ? "border-amber-200 bg-amber-50/60 hover:border-amber-300" : "border-slate-100 bg-white hover:border-indigo-200"}`}>
+                    <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-extrabold ${special ? "bg-amber-400 text-white" : "bg-indigo-100 text-indigo-700"}`}>{special ? "🎯" : c.num}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-bold text-slate-800">{c.title}</span>
+                      {c.preview && <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-slate-400">{c.preview.replace(/\*\*/g, "")}</span>}
+                    </span>
+                    <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <ChapterReader chapter={chapter} index={view} total={chapters.length} onNav={setView} onToc={() => setView("toc")} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+// pull the intro's description + idea blockquote (drop the "# title" line and author line)
+function introBody(intro) {
+  const lines = (intro || "").replace(/\r/g, "").split("\n");
+  return lines.filter((l) => !/^#\s/.test(l) && !/^\*\*Джоанна|^\*\*Johanna/i.test(l.trim())).join("\n").trim();
+}
+
+function ChapterReader({ chapter, index, total, onNav, onToc }) {
+  if (!chapter) return null;
+  const secStyle = (h) => {
+    if (/🔑/.test(h)) return { wrap: "rounded-2xl border border-amber-200 bg-amber-50/60 p-4", icon: Lightbulb, iconCls: "text-amber-500", title: "text-amber-900" };
+    if (/🧭/.test(h)) return { wrap: "rounded-2xl border border-sky-200 bg-sky-50/50 p-4", icon: Compass, iconCls: "text-sky-500", title: "text-sky-900" };
+    if (/Про що глава/i.test(h)) return { wrap: "rounded-2xl bg-slate-100/70 p-4", icon: Info, iconCls: "text-slate-400", title: "text-slate-700" };
+    return { wrap: "", icon: null, iconCls: "", title: "text-slate-800" };
+  };
+  const cleanH = (h) => h.replace(/🔑|🧭/g, "").trim();
+  return (
+    <div>
+      <div className="mb-5 flex items-center gap-3">
+        {chapter.num && <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-600 text-lg font-extrabold text-white">{chapter.num}</span>}
+        <h1 className="text-2xl font-extrabold leading-tight text-slate-900">{chapter.title}</h1>
+      </div>
+
+      {chapter.lead && <div className="mb-4">{mdBlocks(chapter.lead)}</div>}
+
+      <div className="space-y-4">
+        {chapter.sections.map((s, i) => {
+          const st = secStyle(s.heading);
+          return (
+            <section key={i} className={st.wrap}>
+              <h3 className={`mb-2 flex items-center gap-2 text-base font-bold ${st.title}`}>{st.icon && <st.icon className={`h-5 w-5 ${st.iconCls}`} />}{cleanH(s.heading)}</h3>
+              <div className="text-[15px]">{mdBlocks(s.content)}</div>
+            </section>
+          );
+        })}
+      </div>
+
+      {/* prev / next */}
+      <div className="mt-8 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+        <button disabled={index <= 0} onClick={() => onNav(index - 1)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Назад</button>
+        <button onClick={onToc} className="text-sm font-medium text-slate-400 hover:text-slate-600">Зміст</button>
+        <button disabled={index >= total - 1} onClick={() => onNav(index + 1)} className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
       </div>
     </div>
   );
