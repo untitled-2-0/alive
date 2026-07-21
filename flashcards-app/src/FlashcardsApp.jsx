@@ -707,6 +707,7 @@ async function clearRoutineData() {
   const cindex = await store.get(RKEYS.cindex, []);
   for (const d of cindex) await store.remove(cKey(d));
   for (const k of Object.values(RKEYS)) await store.remove(k);
+  await store.remove("routine:mig:shave"); // one-time migration flag
 }
 
 /* ---- scheduling / queries ---- */
@@ -863,6 +864,7 @@ async function collectCalmExport() {
 async function clearCalmData() {
   for (const k of Object.values(CKEYS)) await store.remove(k);
   for (const k of Object.values(RECKEYS)) await store.remove(k);
+  await store.remove("calm:trGuideOpen"); // "how it works" toggle
 }
 
 // soft optional tick using Web Audio (no asset, no storage)
@@ -1584,6 +1586,7 @@ export default function FlashcardsApp() {
     await store.remove("decks:index");
     await store.remove("groups:index");
     await store.remove("langs:seeded");
+    await store.remove("ui:prefs");
     await store.remove("stats");
     await clearRoutineData();
     await clearCalmData();
@@ -4083,31 +4086,31 @@ function CloudSyncPanel() {
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="mb-1 flex items-center gap-2">
         {signed ? <Cloud className="h-4 w-4 text-green-500" /> : <CloudOff className="h-4 w-4 text-slate-400" />}
-        <h2 className="text-sm font-semibold text-slate-700">Cloud sync (cross-device)</h2>
+        <h2 className="text-sm font-semibold text-slate-700">Хмарна синхронізація (між пристроями)</h2>
       </div>
 
       {signed ? (
         <div className="mt-2 flex items-center justify-between gap-3">
-          <p className="text-sm text-slate-500">Synced as <span className="font-semibold text-slate-700">{email}</span>. Your data is backed up and syncs across devices.</p>
-          <button onClick={doSignOut} disabled={busy} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"><LogOut className="h-4 w-4" /> Sign out</button>
+          <p className="text-sm text-slate-500">Синхронізовано як <span className="font-semibold text-slate-700">{email}</span>. Дані збережено в хмарі й синхронізуються між пристроями.</p>
+          <button onClick={doSignOut} disabled={busy} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"><LogOut className="h-4 w-4" /> Вийти</button>
         </div>
       ) : (
         <>
-          <p className="mb-3 text-sm text-slate-500">Optional. Sign in with your email to back up everything (Studying, Routine, Calm, Fasting) and sync it across your phone and computer. A 6-digit code will be emailed to you.</p>
+          <p className="mb-3 text-sm text-slate-500">Щоб <b>усе зберігалося в базі даних</b> і синхронізувалося між телефоном і компʼютером — увійди своєю поштою. На неї прийде 6-значний код. Без входу дані живуть лише на цьому пристрої.</p>
           {step !== "code" ? (
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative flex-1 min-w-[200px]">
                 <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input type="email" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") doSend(); }} placeholder="you@email.com" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
               </div>
-              <button onClick={doSend} disabled={busy || !input.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:bg-slate-300">{busy ? "…" : "Send code"}</button>
+              <button onClick={doSend} disabled={busy || !input.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:bg-slate-300">{busy ? "…" : "Надіслати код"}</button>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={(e) => { if (e.key === "Enter") doVerify(); }} placeholder="6-digit code" inputMode="numeric" className="w-32 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm tracking-widest focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
-              <button onClick={doVerify} disabled={busy || code.length < 6} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:bg-slate-300">{busy ? "…" : "Verify & sync"}</button>
-              <button onClick={() => { setStep("idle"); setCode(""); setErr(""); }} className="text-sm font-medium text-slate-400 hover:text-slate-600">Change email</button>
-              <span className="w-full text-xs text-slate-400">Code sent to {input}. Check your inbox (and spam).</span>
+              <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={(e) => { if (e.key === "Enter") doVerify(); }} placeholder="6-значний код" inputMode="numeric" className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm tracking-widest focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+              <button onClick={doVerify} disabled={busy || code.length < 6} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:bg-slate-300">{busy ? "…" : "Підтвердити й синхронізувати"}</button>
+              <button onClick={() => { setStep("idle"); setCode(""); setErr(""); }} className="text-sm font-medium text-slate-400 hover:text-slate-600">Змінити пошту</button>
+              <span className="w-full text-xs text-slate-400">Код надіслано на {input}. Перевір пошту (і спам).</span>
             </div>
           )}
           {err && <p className="mt-2 text-sm text-rose-600">{err}</p>}
