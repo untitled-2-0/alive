@@ -6619,6 +6619,19 @@ const budDefaultMonth = () => { const d = new Date(); return `${d.getFullYear()}
 const budShiftMonth = (m, delta) => { let [y, mo] = m.split("-").map(Number); mo += delta; while (mo > 12) { mo -= 12; y += 1; } while (mo < 1) { mo += 12; y -= 1; } return `${y}-${String(mo).padStart(2, "0")}`; };
 const budFmt = (n) => { const r = Math.round((n + Number.EPSILON) * 100) / 100; const s = (Number.isInteger(r) ? r : r.toFixed(2)).toLocaleString ? (Number.isInteger(r) ? r.toLocaleString("uk-UA") : r.toFixed(2)) : String(r); return s + " ₴"; };
 const budLineSum = (it) => (Number(it.qty) || 0) * (Number(it.price) || 0);
+// Human-readable "how often" for amortized fractional quantities (qty = share per month).
+// 0.12/міс → куплю раз на ~8 місяців.
+function budFreqHint(qty) {
+  const q = Number(qty) || 0;
+  if (q <= 0 || q >= 1) return "";
+  const months = Math.round(1 / q);
+  if (months <= 1) return "";
+  if (months < 12) return `≈ раз на ${months} міс`;
+  const years = Math.round(months / 12);
+  if (years <= 1) return "≈ раз на рік";
+  const w = years >= 2 && years <= 4 ? "роки" : "років";
+  return `≈ раз на ${years} ${w}`;
+}
 
 async function loadBudgetData() {
   const cats = await store.get(BKEYS.cats, null);
@@ -6893,6 +6906,7 @@ function BudgetItemRow({ item, bought, onToggle, onEdit, onDelete }) {
         <button onClick={onEdit} className="min-w-0 flex-1 text-left">
           <div className={`truncate text-sm font-medium ${bought ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.name}</div>
           <div className="text-xs text-slate-400 tabular-nums">{item.qty} {item.unit} × {budFmt(item.price)} = <span className="font-semibold text-slate-500">{budFmt(budLineSum(item))}</span></div>
+          {budFreqHint(item.qty) && <div className="text-[11px] text-slate-400">{budFreqHint(item.qty)}</div>}
         </button>
         {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-emerald-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
         <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
@@ -6910,7 +6924,7 @@ function ShoppingView({ cats, items, boughtMap, onToggle, filter, setFilter, fla
   const Row = (it) => (
     <button key={it.id} onClick={() => onToggle(it.id)} className={`flex w-full items-center gap-3 rounded-2xl p-4 text-left shadow-sm ring-1 transition ${boughtMap[it.id] ? "bg-emerald-50 ring-emerald-100" : "bg-white ring-slate-100 hover:ring-emerald-200"}`}>
       <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 ${boughtMap[it.id] ? "border-transparent bg-emerald-500 text-white" : "border-slate-300"}`}>{boughtMap[it.id] && <Check className="h-5 w-5" />}</span>
-      <span className="min-w-0 flex-1"><span className={`block truncate font-bold ${boughtMap[it.id] ? "text-slate-400 line-through" : "text-slate-800"}`}>{it.name}</span><span className="block text-xs text-slate-400 tabular-nums">{it.qty} {it.unit} × {budFmt(it.price)}</span></span>
+      <span className="min-w-0 flex-1"><span className={`block truncate font-bold ${boughtMap[it.id] ? "text-slate-400 line-through" : "text-slate-800"}`}>{it.name}</span><span className="block text-xs text-slate-400 tabular-nums">{it.qty} {it.unit} × {budFmt(it.price)}{budFreqHint(it.qty) ? ` · ${budFreqHint(it.qty)}` : ""}</span></span>
       <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{budFmt(budLineSum(it))}</span>
     </button>
   );
@@ -7001,7 +7015,7 @@ function BudgetItemEditor({ item, cats, catId, onClose, onSave, onDelete }) {
           <label className="block"><span className="mb-1 block text-xs text-slate-500">Од.</span><input value={unit} onChange={(e) => setUnit(e.target.value)} list="bud-units" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /><datalist id="bud-units">{["шт", "уп", "кг", "л", "міс", "пара", "пачка", "компл", "поїздка"].map((u) => <option key={u} value={u} />)}</datalist></label>
           <label className="block"><span className="mb-1 block text-xs text-slate-500">Ціна ₴</span><input type="number" min={0} step="any" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
         </div>
-        <div className="mb-3 flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2 text-sm"><span className="font-semibold text-emerald-800">Сума</span><span className="font-extrabold tabular-nums text-emerald-700">{budFmt(sum)}</span></div>
+        <div className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm"><div className="flex items-center justify-between"><span className="font-semibold text-emerald-800">Сума</span><span className="font-extrabold tabular-nums text-emerald-700">{budFmt(sum)}</span></div>{budFreqHint(qty) && <div className="mt-0.5 text-[11px] text-emerald-600">дробова к-сть — це «частка на місяць»: {budFreqHint(qty)}</div>}</div>
         <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Категорія</span><select value={cid} onChange={(e) => setCid(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{cats.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}</select></label>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Нотатки (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
         <div className="flex gap-2">
