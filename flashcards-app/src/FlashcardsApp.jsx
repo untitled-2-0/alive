@@ -13,6 +13,8 @@ import {
   Timer, Maximize2, Settings, ChevronsUpDown, CalendarDays,
   PanelLeftClose, PanelLeft, CheckCircle2, Circle, Sun, Repeat, ListChecks,
   Trophy, Smile, Menu, GripVertical, ArrowRight, Sunrise,
+  Wind, Waves, Anchor, HeartPulse, TrendingUp, NotebookPen, Hourglass,
+  Leaf, Pause, SkipForward, ListTree, Heart, Sparkle,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -718,6 +720,83 @@ function seededRoutine() {
   return { categories, tasks };
 }
 
+/* ================================================================== */
+/* CALM — anti-anxiety practices. Stored under calm:* keys.           */
+/* ================================================================== */
+const CKEYS = {
+  fears: "calm:fears",
+  thoughts: "calm:thoughtRecords",
+  sessions: "calm:sessions",
+  settings: "calm:settings",
+};
+
+const BREATH_PATTERNS = [
+  { id: "box", name: "Box breathing", desc: "In 4 · Hold 4 · Out 4 · Hold 4", phases: [["in", 4], ["hold", 4], ["out", 4], ["hold", 4]] },
+  { id: "478", name: "4-7-8", desc: "In 4 · Hold 7 · Out 8", phases: [["in", 4], ["hold", 7], ["out", 8]] },
+  { id: "relax", name: "Relaxing", desc: "In 4 · Out 6", phases: [["in", 4], ["out", 6]] },
+];
+const PHASE_TEXT = { in: "Breathe in", hold: "Hold", out: "Breathe out" };
+
+const MUSCLE_GROUPS = [
+  "Hands", "Forearms", "Upper arms", "Shoulders", "Face", "Neck",
+  "Chest & back", "Stomach", "Glutes", "Thighs", "Calves", "Feet",
+];
+const PMR_TENSE = 10, PMR_RELEASE = 15;
+
+const CALM_TECHNIQUES = {
+  breath: { label: "Breathing", icon: Wind },
+  pmr: { label: "Muscle relaxation", icon: HeartPulse },
+  ground: { label: "Grounding 5-4-3-2-1", icon: Anchor },
+  thought: { label: "Thought record", icon: NotebookPen },
+  fear: { label: "Fear ladder", icon: TrendingUp },
+  focus: { label: "Focus timer", icon: Timer },
+  worry: { label: "Worry time", icon: Hourglass },
+  beforework: { label: "Before work", icon: Sparkle },
+};
+
+async function loadCalmData() {
+  const fears = await store.get(CKEYS.fears, []);
+  const thoughts = await store.get(CKEYS.thoughts, []);
+  const sessions = await store.get(CKEYS.sessions, []);
+  const settings = await store.get(CKEYS.settings, { name: "Calm" });
+  return { fears, thoughts, sessions, settings };
+}
+async function collectCalmExport() {
+  const d = await loadCalmData();
+  return { fears: d.fears, thoughts: d.thoughts, sessions: d.sessions, settings: d.settings };
+}
+async function clearCalmData() {
+  for (const k of Object.values(CKEYS)) await store.remove(k);
+}
+
+// soft optional tick using Web Audio (no asset, no storage)
+let _actx = null;
+function calmTick(freq = 440, dur = 0.09) {
+  try {
+    _actx = _actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = _actx.createOscillator(), g = _actx.createGain();
+    o.type = "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, _actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.06, _actx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, _actx.currentTime + dur);
+    o.connect(g); g.connect(_actx.destination);
+    o.start(); o.stop(_actx.currentTime + dur);
+  } catch (e) { /* ignore */ }
+}
+
+function calmStreak(sessions, today = dateKey(Date.now())) {
+  const days = new Set(sessions.map((s) => s.date));
+  let cur = 0;
+  const d = new Date(today + "T00:00:00");
+  if (!days.has(today)) d.setDate(d.getDate() - 1);
+  for (let i = 0; i < 800; i++) {
+    if (days.has(dateKey(d.getTime()))) { cur += 1; d.setDate(d.getDate() - 1); } else break;
+  }
+  return cur;
+}
+const calmMinutes = (sessions) => Math.round(sessions.reduce((s, x) => s + (x.durationSec || 0), 0) / 60);
+const fmtClock = (sec) => `${Math.floor(sec / 60)}:${String(Math.max(0, Math.round(sec % 60))).padStart(2, "0")}`;
+
 /* ------------------------------------------------------------------ */
 /* Small presentational pieces                                         */
 /* ------------------------------------------------------------------ */
@@ -754,8 +833,9 @@ export default function FlashcardsApp() {
   const [cardsByDeck, setCardsByDeck] = useState({}); // {deckId: [cards]}
   const [stats, setStats] = useState({ history: {}, settings: { newPerDay: DEFAULT_NEW_PER_DAY } });
   const [view, setView] = useState("home"); // home | deck | study | setup | import | stats
-  const [section, setSection] = useState("studying"); // studying | routine
+  const [section, setSection] = useState("studying"); // studying | routine | calm
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [calmName, setCalmName] = useState("Calm");
   const [toast, setToast] = useState(null);
   const [deckEditor, setDeckEditor] = useState(null); // null | { deck } (deck=null → create)
   const [groupEditor, setGroupEditor] = useState(null); // null | { group } (group=null → create)
@@ -771,13 +851,15 @@ export default function FlashcardsApp() {
       const idx = await store.get("decks:index", { decks: [] });
       const gi = await store.get("groups:index", { groups: [] });
       const ui = await store.get("ui:prefs", { section: "studying", sidebarCollapsed: false });
+      const calmSettings = await store.get(CKEYS.settings, { name: "Calm" });
       const st = await store.get("stats", {
         history: {},
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(ui.section === "routine" ? "routine" : "studying");
+      setSection(["routine", "calm"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
+      setCalmName(calmSettings?.name || "Calm");
       setStats(st);
       setGroups(gi.groups || []);
       setDecks(idx.decks || []);
@@ -822,6 +904,13 @@ export default function FlashcardsApp() {
       return next;
     });
   }, [section]);
+
+  const renameCalm = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Calm";
+    setCalmName(clean);
+    const prev = await store.get(CKEYS.settings, { name: "Calm" });
+    await store.set(CKEYS.settings, { ...prev, name: clean });
+  }, []);
 
   /* ---------- derived: per-deck due summary ---------- */
   const deckSummary = useMemo(() => {
@@ -1158,25 +1247,30 @@ export default function FlashcardsApp() {
     await store.remove("groups:index");
     await store.remove("stats");
     await clearRoutineData();
+    await clearCalmData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
     setStats({ history: {}, settings: { newPerDay: DEFAULT_NEW_PER_DAY } });
     setView("home");
+    setCalmName("Calm");
     flash("All data reset");
     window.dispatchEvent(new CustomEvent("routine-reset"));
+    window.dispatchEvent(new CustomEvent("calm-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
     const routine = await collectRoutineExport();
+    const calm = await collectCalmExport();
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 2,
+      version: 3,
       decks,
       groups,
       cards: cardsByDeck,
       stats,
       routine,
+      calm,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1368,11 +1462,14 @@ export default function FlashcardsApp() {
         onSection={changeSection}
         onToggle={toggleSidebar}
         studyingDue={totalDue}
+        calmName={calmName}
       />
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         {section === "routine" ? (
           <RoutineSection />
+        ) : section === "calm" ? (
+          <CalmSection name={calmName} onRename={renameCalm} />
         ) : (
         <>
       {/* studying top bar */}
@@ -1556,10 +1653,11 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 /* ------------------------------------------------------------------ */
 /* Sidebar — top-level section navigation                              */
 /* ------------------------------------------------------------------ */
-function Sidebar({ section, collapsed, onSection, onToggle, studyingDue }) {
+function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName }) {
   const items = [
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
+    { id: "calm", label: calmName || "Calm", icon: Leaf, badge: 0 },
   ];
   const wide = !collapsed;
   return (
@@ -3776,7 +3874,7 @@ function TaskCard({ task, done, doc, timer, onToggle, onOpen, onStartTimer, onSt
   const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   return (
     <div className="flex items-center gap-3 rounded-2xl p-3.5 shadow-sm transition" style={{ backgroundColor: p.card }}>
-      <button onClick={onOpen} className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-white/70 text-xl">
+      <button onClick={onOpen} className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white/70 text-2xl">
         {task.image ? <img src={task.image} alt="" loading="lazy" className="h-full w-full object-cover" /> : (task.emoji || "⭐")}
       </button>
       <button onClick={onOpen} className="min-w-0 flex-1 text-left">
@@ -3824,7 +3922,7 @@ function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onT
           <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
         </div>
 
-        {task.image && <img src={task.image} alt="" className="mb-3 h-40 w-full rounded-2xl object-cover" />}
+        {task.image && <img src={task.image} alt="" className="mb-3 max-h-80 w-full rounded-2xl object-contain bg-slate-50" />}
         {task.note && <p className="mb-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">{task.note}</p>}
         <p className="mb-3 text-sm text-slate-500">{repeatWords(task)}</p>
 
@@ -4171,6 +4269,665 @@ function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
           </ResponsiveContainer>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* CALM — section UI                                                  */
+/* ================================================================== */
+function CalmSection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [cview, setCview] = useState("hub");
+  const [fears, setFears] = useState([]);
+  const [thoughts, setThoughts] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [settings, setSettings] = useState({ name: "Calm", tick: true, pattern: "box" });
+  const [toast, setToast] = useState(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+
+  const today = dateKey(Date.now());
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2200); }, []);
+
+  const reload = useCallback(async () => {
+    const d = await loadCalmData();
+    setFears(d.fears); setThoughts(d.thoughts); setSessions(d.sessions);
+    setSettings({ tick: true, pattern: "box", ...d.settings });
+    setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => { setFears([]); setThoughts([]); setSessions([]); setCview("hub"); };
+    window.addEventListener("calm-reset", onReset);
+    return () => window.removeEventListener("calm-reset", onReset);
+  }, [reload]);
+
+  const saveSettings = useCallback(async (patch) => {
+    const next = { ...settings, ...patch };
+    setSettings(next); await store.set(CKEYS.settings, next);
+  }, [settings]);
+
+  const log = useCallback(async (type, durationSec, meta = {}) => {
+    const s = { id: ruid("cs"), type, date: dateKey(Date.now()), durationSec: Math.round(durationSec || 0), meta, ts: Date.now() };
+    const next = [...sessions, s];
+    setSessions(next); await store.set(CKEYS.sessions, next);
+  }, [sessions]);
+
+  const saveFears = useCallback(async (next) => { setFears(next); await store.set(CKEYS.fears, next); }, []);
+  const saveThoughts = useCallback(async (next) => { setThoughts(next); await store.set(CKEYS.thoughts, next); }, []);
+
+  const streak = useMemo(() => calmStreak(sessions, today), [sessions, today]);
+  const minutes = useMemo(() => calmMinutes(sessions), [sessions]);
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-teal-400"><div className="flex flex-col items-center gap-3"><Leaf className="h-8 w-8 animate-pulse" /><span className="text-sm">Loading…</span></div></div>;
+
+  const back = () => setCview("hub");
+  const done = (type) => (sec, meta) => { log(type, sec, meta); flash("Nice — logged 🌿"); back(); };
+
+  const PRACTICES = [
+    { id: "breath", label: "Guided breathing", desc: "Animated breath to slow down", icon: Wind, color: "#0ea5e9" },
+    { id: "pmr", label: "Muscle relaxation", desc: "Tense & release, head to toe", icon: HeartPulse, color: "#14b8a6" },
+    { id: "ground", label: "Grounding 5-4-3-2-1", desc: "Come back to your senses", icon: Anchor, color: "#6366f1" },
+    { id: "thought", label: "Thought record", desc: "Untangle an anxious thought", icon: NotebookPen, color: "#8b5cf6" },
+    { id: "fear", label: "Fear ladder", desc: "Face worries one gentle step at a time", icon: TrendingUp, color: "#f59e0b" },
+    { id: "focus", label: "Focus timer", desc: "Calm breath, then focused work", icon: Timer, color: "#10b981" },
+    { id: "worry", label: "Worry time", desc: "A contained slot to worry, then let go", icon: Hourglass, color: "#f472b6" },
+  ];
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-teal-50 via-sky-50/50 to-white">
+      {cview === "hub" && (
+        <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+          {/* header */}
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              {renaming ? (
+                <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)}
+                  onBlur={() => { onRename(nameDraft); setRenaming(false); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }}
+                  className="rounded-lg border border-teal-200 px-2 py-1 text-2xl font-extrabold text-slate-900 focus:outline-none" />
+              ) : (
+                <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="text-left" title="Tap to rename">
+                  <h1 className="text-2xl font-extrabold text-slate-900">{name} <Pencil className="ml-1 inline h-4 w-4 text-slate-300" /></h1>
+                </button>
+              )}
+              <p className="text-sm text-slate-500">Take a breath. You're okay.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-teal-100"><Leaf className="h-4 w-4 text-teal-500" /><span className="text-sm font-bold tabular-nums text-teal-600">{streak}</span></div>
+              <button onClick={() => setCview("stats")} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-teal-100 hover:text-slate-700"><BarChart3 className="h-4 w-4" /></button>
+            </div>
+          </div>
+
+          {/* before work */}
+          <button onClick={() => setCview("beforework")} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-teal-400 to-sky-400 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:from-teal-500 hover:to-sky-500">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20"><Sparkle className="h-6 w-6" /></span>
+            <span className="flex-1"><span className="block text-lg font-bold">Before work</span><span className="block text-sm text-white/90">2 min breathing → grounding. One tap to reset.</span></span>
+            <ArrowRight className="h-5 w-5" />
+          </button>
+
+          {/* stat strip */}
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-teal-600">{minutes}</div><div className="text-[11px] text-slate-400">minutes</div></div>
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-sky-600">{sessions.length}</div><div className="text-[11px] text-slate-400">sessions</div></div>
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-emerald-500">{streak}</div><div className="text-[11px] text-slate-400">day streak</div></div>
+          </div>
+
+          {/* practices */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {PRACTICES.map((p) => (
+              <button key={p.id} onClick={() => setCview(p.id)} className="flex items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-teal-50 transition hover:shadow-md hover:ring-teal-200">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ backgroundColor: p.color }}><p.icon className="h-5 w-5" /></span>
+                <span className="min-w-0"><span className="block font-bold text-slate-800">{p.label}</span><span className="block truncate text-xs text-slate-400">{p.desc}</span></span>
+              </button>
+            ))}
+          </div>
+
+          <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">
+            These are self-help tools, not a substitute for professional care. If anxiety feels severe or lasting, talking to a professional can really help. 💛
+          </p>
+        </div>
+      )}
+
+      {cview === "breath" && <BreathPractice settings={settings} saveSettings={saveSettings} onExit={back} onDone={done("breath")} />}
+      {cview === "pmr" && <PMRPractice onExit={back} onDone={done("pmr")} />}
+      {cview === "ground" && <GroundingPractice onExit={back} onDone={done("ground")} />}
+      {cview === "thought" && <ThoughtRecord thoughts={thoughts} onExit={back} onSave={async (entry, sec) => { await saveThoughts([entry, ...thoughts]); log("thought", sec); flash("Saved 🌿"); }} onDelete={async (id) => saveThoughts(thoughts.filter((t) => t.id !== id))} />}
+      {cview === "fear" && <FearLadder fears={fears} onExit={back} onSave={saveFears} onLog={(sec, meta) => log("fear", sec, meta)} flash={flash} />}
+      {cview === "focus" && <FocusTimer settings={settings} onExit={back} onDone={done("focus")} />}
+      {cview === "worry" && <WorryTimer onExit={back} onDone={done("worry")} />}
+      {cview === "beforework" && <BeforeWork onExit={back} onDone={(sec) => { log("beforework", sec); flash("Reset complete — you've got this ✨"); back(); }} />}
+      {cview === "stats" && <CalmStats sessions={sessions} onExit={back} />}
+
+      {toast && <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+function CalmHeader({ title, onExit, right }) {
+  return (
+    <div className="mb-5 flex items-center gap-3">
+      <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-teal-100"><ArrowLeft className="h-4 w-4" /></button>
+      <h1 className="flex-1 text-xl font-extrabold text-slate-900">{title}</h1>
+      {right}
+    </div>
+  );
+}
+
+/* ---------- Guided breathing ---------- */
+function BreathPractice({ settings, saveSettings, onExit, onDone, auto }) {
+  const [patternId, setPatternId] = useState(auto?.patternId || settings.pattern || "box");
+  const [mode, setMode] = useState(auto?.mode || "cycles");
+  const [cycles, setCycles] = useState(auto?.cycles || 6);
+  const [minutes, setMinutes] = useState(auto?.minutes || 3);
+  const [tick, setTick] = useState(auto ? false : settings.tick !== false);
+  const [run, setRun] = useState(null); // {phaseIdx, remaining, cyclesDone, elapsed, scale}
+  const raf = useRef(null);
+  const started = !!run;
+
+  const pattern = BREATH_PATTERNS.find((p) => p.id === patternId) || BREATH_PATTERNS[0];
+  const cycleSecs = pattern.phases.reduce((s, [, sec]) => s + sec, 0);
+  const target = mode === "cycles" ? cycles : Math.max(1, Math.round((minutes * 60) / cycleSecs));
+
+  useEffect(() => { if (auto) start(); return () => clearInterval(raf.current); /* eslint-disable-next-line */ }, []);
+
+  const start = () => {
+    const first = pattern.phases[0];
+    setRun({ phaseIdx: 0, remaining: first[1], cyclesDone: 0, elapsed: 0, scale: first[0] === "in" ? 1 : 0.5, dur: first[1] });
+    if (tick) calmTick(520);
+    clearInterval(raf.current);
+    raf.current = setInterval(() => {
+      setRun((r) => {
+        if (!r) return r;
+        let remaining = r.remaining - 0.1;
+        let elapsed = r.elapsed + 0.1;
+        if (remaining > 0.001) return { ...r, remaining, elapsed };
+        // advance phase
+        let idx = r.phaseIdx + 1, cyclesDone = r.cyclesDone;
+        if (idx >= pattern.phases.length) { idx = 0; cyclesDone += 1; }
+        if (cyclesDone >= target) { clearInterval(raf.current); setTimeout(() => onDone(Math.round(elapsed)), 10); return null; }
+        const [key, sec] = pattern.phases[idx];
+        if (tick) calmTick(key === "in" ? 520 : key === "out" ? 400 : 460);
+        const scale = key === "in" ? 1 : key === "out" ? 0.5 : r.scale;
+        return { phaseIdx: idx, remaining: sec, elapsed, cyclesDone, scale, dur: key === "hold" ? 0 : sec };
+      });
+    }, 100);
+  };
+  const stop = () => { clearInterval(raf.current); if (run && run.elapsed > 5) onDone(Math.round(run.elapsed)); else { setRun(null); onExit(); } };
+
+  if (!started) {
+    return (
+      <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+        <CalmHeader title="Guided breathing" onExit={onExit} />
+        <div className="space-y-4">
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Pattern</div>
+            <div className="space-y-2">
+              {BREATH_PATTERNS.map((p) => (
+                <button key={p.id} onClick={() => setPatternId(p.id)} className={`flex w-full items-center justify-between rounded-2xl border p-3 text-left transition ${patternId === p.id ? "border-sky-400 bg-sky-50 ring-2 ring-sky-100" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+                  <span><span className="block font-bold text-slate-800">{p.name}</span><span className="block text-xs text-slate-400">{p.desc}</span></span>
+                  {patternId === p.id && <CheckCircle2 className="h-5 w-5 text-sky-500" />}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Length</div>
+            <div className="mb-2 flex gap-2">
+              <button onClick={() => setMode("cycles")} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${mode === "cycles" ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-500"}`}>Cycles</button>
+              <button onClick={() => setMode("minutes")} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${mode === "minutes" ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-500"}`}>Minutes</button>
+            </div>
+            {mode === "cycles"
+              ? <div className="flex items-center gap-2"><input type="number" min={1} max={50} value={cycles} onChange={(e) => setCycles(Math.max(1, Math.min(50, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">cycles (~{Math.round(cycles * cycleSecs / 60 * 10) / 10} min)</span></div>
+              : <div className="flex items-center gap-2"><input type="number" min={1} max={60} value={minutes} onChange={(e) => setMinutes(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">minutes</span></div>}
+          </div>
+          <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+            <span className="text-sm font-medium text-slate-700">Soft tick sound</span>
+            <input type="checkbox" checked={tick} onChange={(e) => { setTick(e.target.checked); saveSettings({ tick: e.target.checked }); }} className="h-4 w-4 accent-sky-500" />
+          </label>
+          <button onClick={() => { saveSettings({ pattern: patternId }); start(); }} className="w-full rounded-2xl bg-sky-500 py-3.5 font-bold text-white shadow-lg shadow-sky-500/20 transition hover:bg-sky-600">Begin</button>
+        </div>
+      </div>
+    );
+  }
+
+  const [phaseKey] = pattern.phases[run.phaseIdx];
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
+      <div className="mb-8 w-full"><CalmHeader title="Breathing" onExit={stop} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{run.cyclesDone + 1}/{target}</span>} /></div>
+      <div className="relative my-6 grid h-72 w-72 place-items-center">
+        <div className="absolute rounded-full bg-gradient-to-br from-sky-300 to-teal-300 opacity-70"
+          style={{ width: 260, height: 260, transform: `scale(${run.scale})`, transition: `transform ${run.dur}s ease-in-out` }} />
+        <div className="absolute rounded-full bg-gradient-to-br from-sky-400 to-teal-400"
+          style={{ width: 180, height: 180, transform: `scale(${run.scale})`, transition: `transform ${run.dur}s ease-in-out` }} />
+        <div className="relative z-10 text-center text-white">
+          <div className="text-2xl font-bold drop-shadow">{PHASE_TEXT[phaseKey]}</div>
+          <div className="text-5xl font-extrabold tabular-nums drop-shadow">{Math.ceil(run.remaining)}</div>
+        </div>
+      </div>
+      <button onClick={stop} className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> Finish</button>
+    </div>
+  );
+}
+
+/* ---------- Progressive muscle relaxation ---------- */
+function PMRPractice({ onExit, onDone }) {
+  const [run, setRun] = useState(null); // {idx, phase:'tense'|'release', remaining, elapsed}
+  const timer = useRef(null);
+  const totalSec = MUSCLE_GROUPS.length * (PMR_TENSE + PMR_RELEASE);
+
+  const start = () => {
+    setRun({ idx: 0, phase: "tense", remaining: PMR_TENSE, elapsed: 0 });
+    calmTick(500);
+    clearInterval(timer.current);
+    timer.current = setInterval(() => {
+      setRun((r) => {
+        if (!r) return r;
+        let remaining = r.remaining - 0.1, elapsed = r.elapsed + 0.1;
+        if (remaining > 0.001) return { ...r, remaining, elapsed };
+        if (r.phase === "tense") { calmTick(400); return { ...r, phase: "release", remaining: PMR_RELEASE, elapsed }; }
+        // release done -> next group
+        const idx = r.idx + 1;
+        if (idx >= MUSCLE_GROUPS.length) { clearInterval(timer.current); setTimeout(() => onDone(Math.round(elapsed)), 10); return null; }
+        calmTick(520);
+        return { idx, phase: "tense", remaining: PMR_TENSE, elapsed };
+      });
+    }, 100);
+  };
+  const stop = () => { clearInterval(timer.current); if (run && run.elapsed > 8) onDone(Math.round(run.elapsed)); else onExit(); };
+  useEffect(() => () => clearInterval(timer.current), []);
+
+  if (!run) return (
+    <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+      <CalmHeader title="Muscle relaxation" onExit={onExit} />
+      <div className="rounded-3xl bg-white p-5 text-center shadow-sm ring-1 ring-teal-100">
+        <HeartPulse className="mx-auto h-10 w-10 text-teal-500" />
+        <p className="mt-3 text-sm text-slate-500">We'll move through 12 muscle groups, head to toe. For each: <b>tense ~10s</b>, then <b>release ~15s</b>. Find a comfy seat and let go as you release.</p>
+        <p className="mt-2 text-xs text-slate-400">About {Math.round(totalSec / 60)} minutes.</p>
+        <button onClick={start} className="mt-4 w-full rounded-2xl bg-teal-500 py-3.5 font-bold text-white shadow-lg shadow-teal-500/20 hover:bg-teal-600">Begin</button>
+      </div>
+    </div>
+  );
+
+  const isTense = run.phase === "tense";
+  const overall = (run.elapsed / totalSec) * 100;
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-16 pt-6">
+      <CalmHeader title="Muscle relaxation" onExit={stop} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{run.idx + 1}/{MUSCLE_GROUPS.length}</span>} />
+      <div className="mb-4 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${overall}%` }} /></div>
+      <div className={`grid place-items-center rounded-3xl p-8 text-center transition-colors ${isTense ? "bg-orange-50" : "bg-teal-50"}`}>
+        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Now</div>
+        <div className="mt-1 text-3xl font-extrabold text-slate-900">{MUSCLE_GROUPS[run.idx]}</div>
+        <div className={`mt-4 grid h-32 w-32 place-items-center rounded-full text-white ${isTense ? "bg-orange-400" : "bg-teal-400"}`} style={{ transform: `scale(${isTense ? 1 : 0.9})`, transition: "transform .4s" }}>
+          <div><div className="text-lg font-bold">{isTense ? "Tense…" : "Release…"}</div><div className="text-3xl font-extrabold tabular-nums">{Math.ceil(run.remaining)}</div></div>
+        </div>
+        <div className="mt-4 text-sm text-slate-500">{isTense ? "Squeeze this muscle group — not to strain, just firm." : "Let it go completely. Notice the softness."}</div>
+      </div>
+      <button onClick={stop} className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> Finish</button>
+    </div>
+  );
+}
+
+/* ---------- Grounding 5-4-3-2-1 ---------- */
+const GROUND_SENSES = [
+  { key: "see", n: 5, label: "things you can see", emoji: "👀" },
+  { key: "hear", n: 4, label: "things you can hear", emoji: "👂" },
+  { key: "touch", n: 3, label: "things you can touch", emoji: "✋" },
+  { key: "smell", n: 2, label: "things you can smell", emoji: "👃" },
+  { key: "taste", n: 1, label: "thing you can taste", emoji: "👅" },
+];
+function GroundingPractice({ onExit, onDone }) {
+  const [filled, setFilled] = useState({});
+  const startRef = useRef(Date.now());
+  const total = GROUND_SENSES.reduce((s, x) => s + x.n, 0);
+  const doneCount = Object.values(filled).reduce((s, arr) => s + (arr?.length || 0), 0);
+  const tap = (key, i) => { calmTick(480); setFilled((f) => { const arr = f[key] || []; const has = arr.includes(i); return { ...f, [key]: has ? arr.filter((x) => x !== i) : [...arr, i] }; }); };
+  const complete = doneCount >= total;
+
+  return (
+    <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+      <CalmHeader title="Grounding 5-4-3-2-1" onExit={onExit} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{doneCount}/{total}</span>} />
+      <p className="mb-4 text-sm text-slate-500">Slowly notice each one. Tap as you find it. No rush.</p>
+      <div className="space-y-4">
+        {GROUND_SENSES.map((s) => (
+          <div key={s.key} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-50">
+            <div className="mb-2 flex items-center gap-2"><span className="text-xl">{s.emoji}</span><span className="font-bold text-slate-800">{s.n} {s.label}</span></div>
+            <div className="flex flex-wrap gap-2">
+              {Array.from({ length: s.n }).map((_, i) => {
+                const on = (filled[s.key] || []).includes(i);
+                return <button key={i} onClick={() => tap(s.key, i)} className={`grid h-10 w-10 place-items-center rounded-full border-2 transition ${on ? "border-transparent bg-indigo-500 text-white" : "border-indigo-200 text-indigo-300 hover:border-indigo-400"}`}>{on ? <Check className="h-5 w-5" /> : <Circle className="h-4 w-4" />}</button>;
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      {complete && (
+        <button onClick={() => onDone(Math.round((Date.now() - startRef.current) / 1000))} className="mt-5 w-full rounded-2xl bg-indigo-500 py-3.5 font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-600">Done — I feel more here 🌿</button>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Thought record (CBT) ---------- */
+function ThoughtRecord({ thoughts, onExit, onSave, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ situation: "", thought: "", emotion: "", intensity: 60, forEv: "", against: "", balanced: "" });
+  const startRef = useRef(Date.now());
+  const save = () => {
+    if (!f.thought.trim() && !f.situation.trim()) return;
+    onSave({ id: ruid("tr"), date: dateKey(Date.now()), ...f }, Math.round((Date.now() - startRef.current) / 1000));
+    setOpen(false); setF({ situation: "", thought: "", emotion: "", intensity: 60, forEv: "", against: "", balanced: "" });
+  };
+  const Field = ({ label, hint, k, rows = 2 }) => (
+    <label className="block"><span className="mb-1 block text-sm font-semibold text-slate-700">{label}</span>{hint && <span className="mb-1 block text-xs text-slate-400">{hint}</span>}
+      <textarea value={f[k]} onChange={(e) => setF((s) => ({ ...s, [k]: e.target.value }))} rows={rows} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100" /></label>
+  );
+
+  if (open) return (
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <CalmHeader title="Thought record" onExit={() => setOpen(false)} />
+      <div className="space-y-3">
+        <Field label="Situation" hint="What was happening?" k="situation" />
+        <Field label="Automatic thought" hint="What went through your mind?" k="thought" />
+        <div className="rounded-xl bg-white p-3 ring-1 ring-slate-100">
+          <div className="mb-1 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Emotion</span><span className="text-sm font-bold text-violet-600 tabular-nums">{f.intensity}%</span></div>
+          <input value={f.emotion} onChange={(e) => setF((s) => ({ ...s, emotion: e.target.value }))} placeholder="e.g. anxious, sad" className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-violet-400 focus:outline-none" />
+          <input type="range" min={0} max={100} value={f.intensity} onChange={(e) => setF((s) => ({ ...s, intensity: +e.target.value }))} className="w-full accent-violet-500" />
+        </div>
+        <Field label="Evidence for the thought" k="forEv" />
+        <Field label="Evidence against it" k="against" />
+        <Field label="Balanced thought" hint="A kinder, more realistic take" k="balanced" />
+        <button onClick={save} className="w-full rounded-2xl bg-violet-500 py-3 font-bold text-white hover:bg-violet-600">Save entry</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <CalmHeader title="Thought record" onExit={onExit} right={<button onClick={() => { startRef.current = Date.now(); setOpen(true); }} className="inline-flex items-center gap-1 rounded-full bg-violet-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-600"><Plus className="h-4 w-4" /> New</button>} />
+      {thoughts.length === 0 ? (
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-violet-50">No entries yet. Catch an anxious thought and untangle it.</div>
+      ) : (
+        <div className="space-y-3">
+          {thoughts.map((t) => (
+            <div key={t.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-violet-50">
+              <div className="mb-1 flex items-center justify-between"><span className="text-xs font-medium text-slate-400">{t.date}{t.emotion ? ` · ${t.emotion} ${t.intensity}%` : ""}</span><button onClick={() => onDelete(t.id)} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button></div>
+              {t.thought && <div className="font-semibold text-slate-800">“{t.thought}”</div>}
+              {t.balanced && <div className="mt-1 rounded-lg bg-violet-50 px-3 py-2 text-sm text-violet-800">↪ {t.balanced}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Fear ladder ---------- */
+function FearLadder({ fears, onExit, onSave, onLog, flash }) {
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState("");
+  const [intensity, setIntensity] = useState(50);
+  const [logId, setLogId] = useState(null);
+  const [before, setBefore] = useState(50);
+  const [after, setAfter] = useState(30);
+  const [note, setNote] = useState("");
+
+  const sorted = [...fears].sort((a, b) => a.intensity - b.intensity);
+  const addFear = () => { if (!title.trim()) return; onSave([...fears, { id: ruid("f"), title: title.trim(), intensity, created: Date.now(), attempts: [] }]); setTitle(""); setIntensity(50); setAdding(false); };
+  const saveAttempt = () => {
+    const next = fears.map((f) => f.id === logId ? { ...f, attempts: [...(f.attempts || []), { date: dateKey(Date.now()), before, after, note: note.trim() }] } : f);
+    onSave(next); onLog(120, { fearId: logId });
+    if (after < before) flash("A step forward — well done 🌱"); else flash("Logged. Be gentle with yourself.");
+    setLogId(null); setNote(""); setBefore(50); setAfter(30);
+  };
+  const removeFear = (id) => onSave(fears.filter((f) => f.id !== id));
+
+  const logFear = fears.find((f) => f.id === logId);
+
+  return (
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <CalmHeader title="Fear ladder" onExit={onExit} right={<button onClick={() => setAdding(true)} className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-600"><Plus className="h-4 w-4" /> Add</button>} />
+      <p className="mb-4 rounded-2xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">Start at the bottom — the easiest step. Only move up when a step feels calm and manageable. There's no rush, and no wrong pace. Try each while relaxed.</p>
+
+      {adding && (
+        <div className="mb-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="A fear or worry…" className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" />
+          <div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">How scary right now?</span><span className="font-bold text-amber-600 tabular-nums">{intensity}</span></div>
+          <input type="range" min={0} max={100} value={intensity} onChange={(e) => setIntensity(+e.target.value)} className="w-full accent-amber-500" />
+          <div className="mt-3 flex gap-2"><button onClick={addFear} className="flex-1 rounded-xl bg-amber-500 py-2 font-semibold text-white hover:bg-amber-600">Add to ladder</button><button onClick={() => setAdding(false)} className="rounded-xl px-4 py-2 text-sm text-slate-500">Cancel</button></div>
+        </div>
+      )}
+
+      {sorted.length === 0 && !adding ? (
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-amber-50">Add a few worries — we'll sort them from easiest to hardest.</div>
+      ) : (
+        <div className="space-y-2">
+          {[...sorted].reverse().map((f, ri) => {
+            const step = sorted.length - ri;
+            const atts = f.attempts || [];
+            const first = atts[0]?.after, last = atts[atts.length - 1]?.after;
+            const drop = atts.length >= 1 ? (f.intensity - (last ?? f.intensity)) : 0;
+            return (
+              <div key={f.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-50" style={{ marginLeft: Math.min(ri, 6) * 6 }}>
+                <div className="flex items-center gap-2">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-amber-100 text-sm font-bold text-amber-700">{step}</span>
+                  <div className="min-w-0 flex-1"><div className="truncate font-bold text-slate-800">{f.title}</div>
+                    <div className="text-xs text-slate-400">Now feels {last ?? f.intensity}/100{atts.length ? ` · ${atts.length} attempt${atts.length === 1 ? "" : "s"}` : ""}{drop > 0 ? ` · ↓${drop}` : ""}</div></div>
+                  <button onClick={() => { setLogId(f.id); setBefore(last ?? f.intensity); }} className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600">Log try</button>
+                  <button onClick={() => { if (confirm("Remove this fear?")) removeFear(f.id); }} className="text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+                </div>
+                {atts.length > 1 && (
+                  <div className="mt-2 flex items-end gap-1">
+                    {atts.slice(-12).map((a, i) => <div key={i} title={`${a.date}: ${a.before}→${a.after}`} className="flex-1 rounded-t bg-amber-300" style={{ height: Math.max(4, (a.after / 100) * 36) }} />)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {logFear && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setLogId(null)}>
+          <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-1 text-lg font-bold text-slate-900">Log an attempt</h3>
+            <p className="mb-4 text-sm text-slate-500">“{logFear.title}”</p>
+            <div className="mb-3"><div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">Anxiety before</span><span className="font-bold text-slate-700 tabular-nums">{before}</span></div><input type="range" min={0} max={100} value={before} onChange={(e) => setBefore(+e.target.value)} className="w-full accent-amber-500" /></div>
+            <div className="mb-3"><div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">Anxiety after</span><span className="font-bold text-teal-600 tabular-nums">{after}</span></div><input type="range" min={0} max={100} value={after} onChange={(e) => setAfter(+e.target.value)} className="w-full accent-teal-500" /></div>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="How did it go? (optional)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" />
+            <button onClick={saveAttempt} className="w-full rounded-2xl bg-amber-500 py-3 font-bold text-white hover:bg-amber-600">Save attempt</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Focus timer (Pomodoro w/ calming breath) ---------- */
+function FocusTimer({ settings, onExit, onDone }) {
+  const [workMin, setWorkMin] = useState(25);
+  const [breakMin, setBreakMin] = useState(5);
+  const [stage, setStage] = useState("config"); // config | breathe | work | break | done
+  const [remaining, setRemaining] = useState(0);
+  const [breatheLeft, setBreatheLeft] = useState(3);
+  const timer = useRef(null);
+  const workedRef = useRef(0);
+
+  useEffect(() => () => clearInterval(timer.current), []);
+
+  const startBreath = () => { setStage("breathe"); setBreatheLeft(3); clearInterval(timer.current); calmTick(520);
+    timer.current = setInterval(() => setBreatheLeft((b) => { if (b <= 1) { clearInterval(timer.current); startWork(); return 0; } calmTick(480); return b - 1; }), 4000);
+  };
+  const startWork = () => { setStage("work"); setRemaining(workMin * 60); tickDown("work"); };
+  const startBreak = () => { setStage("break"); setRemaining(breakMin * 60); tickDown("break"); };
+  const tickDown = (which) => {
+    clearInterval(timer.current);
+    timer.current = setInterval(() => setRemaining((r) => {
+      if (r <= 1) {
+        clearInterval(timer.current);
+        if (which === "work") { workedRef.current += workMin * 60; calmTick(560); setStage("break"); setRemaining(breakMin * 60); tickDown("break"); return breakMin * 60; }
+        else { calmTick(520); onDone(workedRef.current || workMin * 60); return 0; }
+      }
+      return r - 1;
+    }), 1000);
+  };
+  const stop = () => { clearInterval(timer.current); const worked = workedRef.current + (stage === "work" ? (workMin * 60 - remaining) : 0); if (worked > 20) onDone(worked); else onExit(); };
+
+  if (stage === "config") return (
+    <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+      <CalmHeader title="Focus timer" onExit={onExit} />
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100">
+        <p className="mb-4 text-sm text-slate-500">We'll begin with three slow breaths, then a focused work block, then a short break.</p>
+        <div className="mb-3 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Work</span><span className="flex items-center gap-2"><input type="number" min={1} max={120} value={workMin} onChange={(e) => setWorkMin(Math.max(1, Math.min(120, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">min</span></span></div>
+        <div className="mb-4 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Break</span><span className="flex items-center gap-2"><input type="number" min={1} max={60} value={breakMin} onChange={(e) => setBreakMin(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">min</span></span></div>
+        <button onClick={startBreath} className="w-full rounded-2xl bg-emerald-500 py-3.5 font-bold text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600">Start</button>
+      </div>
+    </div>
+  );
+
+  if (stage === "breathe") return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
+      <div className="w-full"><CalmHeader title="Settle in" onExit={stop} /></div>
+      <div className="my-10 grid h-56 w-56 place-items-center rounded-full bg-gradient-to-br from-emerald-300 to-teal-300 text-white">
+        <div className="text-center"><div className="text-lg font-bold">Breathe slowly</div><div className="text-5xl font-extrabold tabular-nums">{breatheLeft}</div></div>
+      </div>
+      <p className="text-sm text-slate-500">A few calm breaths before we focus…</p>
+    </div>
+  );
+
+  const isWork = stage === "work";
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
+      <div className="w-full"><CalmHeader title={isWork ? "Focus" : "Break"} onExit={stop} /></div>
+      <div className={`my-10 grid h-64 w-64 place-items-center rounded-full text-white ${isWork ? "bg-gradient-to-br from-emerald-400 to-teal-400" : "bg-gradient-to-br from-sky-300 to-teal-300"}`}>
+        <div className="text-center"><div className="text-sm font-semibold uppercase tracking-widest text-white/80">{isWork ? "Focus" : "Rest"}</div><div className="text-6xl font-extrabold tabular-nums">{fmtClock(remaining)}</div></div>
+      </div>
+      <button onClick={stop} className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> End</button>
+    </div>
+  );
+}
+
+/* ---------- Worry time ---------- */
+function WorryTimer({ onExit, onDone }) {
+  const [min, setMin] = useState(10);
+  const [remaining, setRemaining] = useState(0);
+  const [running, setRunning] = useState(false);
+  const timer = useRef(null);
+  useEffect(() => () => clearInterval(timer.current), []);
+  const start = () => { setRunning(true); setRemaining(min * 60); clearInterval(timer.current); timer.current = setInterval(() => setRemaining((r) => { if (r <= 1) { clearInterval(timer.current); calmTick(440); onDone(min * 60); return 0; } return r - 1; }), 1000); };
+  const stop = () => { clearInterval(timer.current); const spent = min * 60 - remaining; if (spent > 20) onDone(spent); else onExit(); };
+
+  if (!running) return (
+    <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+      <CalmHeader title="Worry time" onExit={onExit} />
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-pink-100">
+        <p className="mb-3 text-sm leading-relaxed text-slate-600">This is a <b>deliberate, time-boxed</b> slot to let yourself worry on purpose. Set the timer, worry freely — write, think, feel it — and when it ends, gently set it down. It's a technique to <i>contain</i> worry, not to dwell in it.</p>
+        <div className="mb-4 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">How long?</span><span className="flex items-center gap-2"><input type="number" min={1} max={60} value={min} onChange={(e) => setMin(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">min</span></span></div>
+        <button onClick={start} className="w-full rounded-2xl bg-pink-500 py-3.5 font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-600">Start worry time</button>
+      </div>
+    </div>
+  );
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
+      <div className="w-full"><CalmHeader title="Worry time" onExit={stop} /></div>
+      <div className="my-10 grid h-64 w-64 place-items-center rounded-full bg-gradient-to-br from-pink-300 to-rose-300 text-white"><div className="text-6xl font-extrabold tabular-nums">{fmtClock(remaining)}</div></div>
+      <p className="mb-4 max-w-xs text-center text-sm text-slate-500">Let it all come up now. When the timer ends, we'll close the door on it — for now.</p>
+      <button onClick={stop} className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Check className="h-4 w-4" /> I'm done</button>
+    </div>
+  );
+}
+
+/* ---------- Before-work chain ---------- */
+function BeforeWork({ onExit, onDone }) {
+  const [step, setStep] = useState("intro"); // intro | breath | ground | done
+  const acc = useRef(0);
+  return (
+    <div className="min-h-full">
+      {step === "intro" && (
+        <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+          <CalmHeader title="Before work" onExit={onExit} />
+          <div className="rounded-3xl bg-white p-6 text-center shadow-sm ring-1 ring-teal-100">
+            <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-teal-100 text-teal-600"><Sparkle className="h-7 w-7" /></span>
+            <h2 className="mt-3 text-xl font-bold text-slate-900">A gentle reset</h2>
+            <p className="mt-2 text-sm text-slate-500">Two minutes of breathing, then a quick grounding. Then you'll be ready to begin — calm and clear.</p>
+            <button onClick={() => setStep("breath")} className="mt-5 w-full rounded-2xl bg-teal-500 py-3.5 font-bold text-white shadow-lg shadow-teal-500/20 hover:bg-teal-600">Begin</button>
+          </div>
+        </div>
+      )}
+      {step === "breath" && <BreathPractice auto={{ patternId: "relax", mode: "minutes", minutes: 2 }} settings={{ tick: false }} saveSettings={() => {}} onExit={onExit} onDone={(sec) => { acc.current += sec; setStep("ground"); }} />}
+      {step === "ground" && <GroundingPractice onExit={onExit} onDone={(sec) => { acc.current += sec; setStep("done"); }} />}
+      {step === "done" && (
+        <div className="mx-auto w-full max-w-md px-4 pb-16 pt-16 text-center">
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-teal-100 text-teal-600"><Check className="h-8 w-8" /></div>
+          <h2 className="mt-4 text-2xl font-bold text-slate-900">You're ready ✨</h2>
+          <p className="mt-1 text-sm text-slate-500">Calm and clear. Take it one task at a time.</p>
+          <button onClick={() => onDone(acc.current)} className="mt-6 rounded-2xl bg-teal-500 px-8 py-3 font-bold text-white hover:bg-teal-600">Start my day</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Calm stats ---------- */
+function CalmStats({ sessions, onExit }) {
+  const [monthOffset, setMonthOffset] = useState(0);
+  const minutes = calmMinutes(sessions);
+  const streak = calmStreak(sessions);
+  const byType = {};
+  for (const s of sessions) byType[s.type] = (byType[s.type] || 0) + 1;
+
+  const now = new Date();
+  const view = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const year = view.getFullYear(), month = view.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startPad = (new Date(year, month, 1).getDay() + 6) % 7;
+  const dayCount = {};
+  for (const s of sessions) dayCount[s.date] = (dayCount[s.date] || 0) + 1;
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-6">
+      <CalmHeader title="Your calm practice" onExit={onExit} />
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">🌿</div><div className="text-2xl font-extrabold tabular-nums text-teal-600">{streak}</div><div className="text-[11px] text-slate-400">day streak</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">⏱️</div><div className="text-2xl font-extrabold tabular-nums text-sky-600">{minutes}</div><div className="text-[11px] text-slate-400">minutes</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">🧘</div><div className="text-2xl font-extrabold tabular-nums text-emerald-500">{sessions.length}</div><div className="text-[11px] text-slate-400">sessions</div></div>
+      </div>
+
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-teal-100">
+        <h2 className="mb-3 text-sm font-bold text-slate-700">By practice</h2>
+        {Object.keys(byType).length === 0 ? <p className="text-sm text-slate-400">No sessions yet.</p> : (
+          <div className="space-y-2">
+            {Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([type, n]) => {
+              const T = CALM_TECHNIQUES[type] || { label: type, icon: Leaf };
+              const max = Math.max(...Object.values(byType));
+              return <div key={type} className="flex items-center gap-2"><T.icon className="h-4 w-4 shrink-0 text-teal-500" /><span className="w-36 shrink-0 truncate text-sm text-slate-600">{T.label}</span><div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-teal-400" style={{ width: `${(n / max) * 100}%` }} /></div><span className="w-6 text-right text-xs font-semibold tabular-nums text-slate-500">{n}</span></div>;
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-teal-100">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-700">{view.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
+          <div className="flex gap-1">
+            <button onClick={() => setMonthOffset((m) => m - 1)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" /></button>
+            <button onClick={() => setMonthOffset(0)} disabled={monthOffset === 0} className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40">Today</button>
+            <button onClick={() => setMonthOffset((m) => Math.min(0, m + 1))} disabled={monthOffset === 0} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-40"><ArrowRight className="h-4 w-4" /></button>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 gap-1.5">
+          {["M", "T", "W", "T", "F", "S", "S"].map((w, i) => <div key={i} className="pb-1 text-center text-[10px] font-semibold text-slate-400">{w}</div>)}
+          {Array.from({ length: startPad }).map((_, i) => <div key={"p" + i} />)}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const d = i + 1; const ds = dateKey(new Date(year, month, d).getTime()); const c = dayCount[ds] || 0;
+            const bg = !c ? "#eef2f5" : c >= 3 ? "#0d9488" : c === 2 ? "#2dd4bf" : "#99f6e4";
+            return <div key={ds} className="grid aspect-square place-items-center rounded-lg text-[10px] font-medium" style={{ backgroundColor: bg, color: c ? "#fff" : "#94a3b8" }} title={`${ds}: ${c}`}>{d}</div>;
+          })}
+        </div>
+      </div>
+
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Self-help tools, not a replacement for professional support. If things feel heavy, reaching out to someone can help. 💛</p>
     </div>
   );
 }
