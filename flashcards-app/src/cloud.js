@@ -51,16 +51,32 @@ export async function pullToLocal() {
   return (data || []).length;
 }
 
-/* ---- push all local recall:* keys → cloud ---- */
+/* ---- upsert rows in byte-sized batches; continue past a failed batch so one
+       oversized value (e.g. a card photo) can't strand everything else ---- */
+async function upsertRows(rows) {
+  const MAX_BYTES = 700000; // keep each request comfortably under API limits
+  let ok = 0, batch = [], size = 0;
+  const send = async () => {
+    if (!batch.length) return;
+    try { const { error } = await supabase.from("kv").upsert(batch); if (error) throw error; ok += batch.length; }
+    catch (e) { console.warn("[cloud upsert batch]", e?.message || e); }
+    batch = []; size = 0;
+  };
+  for (const r of rows) {
+    let vlen = 0; try { vlen = JSON.stringify(r.value ?? "").length; } catch { vlen = 0; }
+    const bytes = (r.key.length + vlen) * 2;
+    if (batch.length && size + bytes > MAX_BYTES) await send();
+    batch.push(r); size += bytes;
+    if (bytes > MAX_BYTES) await send(); // an oversized single value: send it alone
+  }
+  await send();
+  return ok;
+}
+
+/* ---- push all local recall:* keys (incl. image:* photos) → cloud ---- */
 export async function pushAllLocal() {
   if (!user) return 0;
-  const rows = collectLocalRows();
-  // upsert in chunks to stay well within limits
-  for (let i = 0; i < rows.length; i += 200) {
-    const { error } = await supabase.from("kv").upsert(rows.slice(i, i + 200));
-    if (error) throw error;
-  }
-  return rows.length;
+  return await upsertRows(collectLocalRows());
 }
 
 function collectLocalRows(skipKeys) {
@@ -159,12 +175,9 @@ export async function mergeCloud() {
     cloudKeys.add(row.key);
     try { localStorage.setItem(PREFIX + row.key, JSON.stringify(row.value)); } catch { /* ignore */ }
   }
-  const rows = collectLocalRows(cloudKeys); // local keys the cloud lacks
-  for (let i = 0; i < rows.length; i += 200) {
-    const { error: e2 } = await supabase.from("kv").upsert(rows.slice(i, i + 200));
-    if (e2) throw e2;
-  }
-  return { pulled: cloudKeys.size, pushed: rows.length };
+  const rows = collectLocalRows(cloudKeys); // local keys the cloud lacks (incl. photos)
+  const pushed = await upsertRows(rows);
+  return { pulled: cloudKeys.size, pushed };
 }
 
 // After verifying the code, merge local ⇄ cloud. Then the caller reloads.

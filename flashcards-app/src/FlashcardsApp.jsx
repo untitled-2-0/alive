@@ -1727,6 +1727,7 @@ export default function FlashcardsApp() {
         subtitle: modeLabel,
         mode: config.mode,
         cram: config.mode === "cram",
+        reverse: !!config.reverse,
         queue,
         total: queue.length,
         flipped: false,
@@ -2578,10 +2579,10 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
 
   // Auto-play: front when the card appears, back when it flips.
   useEffect(() => {
-    if (card && deck?.autoPlay && !session.flipped) say(card.front);
+    if (card && deck?.autoPlay && !session.flipped) say(session.reverse ? card.back : card.front);
   }, [card?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (card && deck?.autoPlay && session.flipped) say(card.back);
+    if (card && deck?.autoPlay && session.flipped) say(session.reverse ? card.front : card.back);
   }, [session.flipped, card?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // "R" / "P" replays the currently visible side.
@@ -2600,13 +2601,21 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
   // reset any swipe offset when the card changes
   useEffect(() => { setDrag(0); dragRef.current = null; }, [card?.id, session.flipped]);
   const onTouchStart = (e) => { const t = e.touches[0]; dragRef.current = { x0: t.clientX, y0: t.clientY, dx: 0, dy: 0 }; };
-  const onTouchMove = (e) => { if (!dragRef.current) return; const t = e.touches[0]; dragRef.current.dx = t.clientX - dragRef.current.x0; dragRef.current.dy = t.clientY - dragRef.current.y0; if (session.flipped) setDrag(dragRef.current.dx); };
+  const onTouchMove = (e) => {
+    if (!dragRef.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - dragRef.current.x0, dy = t.clientY - dragRef.current.y0;
+    dragRef.current.dx = dx; dragRef.current.dy = dy;
+    // follow the finger as soon as the gesture is mostly horizontal — before OR after flip,
+    // so the card visibly moves on the first swipe (no tap needed first).
+    if (Math.abs(dx) > Math.abs(dy)) setDrag(dx);
+  };
   const onTouchEnd = () => {
     const st = dragRef.current; dragRef.current = null;
     if (!st) return;
-    if (!session.flipped) { if (Math.abs(st.dx) > 45 || Math.abs(st.dy) > 45) onFlip(); setDrag(0); return; }
-    if (st.dx > 85) onAnswer("good");
-    else if (st.dx < -85) onAnswer("again");
+    if (!session.flipped) { if (Math.abs(st.dx) > 40 || Math.abs(st.dy) > 40) onFlip(); setDrag(0); return; }
+    if (st.dx > 80) onAnswer("good");
+    else if (st.dx < -80) onAnswer("again");
     else setDrag(0);
   };
 
@@ -2629,6 +2638,13 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
       </div>
     );
   }
+
+  // Reverse mode: show the back (translation) as the prompt, recall the front.
+  const rev = !!session.reverse;
+  const frontText = rev ? card.back : card.front;
+  const backText = rev ? card.front : card.back;
+  const frontImg = rev ? imgs.back : imgs.front;
+  const backImg = rev ? imgs.front : imgs.back;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -2673,35 +2689,35 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
         {card.tags && (
           <span className="mb-3 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500">{card.tags}</span>
         )}
-        {imgs.front && (
+        {frontImg && (
           <img
-            src={imgs.front}
+            src={frontImg}
             alt=""
-            onClick={(e) => { e.stopPropagation(); setLightbox(imgs.front); }}
+            onClick={(e) => { e.stopPropagation(); setLightbox(frontImg); }}
             className="mb-4 max-h-56 w-auto cursor-zoom-in rounded-lg border border-slate-200 object-contain"
           />
         )}
         <div className="flex items-center gap-2">
           <div className="text-2xl font-semibold leading-snug text-slate-900" style={{ textWrap: "balance" }}>
-            {card.front}
+            {frontText}
           </div>
-          <SpeakerButton text={card.front} lang={lang} onFallback={() => setVoiceHint(true)} />
+          <SpeakerButton text={frontText} lang={lang} onFallback={() => setVoiceHint(true)} />
         </div>
 
         {session.flipped ? (
           <>
             <div className="my-6 h-px w-24 bg-slate-200" />
-            {imgs.back && (
+            {backImg && (
               <img
-                src={imgs.back}
+                src={backImg}
                 alt=""
-                onClick={(e) => { e.stopPropagation(); setLightbox(imgs.back); }}
+                onClick={(e) => { e.stopPropagation(); setLightbox(backImg); }}
                 className="mb-4 max-h-56 w-auto cursor-zoom-in rounded-lg border border-slate-200 object-contain"
               />
             )}
             <div className="flex items-center gap-2">
-              <div className="text-2xl font-medium text-rose-700" style={{ textWrap: "balance" }}>{card.back}</div>
-              <SpeakerButton text={card.back} lang={lang} onFallback={() => setVoiceHint(true)} />
+              <div className="text-2xl font-medium text-rose-700" style={{ textWrap: "balance" }}>{backText}</div>
+              <SpeakerButton text={backText} lang={lang} onFallback={() => setVoiceHint(true)} />
             </div>
             {card.notes && <div className="mt-4 max-w-md text-sm text-slate-500">{card.notes}</div>}
           </>
@@ -2867,6 +2883,19 @@ function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds
           <span className="text-xs text-slate-400">due cards come first</span>
         </div>
       )}
+
+      {/* reverse mode */}
+      <button
+        onClick={() => onChange({ reverse: !setup.reverse })}
+        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${setup.reverse ? "border-rose-500 bg-rose-50 ring-2 ring-rose-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
+      >
+        <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${setup.reverse ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-500"}`}><RefreshCw className="h-4 w-4" /></div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-slate-800">Реверс (показувати переклад)</div>
+          <div className="text-xs text-slate-400">Спершу бачиш зворот картки й пригадуєш оригінал — тренує в інший бік.</div>
+        </div>
+        <div className={`h-6 w-11 shrink-0 rounded-full p-0.5 transition ${setup.reverse ? "bg-rose-500" : "bg-slate-200"}`}><div className={`h-5 w-5 rounded-full bg-white shadow transition ${setup.reverse ? "translate-x-5" : ""}`} /></div>
+      </button>
 
       <div className="flex items-center gap-3 border-t border-slate-100 pt-4">
         <button
@@ -5129,10 +5158,10 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
           </div>
         </div>
 
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Cancel</button>
+        <div className="sticky bottom-0 -mx-5 -mb-5 mt-6 flex items-center justify-end gap-3 border-t border-slate-100 bg-white/95 px-5 py-3 backdrop-blur">
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Скасувати</button>
           <button onClick={save} disabled={!title.trim()} className="inline-flex items-center gap-2 rounded-xl bg-pink-500 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-pink-600 disabled:bg-slate-300">
-            <Check className="h-4 w-4" /> {task ? "Save task" : "Add task"}
+            <Check className="h-4 w-4" /> {task ? "Зберегти" : "Додати"}
           </button>
         </div>
       </div>
@@ -5771,8 +5800,13 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
   const [before, setBefore] = useState(50);
   const [after, setAfter] = useState(30);
   const [note, setNote] = useState("");
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const sorted = [...fears].sort((a, b) => a.intensity - b.intensity);
+  const nowLevel = (f) => { const a = f.attempts || []; return a.length ? a[a.length - 1].after : f.intensity; };
+  const isMastered = (f) => (f.attempts || []).length > 0 && nowLevel(f) <= 20;
+  // "твоя сходинка зараз" = найлегша ще не приборкана
+  const currentStepId = sorted.find((f) => !isMastered(f))?.id;
   const addFear = () => { if (!title.trim()) return; onSave([...fears, { id: ruid("f"), title: title.trim(), intensity, created: Date.now(), attempts: [] }]); setTitle(""); setIntensity(50); setAdding(false); };
   const saveAttempt = () => {
     const next = fears.map((f) => f.id === logId ? { ...f, attempts: [...(f.attempts || []), { date: dateKey(Date.now()), before, after, note: note.trim() }] } : f);
@@ -5787,7 +5821,29 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
   return (
     <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
       <CalmHeader title="Сходинки страху" onExit={onExit} right={<button onClick={() => setAdding(true)} className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-600"><Plus className="h-4 w-4" /> Додати</button>} />
-      <p className="mb-4 rounded-2xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">Починай знизу — з найлегшої сходинки. Піднімайся вище лише тоді, коли сходинка відчувається спокійно й посильно. Поспіху немає, і немає «неправильного» темпу. Пробуй кожну в розслабленому стані.</p>
+
+      {/* how exposure works */}
+      <div className="mb-4 overflow-hidden rounded-2xl bg-amber-50 ring-1 ring-amber-100">
+        <button onClick={() => setGuideOpen((v) => !v)} className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-bold text-amber-800">
+          <HelpCircle className="h-4 w-4 shrink-0" /> Як страх «розчиняється» (2 хв читання)
+          {guideOpen ? <ChevronDown className="ml-auto h-4 w-4" /> : <ChevronRight className="ml-auto h-4 w-4" />}
+        </button>
+        {guideOpen && (
+          <div className="space-y-3 px-3 pb-3 text-xs leading-relaxed text-amber-900">
+            <p><b>Уникання годує страх.</b> Коли ми тікаємо від того, що лякає, мозок «запам'ятовує»: це було небезпечно. Страх міцнішає. Експозиція робить навпаки — ти лишаєшся в ситуації, і мозок вчиться: нічого страшного не сталось.</p>
+            <p><b>Тривога сама спадає.</b> Якщо побути в страху й не тікати, тіло не може тримати пік вічно — тривога піднімається, а тоді сама падає (це і є звикання). З кожним повтором пік нижчий і спадає швидше. Оце і є твій вектор — <b>униз</b>.</p>
+            <div className="rounded-xl bg-white/70 p-2">
+              <div className="mb-1 text-[11px] font-bold text-amber-700">Крива тривоги за кілька спроб ↓</div>
+              <svg viewBox="0 0 220 60" className="w-full">
+                <path d="M0,50 C18,10 30,10 45,34 C60,50 62,50 70,52" fill="none" stroke="#f59e0b" strokeWidth="2.5" />
+                <path d="M70,52 C86,26 96,26 108,42 C120,52 122,52 130,53" fill="none" stroke="#fb923c" strokeWidth="2.5" opacity="0.8" />
+                <path d="M130,53 C144,40 152,40 162,49 C172,55 176,55 220,55" fill="none" stroke="#34d399" strokeWidth="2.5" opacity="0.85" />
+              </svg>
+            </div>
+            <p><b>Драбина.</b> Розклади страхи від найлегшого до найважчого. Працюй знизу вгору. Повторюй одну сходинку, поки тривога на ній не стане маленькою (≈ до 20) — тоді вона «приборкана», і час на наступну. Поспіху немає, «неправильного» темпу теж. Роби кожну спробу в спокійному стані. 💛</p>
+          </div>
+        )}
+      </div>
 
       {adding && (
         <div className="mb-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
@@ -5802,23 +5858,45 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
         <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-amber-50">Додай кілька тривог — ми розкладемо їх від найлегшої до найважчої.</div>
       ) : (
         <div className="space-y-2">
+          <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400"><span>↑ важче</span><span>рухайся знизу вгору</span></div>
           {[...sorted].reverse().map((f, ri) => {
             const step = sorted.length - ri;
             const atts = f.attempts || [];
-            const first = atts[0]?.after, last = atts[atts.length - 1]?.after;
-            const drop = atts.length >= 1 ? (f.intensity - (last ?? f.intensity)) : 0;
+            const now = nowLevel(f);
+            const start = f.intensity;
+            const drop = Math.max(0, start - now);
+            const mastered = isMastered(f);
+            const isCurrent = f.id === currentStepId;
+            const pct = Math.max(0, Math.min(100, now));
+            const startPct = Math.max(0, Math.min(100, start));
+            const barColor = now <= 20 ? "bg-green-500" : now <= 45 ? "bg-amber-400" : "bg-orange-500";
             return (
-              <div key={f.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-50" style={{ marginLeft: Math.min(ri, 6) * 6 }}>
+              <div key={f.id} className={`rounded-2xl bg-white p-4 shadow-sm ring-1 transition ${mastered ? "ring-green-100" : isCurrent ? "ring-2 ring-amber-300" : "ring-amber-50"}`}>
                 <div className="flex items-center gap-2">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-amber-100 text-sm font-bold text-amber-700">{step}</span>
-                  <div className="min-w-0 flex-1"><div className="truncate font-bold text-slate-800">{f.title}</div>
-                    <div className="text-xs text-slate-400">Зараз {last ?? f.intensity}/100{atts.length ? ` · ${atts.length} ${atts.length === 1 ? "спроба" : atts.length < 5 ? "спроби" : "спроб"}` : ""}{drop > 0 ? ` · ↓${drop}` : ""}</div></div>
-                  <button onClick={() => { setLogId(f.id); setBefore(last ?? f.intensity); }} className="rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600">Записати спробу</button>
-                  <button onClick={() => { if (confirm("Прибрати цей страх?")) removeFear(f.id); }} className="text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                  <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm font-bold ${mastered ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>{mastered ? <Check className="h-4 w-4" /> : step}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5"><span className="truncate font-bold text-slate-800">{f.title}</span>
+                      {mastered ? <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-bold text-green-700">приборкано</span>
+                        : isCurrent ? <span className="shrink-0 rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-white">твоя сходинка</span>
+                        : atts.length ? <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">в роботі</span>
+                        : <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">попереду</span>}
+                    </div>
+                    <div className="text-xs text-slate-400">{atts.length ? `${atts.length} ${atts.length === 1 ? "спроба" : atts.length < 5 ? "спроби" : "спроб"}` : "ще не пробувала"}{drop > 0 ? ` · впала на ${drop}` : ""}</div>
+                  </div>
+                  <button onClick={() => { setLogId(f.id); setBefore(now); }} className="shrink-0 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600">Записати спробу</button>
+                  <button onClick={() => { if (confirm("Прибрати цей страх?")) removeFear(f.id); }} className="shrink-0 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                </div>
+                {/* vector: anxiety from start → now, aiming for 0 */}
+                <div className="mt-2.5">
+                  <div className="relative h-2 rounded-full bg-slate-100">
+                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                    {atts.length > 0 && startPct > pct && <div className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-slate-300" style={{ left: `${startPct}%` }} title={`старт ${start}`} />}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[10px] font-medium text-slate-400"><span>тривога зараз <b className="text-slate-600">{now}</b>/100</span><span>ціль ≤ 20</span></div>
                 </div>
                 {atts.length > 1 && (
-                  <div className="mt-2 flex items-end gap-1">
-                    {atts.slice(-12).map((a, i) => <div key={i} title={`${a.date}: ${a.before}→${a.after}`} className="flex-1 rounded-t bg-amber-300" style={{ height: Math.max(4, (a.after / 100) * 36) }} />)}
+                  <div className="mt-2 flex items-end gap-1" title="кожна спроба: тривога після">
+                    {atts.slice(-14).map((a, i) => <div key={i} title={`${a.date}: ${a.before}→${a.after}`} className={`flex-1 rounded-t ${a.after <= 20 ? "bg-green-400" : "bg-amber-300"}`} style={{ height: Math.max(4, (a.after / 100) * 32) }} />)}
                   </div>
                 )}
               </div>
@@ -6073,8 +6151,9 @@ function FastingSection({ name, onRename }) {
 
   const protocol = getProtocol(goals.protocol);
 
-  const startFast = useCallback(async () => {
-    await saveCurrent({ startTs: Date.now(), targetHrs: protocol.hrs, protocol: protocol.id });
+  const startFast = useCallback(async (customTs) => {
+    const startTs = (typeof customTs === "number" && !isNaN(customTs)) ? Math.min(customTs, Date.now()) : Date.now();
+    await saveCurrent({ startTs, targetHrs: protocol.hrs, protocol: protocol.id });
     flash(`Пішов відлік — ціль ${protocol.hrs} год 💪`);
   }, [saveCurrent, protocol, flash]);
 
@@ -6157,6 +6236,8 @@ function FastRing({ pct, size = 240, stroke = 16, color = "#f97316", children })
 }
 function FastTimer({ current, now, protocol, onStart, onEnd, onSetStart, onChangeProtocol }) {
   const [editing, setEditing] = useState(false);
+  const [startPick, setStartPick] = useState(false);
+  const [customStart, setCustomStart] = useState("");
   const elapsedMs = current ? now - current.startTs : 0;
   const elapsedH = elapsedMs / 3600000;
   const targetH = current ? current.targetHrs : protocol.hrs;
@@ -6196,7 +6277,18 @@ function FastTimer({ current, now, protocol, onStart, onEnd, onSetStart, onChang
           <button onClick={onEnd} className="mt-6 rounded-2xl bg-slate-800 px-10 py-3.5 font-bold text-white shadow-lg transition hover:bg-slate-900">Завершити голодування</button>
         </>
       ) : (
-        <button onClick={onStart} className="mt-6 rounded-2xl bg-orange-500 px-12 py-3.5 font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600">Почати голодування</button>
+        <>
+          <button onClick={() => onStart(startPick && customStart ? new Date(customStart).getTime() : undefined)} className="mt-6 rounded-2xl bg-orange-500 px-12 py-3.5 font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600">Почати голодування</button>
+          {!startPick ? (
+            <button onClick={() => { setStartPick(true); setCustomStart(toLocalInput(Date.now())); }} className="mt-3 text-sm font-medium text-orange-500 hover:text-orange-600">Почала раніше? Вказати час старту</button>
+          ) : (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-amber-100">
+              <span className="text-xs text-slate-500">Старт о</span>
+              <input type="datetime-local" max={toLocalInput(Date.now())} value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+              <button onClick={() => setStartPick(false)} className="text-xs font-medium text-slate-400 hover:text-slate-600">зараз</button>
+            </div>
+          )}
+        </>
       )}
 
       {/* stage timeline */}
@@ -6885,6 +6977,9 @@ const budDefaultMonth = () => { const d = new Date(); return `${d.getFullYear()}
 const budShiftMonth = (m, delta) => { let [y, mo] = m.split("-").map(Number); mo += delta; while (mo > 12) { mo -= 12; y += 1; } while (mo < 1) { mo += 12; y -= 1; } return `${y}-${String(mo).padStart(2, "0")}`; };
 const budFmt = (n) => { const r = Math.round((n + Number.EPSILON) * 100) / 100; const s = (Number.isInteger(r) ? r : r.toFixed(2)).toLocaleString ? (Number.isInteger(r) ? r.toLocaleString("uk-UA") : r.toFixed(2)) : String(r); return s + " ₴"; };
 const budLineSum = (it) => (Number(it.qty) || 0) * (Number(it.price) || 0);
+// stock value: legacy `true` = fully in stock (1); a number 0..1 = fraction already on hand
+const budStockFrac = (v) => (v === true ? 1 : (typeof v === "number" ? Math.max(0, Math.min(1, v)) : 0));
+const budFracLabel = (f) => (f >= 1 ? "усе" : Math.abs(f - 0.25) < 0.01 ? "¼" : Math.abs(f - 0.5) < 0.01 ? "½" : Math.abs(f - 0.75) < 0.01 ? "¾" : `${Math.round(f * 100)}%`);
 // Human-readable "how often" for amortized fractional quantities (qty = share per month).
 // 0.12/міс → куплю раз на ~8 місяців.
 function budFreqHint(qty) {
@@ -7040,16 +7135,22 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
     if (turningOn) setStock((prev) => { const mm = { ...(prev[month] || {}) }; if (!mm[id]) return prev; delete mm[id]; const next = { ...prev, [month]: mm }; store.set(BKEYS.stock, next); return next; });
   };
   const setStockItem = (id) => {
-    const turningOn = !stockMap[id];
-    setStock((prev) => { const mm = { ...(prev[month] || {}) }; if (mm[id]) delete mm[id]; else mm[id] = true; const next = { ...prev, [month]: mm }; store.set(BKEYS.stock, next); return next; });
-    if (turningOn) setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (!mm[id]) return prev; delete mm[id]; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
+    const on = budStockFrac(stockMap[id]) > 0;
+    setStock((prev) => { const mm = { ...(prev[month] || {}) }; if (on) delete mm[id]; else mm[id] = 1; const next = { ...prev, [month]: mm }; store.set(BKEYS.stock, next); return next; });
+    if (!on) setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (!mm[id]) return prev; delete mm[id]; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
+  };
+  const setStockFrac = (id, frac) => {
+    const f = Math.max(0, Math.min(1, frac));
+    setStock((prev) => { const mm = { ...(prev[month] || {}) }; if (f <= 0) delete mm[id]; else mm[id] = f; const next = { ...prev, [month]: mm }; store.set(BKEYS.stock, next); return next; });
+    if (f > 0) setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (!mm[id]) return prev; delete mm[id]; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
   };
 
   const itemsOf = (cid) => items.filter((it) => it.catId === cid);
   const planned = useMemo(() => items.reduce((s, it) => s + budLineSum(it), 0), [items]);
   const spent = useMemo(() => items.reduce((s, it) => s + spentOf(it), 0), [items, boughtMap, actualMap]);
-  const inStockSum = useMemo(() => items.reduce((s, it) => s + (stockMap[it.id] ? budLineSum(it) : 0), 0), [items, stockMap]);
-  const toBuy = useMemo(() => items.reduce((s, it) => s + ((boughtMap[it.id] || stockMap[it.id]) ? 0 : budLineSum(it)), 0), [items, boughtMap, stockMap]);
+  // partial stock counts proportionally: half in stock → half its cost is "already covered"
+  const inStockSum = useMemo(() => items.reduce((s, it) => s + budStockFrac(stockMap[it.id]) * budLineSum(it), 0), [items, stockMap]);
+  const toBuy = useMemo(() => items.reduce((s, it) => s + (boughtMap[it.id] ? 0 : (1 - budStockFrac(stockMap[it.id])) * budLineSum(it)), 0), [items, boughtMap, stockMap]);
   const budgetAmt = budgets[month] ?? 0;
   const remaining = budgetAmt - spent;
 
@@ -7137,7 +7238,7 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
             ) : cats.map((c) => (
               <CategoryBlock key={c.id} cat={c} items={itemsOf(c.id)} boughtMap={boughtMap} stockMap={stockMap} actualMap={actualMap} collapsed={!!collapsed[c.id]}
                 onToggleCollapse={() => setCollapsed((m) => ({ ...m, [c.id]: !m[c.id] }))}
-                onToggleBought={setBoughtItem} onToggleStock={setStockItem} onActual={setActual} onAddItem={() => setItemEditor({ item: null, catId: c.id })}
+                onToggleBought={setBoughtItem} onToggleStock={setStockItem} onStockFrac={setStockFrac} onActual={setActual} onAddItem={() => setItemEditor({ item: null, catId: c.id })}
                 onEditItem={(it) => setItemEditor({ item: it, catId: c.id })} onDeleteItem={deleteItem} />
             ))}
             <button onClick={() => setCatMgr(true)} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-emerald-300 py-3 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Категорія</button>
@@ -7145,7 +7246,7 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
         )}
 
         {bview === "shop" && (
-          <ShoppingView cats={cats} items={items} boughtMap={boughtMap} stockMap={stockMap} actualMap={actualMap} onToggle={setBoughtItem} onToggleStock={setStockItem} onActual={setActual}
+          <ShoppingView cats={cats} items={items} boughtMap={boughtMap} stockMap={stockMap} actualMap={actualMap} onToggle={setBoughtItem} onToggleStock={setStockItem} onStockFrac={setStockFrac} onActual={setActual}
             filter={shopFilter} setFilter={setShopFilter} flat={shopFlat} setFlat={setShopFlat} />
         )}
 
@@ -7192,10 +7293,10 @@ function BudgetSummary({ month, onMonth, budgetAmt, onBudget, planned, spent, re
   );
 }
 
-function CategoryBlock({ cat, items, boughtMap, stockMap, actualMap, collapsed, onToggleCollapse, onToggleBought, onToggleStock, onActual, onAddItem, onEditItem, onDeleteItem }) {
+function CategoryBlock({ cat, items, boughtMap, stockMap, actualMap, collapsed, onToggleCollapse, onToggleBought, onToggleStock, onStockFrac, onActual, onAddItem, onEditItem, onDeleteItem }) {
   const subtotal = items.reduce((s, it) => s + budLineSum(it), 0);
   const boughtCount = items.filter((it) => boughtMap[it.id]).length;
-  const stockCount = items.filter((it) => stockMap[it.id]).length;
+  const stockCount = items.filter((it) => budStockFrac(stockMap[it.id]) > 0).length;
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-50">
       <button onClick={onToggleCollapse} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
@@ -7206,7 +7307,7 @@ function CategoryBlock({ cat, items, boughtMap, stockMap, actualMap, collapsed, 
       </button>
       {!collapsed && (
         <div className="divide-y divide-slate-50 border-t border-slate-100">
-          {items.map((it) => <BudgetItemRow key={it.id} item={it} bought={!!boughtMap[it.id]} inStock={!!stockMap[it.id]} actual={actualMap[it.id]} onToggle={() => onToggleBought(it.id)} onToggleStock={() => onToggleStock(it.id)} onActual={(v) => onActual(it.id, v)} onEdit={() => onEditItem(it)} onDelete={() => onDeleteItem(it.id)} />)}
+          {items.map((it) => <BudgetItemRow key={it.id} item={it} bought={!!boughtMap[it.id]} stockFrac={budStockFrac(stockMap[it.id])} actual={actualMap[it.id]} onToggle={() => onToggleBought(it.id)} onToggleStock={() => onToggleStock(it.id)} onStockFrac={(f) => onStockFrac(it.id, f)} onActual={(v) => onActual(it.id, v)} onEdit={() => onEditItem(it)} onDelete={() => onDeleteItem(it.id)} />)}
           <button onClick={onAddItem} className="flex w-full items-center gap-1.5 px-4 py-2.5 text-left text-sm font-medium text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Товар</button>
         </div>
       )}
@@ -7214,8 +7315,9 @@ function CategoryBlock({ cat, items, boughtMap, stockMap, actualMap, collapsed, 
   );
 }
 
-function BudgetItemRow({ item, bought, inStock, actual, onToggle, onToggleStock, onActual, onEdit, onDelete }) {
+function BudgetItemRow({ item, bought, stockFrac = 0, actual, onToggle, onToggleStock, onStockFrac, onActual, onEdit, onDelete }) {
   const [showNotes, setShowNotes] = useState(false);
+  const inStock = stockFrac > 0;
   const nameCls = bought ? "text-slate-400 line-through" : inStock ? "text-amber-600" : "text-slate-800";
   const planned = budLineSum(item);
   const delta = actual != null ? Math.round((actual - planned) * 100) / 100 : 0;
@@ -7224,7 +7326,7 @@ function BudgetItemRow({ item, bought, inStock, actual, onToggle, onToggleStock,
       <div className="flex items-center gap-3">
         <button onClick={onToggle} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition ${bought ? "border-transparent bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400"}`}>{bought && <Check className="h-4 w-4" />}</button>
         <button onClick={onEdit} className="min-w-0 flex-1 text-left">
-          <div className={`flex items-center gap-1.5 truncate text-sm font-medium ${nameCls}`}>{item.name}{inStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі</span>}</div>
+          <div className={`flex items-center gap-1.5 truncate text-sm font-medium ${nameCls}`}>{item.name}{inStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі {stockFrac < 1 ? budFracLabel(stockFrac) : ""}</span>}</div>
           <div className="text-xs text-slate-400 tabular-nums">{item.qty} {item.unit} × {budFmt(item.price)} = <span className="font-semibold text-slate-500">{budFmt(planned)}</span></div>
           {budFreqHint(item.qty) && <div className="text-[11px] text-slate-400">{budFreqHint(item.qty)}</div>}
         </button>
@@ -7232,6 +7334,15 @@ function BudgetItemRow({ item, bought, inStock, actual, onToggle, onToggleStock,
         {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-emerald-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
         <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
       </div>
+      {inStock && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-9">
+          <span className="text-xs font-medium text-slate-400">Скільки вже є:</span>
+          {[[0.25, "¼"], [0.5, "½"], [0.75, "¾"], [1, "усе"]].map(([v, l]) => (
+            <button key={v} onClick={() => onStockFrac(v)} className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 transition ${Math.abs(stockFrac - v) < 0.01 ? "bg-amber-400 text-white ring-amber-400" : "bg-white text-slate-500 ring-slate-200 hover:ring-amber-300"}`}>{l}</button>
+          ))}
+          {stockFrac < 1 && <span className="text-[11px] text-slate-400">→ докупити {budFmt((1 - stockFrac) * planned)}</span>}
+        </div>
+      )}
       {bought && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-9">
           <span className="text-xs font-medium text-slate-400">Насправді витрачено:</span>
@@ -7247,25 +7358,33 @@ function BudgetItemRow({ item, bought, inStock, actual, onToggle, onToggleStock,
   );
 }
 
-function ShoppingView({ cats, items, boughtMap, stockMap, actualMap, onToggle, onToggleStock, onActual, filter, setFilter, flat, setFlat }) {
+function ShoppingView({ cats, items, boughtMap, stockMap, actualMap, onToggle, onToggleStock, onStockFrac, onActual, filter, setFilter, flat, setFlat }) {
   const total = items.length;
   const done = items.filter((it) => boughtMap[it.id]).length;
-  const stockCount = items.filter((it) => stockMap[it.id]).length;
+  const stockCount = items.filter((it) => budStockFrac(stockMap[it.id]) > 0).length;
   const spentOf = (it) => (boughtMap[it.id] ? (actualMap[it.id] != null ? actualMap[it.id] : budLineSum(it)) : 0);
   const cartTotal = items.reduce((s, it) => s + spentOf(it), 0);
-  // "Лишилось купити" ховає і куплене, і те, що вже є в запасі
-  const visible = (list) => (filter ? list.filter((it) => !boughtMap[it.id] && !stockMap[it.id]) : list);
+  // "Лишилось купити" ховає куплене й ПОВНІСТЮ наявне; часткове лишається (треба докупити решту)
+  const visible = (list) => (filter ? list.filter((it) => !boughtMap[it.id] && budStockFrac(stockMap[it.id]) < 1) : list);
   const Row = (it) => {
-    const isBought = !!boughtMap[it.id], isStock = !!stockMap[it.id];
+    const isBought = !!boughtMap[it.id], sf = budStockFrac(stockMap[it.id]), isStock = sf > 0;
     const planned = budLineSum(it), actual = actualMap[it.id];
     return (
-      <div key={it.id} className={`rounded-2xl p-4 shadow-sm ring-1 transition ${isBought ? "bg-emerald-50 ring-emerald-100" : isStock ? "bg-amber-50/70 ring-amber-100" : "bg-white ring-slate-100 hover:ring-emerald-200"}`}>
+      <div key={it.id} className={`rounded-2xl p-4 shadow-sm ring-1 transition ${isBought ? "bg-emerald-50 ring-emerald-100" : sf >= 1 ? "bg-amber-50/70 ring-amber-100" : "bg-white ring-slate-100 hover:ring-emerald-200"}`}>
         <div className="flex items-center gap-3">
           <button onClick={() => onToggle(it.id)} className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 transition ${isBought ? "border-transparent bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400"}`}>{isBought && <Check className="h-5 w-5" />}</button>
-          <button onClick={() => onToggle(it.id)} className="min-w-0 flex-1 text-left"><span className={`flex items-center gap-1.5 truncate font-bold ${isBought ? "text-slate-400 line-through" : isStock ? "text-amber-600" : "text-slate-800"}`}>{it.name}{isStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі</span>}</span><span className="block text-xs text-slate-400 tabular-nums">{it.qty} {it.unit} × {budFmt(it.price)}{budFreqHint(it.qty) ? ` · ${budFreqHint(it.qty)}` : ""}</span></button>
+          <button onClick={() => onToggle(it.id)} className="min-w-0 flex-1 text-left"><span className={`flex items-center gap-1.5 truncate font-bold ${isBought ? "text-slate-400 line-through" : isStock ? "text-amber-600" : "text-slate-800"}`}>{it.name}{isStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі {sf < 1 ? budFracLabel(sf) : ""}</span>}</span><span className="block text-xs text-slate-400 tabular-nums">{it.qty} {it.unit} × {budFmt(it.price)}{sf > 0 && sf < 1 ? ` · докупити ${budFmt((1 - sf) * planned)}` : ""}</span></button>
           <button onClick={() => onToggleStock(it.id)} title="Вже є в запасі" className={`shrink-0 rounded-md p-1.5 transition ${isStock ? "text-amber-500" : "text-slate-300 hover:text-amber-500"}`}><Package className="h-4 w-4" /></button>
           <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{budFmt(planned)}</span>
         </div>
+        {isStock && sf < 1 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-12">
+            <span className="text-xs font-medium text-slate-400">Вже є:</span>
+            {[[0.25, "¼"], [0.5, "½"], [0.75, "¾"], [1, "усе"]].map(([v, l]) => (
+              <button key={v} onClick={() => onStockFrac(it.id, v)} className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 transition ${Math.abs(sf - v) < 0.01 ? "bg-amber-400 text-white ring-amber-400" : "bg-white text-slate-500 ring-slate-200 hover:ring-amber-300"}`}>{l}</button>
+            ))}
+          </div>
+        )}
         {isBought && (
           <div className="mt-2 flex items-center gap-2 pl-12">
             <span className="text-xs font-medium text-slate-400">Насправді:</span>
