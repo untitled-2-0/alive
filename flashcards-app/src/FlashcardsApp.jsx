@@ -1440,6 +1440,24 @@ export default function FlashcardsApp() {
     await importCards(groups);
   }, [importCards]);
 
+  const [loadingEnglish, setLoadingEnglish] = useState(false);
+  const importEnglishDecks = useCallback(async () => {
+    setLoadingEnglish(true);
+    try {
+      const res = await fetch("/english-decks.json");
+      if (!res.ok) throw new Error("not found");
+      const data = await res.json();
+      const g = await createGroup({ name: "English", emoji: "🇬🇧", color: "blue" });
+      const groups = {};
+      for (const [name, cards] of Object.entries(data)) groups[name] = cards.map(([f, b]) => makeCard(f, b));
+      await importCards(groups, { newDeckMeta: { groupId: g.id } });
+    } catch (e) {
+      flash("Не вдалося завантажити колоди");
+    } finally {
+      setLoadingEnglish(false);
+    }
+  }, [createGroup, importCards, flash]);
+
   /* ------------------------------------------------------------------ */
   /* Study session                                                      */
   /* ------------------------------------------------------------------ */
@@ -1667,6 +1685,8 @@ export default function FlashcardsApp() {
             onMoveDeck={(deckId, groupId) => updateDeck(deckId, { groupId })}
             onImport={() => setView("import")}
             onSample={loadSample}
+            onLoadEnglish={importEnglishDecks}
+            loadingEnglish={loadingEnglish}
           />
         )}
         {view === "deck" && detailDeck && (
@@ -1696,7 +1716,7 @@ export default function FlashcardsApp() {
           />
         )}
         {view === "import" && (
-          <ImportView decks={decks} onImport={importCards} onCancel={() => setView("home")} />
+          <ImportView decks={decks} onImport={importCards} onCancel={() => setView("home")} onLoadEnglish={importEnglishDecks} loadingEnglish={loadingEnglish} />
         )}
         {view === "stats" && (
           <StatsView
@@ -1878,6 +1898,7 @@ function HomeView({
   decks, groups, summary, groupSummary, totalDue, stats,
   onStudy, onStudyAll, onStudyGroup, onOpenDeck, onDelete, onEdit, onMoveDeck,
   onNewDeck, onNewGroup, onEditGroup, onDeleteGroup, onToggleGroup, onImport, onSample,
+  onLoadEnglish, loadingEnglish,
 }) {
   const streak = computeStreak(stats.history);
   const studiedToday = stats.history?.[dateKey(Date.now())]?.studied || 0;
@@ -1906,6 +1927,11 @@ function HomeView({
           spaced repetition so reviews land right before you'd forget.
         </p>
         <div className="mt-6 flex flex-col items-center gap-3">
+          {onLoadEnglish && (
+            <button onClick={onLoadEnglish} disabled={loadingEnglish} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-base font-bold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-60">
+              {loadingEnglish ? <><RefreshCw className="h-5 w-5 animate-spin" /> Завантажую…</> : <>🇬🇧 Мої англійські колоди</>}
+            </button>
+          )}
           <div className="flex gap-3">
             <button onClick={onNewDeck} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-indigo-700">
               <Plus className="h-4 w-4" /> New deck
@@ -3083,7 +3109,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
 /* ------------------------------------------------------------------ */
 /* Import view                                                         */
 /* ------------------------------------------------------------------ */
-function ImportView({ decks, onImport, onCancel }) {
+function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }) {
   const [mode, setMode] = useState("file"); // file | paste
   const [parsed, setParsed] = useState(null); // { headers, rows, source }
   const [sheets, setSheets] = useState(null); // [{name, deckName, cards:[[f,b]], include}] for multi-sheet workbooks
@@ -3251,6 +3277,19 @@ function ImportView({ decks, onImport, onCancel }) {
         </button>
         <h1 className="text-xl font-bold text-slate-900">Import cards</h1>
       </div>
+
+      {onLoadEnglish && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <span className="text-2xl">🇬🇧</span>
+          <div className="min-w-0 flex-1">
+            <div className="font-bold text-slate-800">Мої англійські колоди</div>
+            <div className="text-xs text-slate-500">15 готових колод · ~9 500 карток. Один тап — і вони у тебе.</div>
+          </div>
+          <button onClick={onLoadEnglish} disabled={loadingEnglish} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-bold text-white transition hover:bg-blue-700 disabled:opacity-60">
+            {loadingEnglish ? <><RefreshCw className="h-4 w-4 animate-spin" /> Завантажую…</> : "Завантажити"}
+          </button>
+        </div>
+      )}
 
       {/* mode toggle */}
       <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
