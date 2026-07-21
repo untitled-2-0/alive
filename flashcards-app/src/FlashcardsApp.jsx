@@ -21,6 +21,7 @@ import {
   Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft, RefreshCw,
   Wrench, Star, Users, Sparkles as SparklesIcon, Scale as ScaleIcon, ArrowLeftRight, Home,
   HandHeart, ShoppingCart, Wallet, ShoppingBasket, Search,
+  Package, Lock, HelpCircle,
 } from "lucide-react";
 import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signOutCloud, refreshSession, syncNow } from "./cloud.js";
 
@@ -4096,7 +4097,7 @@ function CloudSyncPanel() {
         </div>
       ) : (
         <>
-          <p className="mb-3 text-sm text-slate-500">Щоб <b>усе зберігалося в базі даних</b> і синхронізувалося між телефоном і компʼютером — увійди своєю поштою. На неї прийде 6-значний код. Без входу дані живуть лише на цьому пристрої.</p>
+          <p className="mb-3 text-sm text-slate-500">Щоб <b>усе зберігалося в базі даних</b> і синхронізувалося між телефоном і компʼютером — увійди своєю поштою. У листі буде код і посилання для входу. Без входу дані живуть лише на цьому пристрої.</p>
           {step !== "code" ? (
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative flex-1 min-w-[200px]">
@@ -4110,7 +4111,7 @@ function CloudSyncPanel() {
               <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={(e) => { if (e.key === "Enter") doVerify(); }} placeholder="6-значний код" inputMode="numeric" className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm tracking-widest focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
               <button onClick={doVerify} disabled={busy || code.length < 6} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:bg-slate-300">{busy ? "…" : "Підтвердити й синхронізувати"}</button>
               <button onClick={() => { setStep("idle"); setCode(""); setErr(""); }} className="text-sm font-medium text-slate-400 hover:text-slate-600">Змінити пошту</button>
-              <span className="w-full text-xs text-slate-400">Код надіслано на {input}. Перевір пошту (і спам).</span>
+              <span className="w-full text-xs text-slate-400">Лист надіслано на {input} (перевір і спам). Введи код — або просто клікни посилання в листі, воно поверне тебе сюди вже залогіненою.</span>
             </div>
           )}
           {err && <p className="mt-2 text-sm text-rose-600">{err}</p>}
@@ -6853,7 +6854,8 @@ function ChapterReader({ chapter, index, total, onNav, onToc }) {
 const BKEYS = {
   cats: "budget:categories",   // [{id, emoji, name}]
   items: "budget:items",       // [{id, catId, name, qty, unit, price, notes}]
-  bought: "budget:bought",     // { [month]: { [itemId]: true } }
+  bought: "budget:bought",     // { [month]: { [itemId]: true } } — куплено цього місяця
+  stock: "budget:stock",       // { [month]: { [itemId]: true } } — вже є в запасі, докуповувати не треба
   budgets: "budget:budgets",   // { [month]: number }
   month: "budget:month",       // "2026-07"
   history: "budget:history",   // [{ month, planned, spent }]
@@ -6884,15 +6886,16 @@ async function loadBudgetData() {
   const cats = await store.get(BKEYS.cats, null);
   const items = await store.get(BKEYS.items, null);
   const bought = await store.get(BKEYS.bought, {});
+  const stock = await store.get(BKEYS.stock, {});
   const budgets = await store.get(BKEYS.budgets, {});
   const month = await store.get(BKEYS.month, budDefaultMonth());
   const history = await store.get(BKEYS.history, []);
   const settings = await store.get(BKEYS.settings, { name: "Budget" });
-  return { cats, items, bought, budgets, month, history, settings };
+  return { cats, items, bought, stock, budgets, month, history, settings };
 }
 async function collectBudgetExport() {
   const d = await loadBudgetData();
-  return { cats: d.cats || [], items: d.items || [], bought: d.bought, budgets: d.budgets, month: d.month, history: d.history, settings: d.settings };
+  return { cats: d.cats || [], items: d.items || [], bought: d.bought, stock: d.stock, budgets: d.budgets, month: d.month, history: d.history, settings: d.settings };
 }
 async function clearBudgetData() { for (const k of Object.values(BKEYS)) await store.remove(k); }
 
@@ -6946,6 +6949,7 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
   const [cats, setCats] = useState([]);
   const [items, setItems] = useState([]);
   const [bought, setBought] = useState({});
+  const [stock, setStock] = useState({});
   const [budgets, setBudgets] = useState({});
   const [month, setMonth] = useState(budDefaultMonth());
   const [history, setHistory] = useState([]);
@@ -6979,7 +6983,7 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
         d = await loadBudgetData();
       } catch (e) { d.cats = d.cats || []; d.items = d.items || []; }
     }
-    setCats(d.cats || []); setItems(d.items || []); setBought(d.bought || {}); setBudgets(d.budgets || {});
+    setCats(d.cats || []); setItems(d.items || []); setBought(d.bought || {}); setStock(d.stock || {}); setBudgets(d.budgets || {});
     setMonth(d.month || budDefaultMonth()); setHistory(d.history || []);
     setLoading(false);
   }, []);
@@ -6998,11 +7002,24 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
   const saveHistory = useCallback(async (next) => { setHistory(next); await store.set(BKEYS.history, next); }, []);
 
   const boughtMap = bought[month] || {};
-  const setBoughtItem = (id) => setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (mm[id]) delete mm[id]; else mm[id] = true; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
+  const stockMap = stock[month] || {};
+  const setBoughtItem = (id) => {
+    const turningOn = !boughtMap[id];
+    setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (mm[id]) delete mm[id]; else mm[id] = true; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
+    // куплено ↔ в запасі взаємовиключні: якщо позначили купленим, знімаємо «в запасі»
+    if (turningOn) setStock((prev) => { const mm = { ...(prev[month] || {}) }; if (!mm[id]) return prev; delete mm[id]; const next = { ...prev, [month]: mm }; store.set(BKEYS.stock, next); return next; });
+  };
+  const setStockItem = (id) => {
+    const turningOn = !stockMap[id];
+    setStock((prev) => { const mm = { ...(prev[month] || {}) }; if (mm[id]) delete mm[id]; else mm[id] = true; const next = { ...prev, [month]: mm }; store.set(BKEYS.stock, next); return next; });
+    if (turningOn) setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (!mm[id]) return prev; delete mm[id]; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
+  };
 
   const itemsOf = (cid) => items.filter((it) => it.catId === cid);
   const planned = useMemo(() => items.reduce((s, it) => s + budLineSum(it), 0), [items]);
   const spent = useMemo(() => items.reduce((s, it) => s + (boughtMap[it.id] ? budLineSum(it) : 0), 0), [items, boughtMap]);
+  const inStockSum = useMemo(() => items.reduce((s, it) => s + (stockMap[it.id] ? budLineSum(it) : 0), 0), [items, stockMap]);
+  const toBuy = useMemo(() => items.reduce((s, it) => s + ((boughtMap[it.id] || stockMap[it.id]) ? 0 : budLineSum(it)), 0), [items, boughtMap, stockMap]);
   const budgetAmt = budgets[month] ?? 0;
   const remaining = budgetAmt - spent;
 
@@ -7074,7 +7091,7 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
 
       <main className="mx-auto w-full max-w-3xl px-4 py-5">
         {/* summary */}
-        <BudgetSummary month={month} onMonth={(d) => saveMonth(budShiftMonth(month, d))} budgetAmt={budgetAmt} onBudget={setBudgetAmt} planned={planned} spent={spent} remaining={remaining} overBudget={overBudget} />
+        <BudgetSummary month={month} onMonth={(d) => saveMonth(budShiftMonth(month, d))} budgetAmt={budgetAmt} onBudget={setBudgetAmt} planned={planned} spent={spent} remaining={remaining} overBudget={overBudget} toBuy={toBuy} inStockSum={inStockSum} />
 
         {/* view nav */}
         <div className="mb-4 mt-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-emerald-100">
@@ -7088,9 +7105,9 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
             {cats.length === 0 ? (
               <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-emerald-50">Список порожній. Додай категорію в меню ⚙️ або імпортуй Excel.</div>
             ) : cats.map((c) => (
-              <CategoryBlock key={c.id} cat={c} items={itemsOf(c.id)} boughtMap={boughtMap} collapsed={!!collapsed[c.id]}
+              <CategoryBlock key={c.id} cat={c} items={itemsOf(c.id)} boughtMap={boughtMap} stockMap={stockMap} collapsed={!!collapsed[c.id]}
                 onToggleCollapse={() => setCollapsed((m) => ({ ...m, [c.id]: !m[c.id] }))}
-                onToggleBought={setBoughtItem} onAddItem={() => setItemEditor({ item: null, catId: c.id })}
+                onToggleBought={setBoughtItem} onToggleStock={setStockItem} onAddItem={() => setItemEditor({ item: null, catId: c.id })}
                 onEditItem={(it) => setItemEditor({ item: it, catId: c.id })} onDeleteItem={deleteItem} />
             ))}
             <button onClick={() => setCatMgr(true)} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-emerald-300 py-3 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Категорія</button>
@@ -7098,7 +7115,7 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
         )}
 
         {bview === "shop" && (
-          <ShoppingView cats={cats} items={items} boughtMap={boughtMap} onToggle={setBoughtItem}
+          <ShoppingView cats={cats} items={items} boughtMap={boughtMap} stockMap={stockMap} onToggle={setBoughtItem} onToggleStock={setStockItem}
             filter={shopFilter} setFilter={setShopFilter} flat={shopFlat} setFlat={setShopFlat} />
         )}
 
@@ -7118,7 +7135,7 @@ function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
   );
 }
 
-function BudgetSummary({ month, onMonth, budgetAmt, onBudget, planned, spent, remaining, overBudget }) {
+function BudgetSummary({ month, onMonth, budgetAmt, onBudget, planned, spent, remaining, overBudget, toBuy, inStockSum }) {
   return (
     <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
       <div className="flex items-center justify-between">
@@ -7135,24 +7152,31 @@ function BudgetSummary({ month, onMonth, budgetAmt, onBudget, planned, spent, re
         <div className="rounded-2xl bg-sky-50 p-3"><div className="text-[11px] font-medium text-sky-500">Витрачено</div><div className="mt-0.5 text-base font-extrabold tabular-nums text-sky-600">{budFmt(spent)}</div></div>
         <div className={`rounded-2xl p-3 ${overBudget ? "bg-amber-50" : "bg-emerald-50"}`}><div className={`text-[11px] font-medium ${overBudget ? "text-amber-600" : "text-emerald-600"}`}>{overBudget ? "Понад бюджет" : "Залишок"}</div><div className={`mt-0.5 text-base font-extrabold tabular-nums ${overBudget ? "text-amber-600" : "text-emerald-600"}`}>{budFmt(Math.abs(remaining))}</div></div>
       </div>
+      {(toBuy > 0 || inStockSum > 0) && (
+        <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-600"><ShoppingCart className="h-3.5 w-3.5" /> Ще купити: <span className="tabular-nums text-slate-800">{budFmt(toBuy)}</span></span>
+          {inStockSum > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-amber-700"><Package className="h-3.5 w-3.5" /> В запасі: <span className="tabular-nums">{budFmt(inStockSum)}</span></span>}
+        </div>
+      )}
     </div>
   );
 }
 
-function CategoryBlock({ cat, items, boughtMap, collapsed, onToggleCollapse, onToggleBought, onAddItem, onEditItem, onDeleteItem }) {
+function CategoryBlock({ cat, items, boughtMap, stockMap, collapsed, onToggleCollapse, onToggleBought, onToggleStock, onAddItem, onEditItem, onDeleteItem }) {
   const subtotal = items.reduce((s, it) => s + budLineSum(it), 0);
   const boughtCount = items.filter((it) => boughtMap[it.id]).length;
+  const stockCount = items.filter((it) => stockMap[it.id]).length;
   return (
     <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-50">
       <button onClick={onToggleCollapse} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
         <span className="text-xl">{cat.emoji}</span>
-        <span className="min-w-0 flex-1"><span className="block truncate font-bold text-slate-800">{cat.name}</span><span className="block text-xs text-slate-400">{boughtCount} з {items.length} куплено</span></span>
+        <span className="min-w-0 flex-1"><span className="block truncate font-bold text-slate-800">{cat.name}</span><span className="block text-xs text-slate-400">{boughtCount} з {items.length} куплено{stockCount ? ` · ${stockCount} в запасі` : ""}</span></span>
         <span className="text-sm font-bold tabular-nums text-slate-600">{budFmt(subtotal)}</span>
         {collapsed ? <ChevronRight className="h-4 w-4 text-slate-300" /> : <ChevronDown className="h-4 w-4 text-slate-300" />}
       </button>
       {!collapsed && (
         <div className="divide-y divide-slate-50 border-t border-slate-100">
-          {items.map((it) => <BudgetItemRow key={it.id} item={it} bought={!!boughtMap[it.id]} onToggle={() => onToggleBought(it.id)} onEdit={() => onEditItem(it)} onDelete={() => onDeleteItem(it.id)} />)}
+          {items.map((it) => <BudgetItemRow key={it.id} item={it} bought={!!boughtMap[it.id]} inStock={!!stockMap[it.id]} onToggle={() => onToggleBought(it.id)} onToggleStock={() => onToggleStock(it.id)} onEdit={() => onEditItem(it)} onDelete={() => onDeleteItem(it.id)} />)}
           <button onClick={onAddItem} className="flex w-full items-center gap-1.5 px-4 py-2.5 text-left text-sm font-medium text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Товар</button>
         </div>
       )}
@@ -7160,17 +7184,19 @@ function CategoryBlock({ cat, items, boughtMap, collapsed, onToggleCollapse, onT
   );
 }
 
-function BudgetItemRow({ item, bought, onToggle, onEdit, onDelete }) {
+function BudgetItemRow({ item, bought, inStock, onToggle, onToggleStock, onEdit, onDelete }) {
   const [showNotes, setShowNotes] = useState(false);
+  const nameCls = bought ? "text-slate-400 line-through" : inStock ? "text-amber-600" : "text-slate-800";
   return (
     <div className="group px-4 py-2.5">
       <div className="flex items-center gap-3">
         <button onClick={onToggle} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition ${bought ? "border-transparent bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400"}`}>{bought && <Check className="h-4 w-4" />}</button>
         <button onClick={onEdit} className="min-w-0 flex-1 text-left">
-          <div className={`truncate text-sm font-medium ${bought ? "text-slate-400 line-through" : "text-slate-800"}`}>{item.name}</div>
+          <div className={`flex items-center gap-1.5 truncate text-sm font-medium ${nameCls}`}>{item.name}{inStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі</span>}</div>
           <div className="text-xs text-slate-400 tabular-nums">{item.qty} {item.unit} × {budFmt(item.price)} = <span className="font-semibold text-slate-500">{budFmt(budLineSum(item))}</span></div>
           {budFreqHint(item.qty) && <div className="text-[11px] text-slate-400">{budFreqHint(item.qty)}</div>}
         </button>
+        <button onClick={onToggleStock} title="Вже є в запасі — докуповувати не треба" className={`shrink-0 rounded-md p-1 transition ${inStock ? "text-amber-500" : "text-slate-300 hover:text-amber-500"}`}><Package className="h-4 w-4" /></button>
         {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-emerald-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
         <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
       </div>
@@ -7179,23 +7205,29 @@ function BudgetItemRow({ item, bought, onToggle, onEdit, onDelete }) {
   );
 }
 
-function ShoppingView({ cats, items, boughtMap, onToggle, filter, setFilter, flat, setFlat }) {
+function ShoppingView({ cats, items, boughtMap, stockMap, onToggle, onToggleStock, filter, setFilter, flat, setFlat }) {
   const total = items.length;
   const done = items.filter((it) => boughtMap[it.id]).length;
+  const stockCount = items.filter((it) => stockMap[it.id]).length;
   const cartTotal = items.reduce((s, it) => s + (boughtMap[it.id] ? budLineSum(it) : 0), 0);
-  const visible = (list) => (filter ? list.filter((it) => !boughtMap[it.id]) : list);
-  const Row = (it) => (
-    <button key={it.id} onClick={() => onToggle(it.id)} className={`flex w-full items-center gap-3 rounded-2xl p-4 text-left shadow-sm ring-1 transition ${boughtMap[it.id] ? "bg-emerald-50 ring-emerald-100" : "bg-white ring-slate-100 hover:ring-emerald-200"}`}>
-      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 ${boughtMap[it.id] ? "border-transparent bg-emerald-500 text-white" : "border-slate-300"}`}>{boughtMap[it.id] && <Check className="h-5 w-5" />}</span>
-      <span className="min-w-0 flex-1"><span className={`block truncate font-bold ${boughtMap[it.id] ? "text-slate-400 line-through" : "text-slate-800"}`}>{it.name}</span><span className="block text-xs text-slate-400 tabular-nums">{it.qty} {it.unit} × {budFmt(it.price)}{budFreqHint(it.qty) ? ` · ${budFreqHint(it.qty)}` : ""}</span></span>
-      <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{budFmt(budLineSum(it))}</span>
-    </button>
-  );
+  // "Лишилось купити" ховає і куплене, і те, що вже є в запасі
+  const visible = (list) => (filter ? list.filter((it) => !boughtMap[it.id] && !stockMap[it.id]) : list);
+  const Row = (it) => {
+    const isBought = !!boughtMap[it.id], isStock = !!stockMap[it.id];
+    return (
+      <div key={it.id} className={`flex items-center gap-3 rounded-2xl p-4 shadow-sm ring-1 transition ${isBought ? "bg-emerald-50 ring-emerald-100" : isStock ? "bg-amber-50/70 ring-amber-100" : "bg-white ring-slate-100 hover:ring-emerald-200"}`}>
+        <button onClick={() => onToggle(it.id)} className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 transition ${isBought ? "border-transparent bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400"}`}>{isBought && <Check className="h-5 w-5" />}</button>
+        <button onClick={() => onToggle(it.id)} className="min-w-0 flex-1 text-left"><span className={`flex items-center gap-1.5 truncate font-bold ${isBought ? "text-slate-400 line-through" : isStock ? "text-amber-600" : "text-slate-800"}`}>{it.name}{isStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі</span>}</span><span className="block text-xs text-slate-400 tabular-nums">{it.qty} {it.unit} × {budFmt(it.price)}{budFreqHint(it.qty) ? ` · ${budFreqHint(it.qty)}` : ""}</span></button>
+        <button onClick={() => onToggleStock(it.id)} title="Вже є в запасі" className={`shrink-0 rounded-md p-1.5 transition ${isStock ? "text-amber-500" : "text-slate-300 hover:text-amber-500"}`}><Package className="h-4 w-4" /></button>
+        <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{budFmt(budLineSum(it))}</span>
+      </div>
+    );
+  };
   return (
     <div>
       <div className="sticky top-14 z-10 -mx-4 mb-3 bg-gradient-to-b from-emerald-50/60 to-transparent px-4 pb-2 pt-1">
         <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-100">
-          <div className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">Куплено {done} з {total}</span><span className="font-bold tabular-nums text-emerald-600">У кошику: {budFmt(cartTotal)}</span></div>
+          <div className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">Куплено {done} з {total}{stockCount ? ` · ${stockCount} в запасі` : ""}</span><span className="font-bold tabular-nums text-emerald-600">У кошику: {budFmt(cartTotal)}</span></div>
           <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-emerald-50"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${total ? (done / total) * 100 : 0}%` }} /></div>
           <div className="mt-2 flex gap-2">
             <button onClick={() => setFilter(!filter)} className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${filter ? "bg-emerald-500 text-white ring-emerald-500" : "bg-white text-slate-500 ring-slate-200"}`}>Лишилось купити</button>
@@ -8730,17 +8762,18 @@ function TaperEditor({ med, onClose, onSave }) {
 }
 
 /* ---------- Block 7: Career growth (inside Management) ---------- */
-const CAREERKEYS = { skills: "career:skills", achievements: "career:achievements", reviews: "career:reviews" };
-async function collectCareerExport() { return { skills: await store.get(CAREERKEYS.skills, []), achievements: await store.get(CAREERKEYS.achievements, []), reviews: await store.get(CAREERKEYS.reviews, []) }; }
+const CAREERKEYS = { skills: "career:skills", achievements: "career:achievements", reviews: "career:reviews", path: "career:pathProgress" };
+async function collectCareerExport() { return { skills: await store.get(CAREERKEYS.skills, []), achievements: await store.get(CAREERKEYS.achievements, []), reviews: await store.get(CAREERKEYS.reviews, []), path: await store.get(CAREERKEYS.path, {}) }; }
 async function clearCareerData() { for (const k of Object.values(CAREERKEYS)) await store.remove(k); await store.remove("career:seeded"); }
 
 function CareerView() {
   const today = dateKey(Date.now());
   const week = finWeekStart(today);
-  const [tab, setTab] = useState("skills"); // skills | wins | review
+  const [tab, setTab] = useState("path"); // path | skills | wins | review
   const [skills, setSkills] = useState([]);
   const [wins, setWins] = useState([]);
   const [reviews, setReviews] = useState([]);
+  const [pathProg, setPathProg] = useState({});
   const [skillEd, setSkillEd] = useState(null);
   const [winText, setWinText] = useState("");
   const [reviewText, setReviewText] = useState("");
@@ -8763,9 +8796,11 @@ function CareerView() {
     }
     setSkills(sk);
     setWins(await store.get(CAREERKEYS.achievements, []));
+    setPathProg(await store.get(CAREERKEYS.path, {}));
     const rv = await store.get(CAREERKEYS.reviews, []); setReviews(rv);
     setReviewText((rv.find((r) => r.week === week) || {}).text || "");
   })(); }, [week]);
+  const setStepDone = (stepId, done) => setPathProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.path, n); return n; });
   const saveSkills = (n) => { setSkills(n); store.set(CAREERKEYS.skills, n); };
   const saveWins = (n) => { setWins(n); store.set(CAREERKEYS.achievements, n); };
   const saveReviews = (n) => { setReviews(n); store.set(CAREERKEYS.reviews, n); };
@@ -8777,11 +8812,13 @@ function CareerView() {
 
   return (
     <div>
-      <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-indigo-100">
-        {[["skills", "Навички та цілі", Target], ["wins", "Досягнення", Trophy], ["review", "Тижневий огляд", CalendarDays]].map(([k, label, Icon]) => (
-          <button key={k} onClick={() => setTab(k)} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition sm:text-sm ${tab === k ? "bg-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4" /> {label}</button>
+      <div className="mb-4 flex gap-1.5 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-indigo-100">
+        {[["path", "Шлях", GraduationCap], ["skills", "Цілі", Target], ["wins", "Досягнення", Trophy], ["review", "Огляд", CalendarDays]].map(([k, label, Icon]) => (
+          <button key={k} onClick={() => setTab(k)} className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold transition sm:text-sm ${tab === k ? "bg-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4 shrink-0" /> {label}</button>
         ))}
       </div>
+
+      {tab === "path" && <CareerPath progress={pathProg} onDone={setStepDone} />}
 
       {tab === "skills" && (
         <div className="space-y-2">
@@ -8843,6 +8880,778 @@ function SkillEditor({ skill, onClose, onSave }) {
         <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Ціль (напр. пройти курс, зробити pet-проєкт)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
         <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Дедлайн (необов'язково)</span><input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
         <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), target: target.trim(), deadline }); }} className="w-full rounded-2xl bg-indigo-500 py-3 font-bold text-white hover:bg-indigo-600">Зберегти</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Career: Duolingo-style learning path ---------- */
+const PATH_STEP_META = {
+  learn:   { icon: BookOpen,   ring: "bg-indigo-500",  label: "Урок" },
+  read:    { icon: BookMarked, ring: "bg-sky-500",     label: "Читання" },
+  explain: { icon: Lightbulb,  ring: "bg-amber-500",   label: "Поясни" },
+  build:   { icon: Wrench,     ring: "bg-emerald-500", label: "Практика" },
+  quiz:    { icon: HelpCircle, ring: "bg-violet-500",  label: "Тест" },
+};
+
+// Learning content is baked in (versioned in code); only per-step completion is stored.
+const PM_PATH = [
+  {
+    "slug": "pm-basics",
+    "emoji": "🧭",
+    "title": "Продуктові основи PM",
+    "intro": "Пройшовши цей шлях, ти зможеш впевнено вести продукт від ідеї до MVP: досліджувати потреби користувачів, писати PRD і user stories, пріоритизувати фічі й будувати роадмапу — усе, що потрібно технічному PM.",
+    "steps": [
+      {
+        "type": "learn",
+        "title": "Хто такий PM і що таке продукт",
+        "body": "Продакт-менеджер (PM) відповідає за те, ЩО і ЧОМУ команда будує, а не за те, ЯК це кодиться. Його робота — знайти реальну проблему користувача, вирішити, що будувати в першу чергу, і донести це до команди. PM стоїть на перетині трьох сил: бізнес (чи це вигідно), користувач (чи це потрібно) і технології (чи це реально зробити). Наприклад, замість «додаймо чат-бота, бо це модно» PM питає «яку проблему користувача це вирішує і як ми виміряємо успіх». Для технічного PM це особливо важливо: розуміння технологій допомагає ставити реалістичні задачі, але фокус завжди на цінності для користувача."
+      },
+      {
+        "type": "learn",
+        "title": "Discovery та інтерв'ю з користувачами",
+        "body": "Discovery (дискавері) — це етап досліджень ПЕРЕД тим, як щось будувати, щоб переконатися, що проблема справжня. Головний інструмент — глибинне інтерв'ю з користувачами: розмова 1-на-1, де ти слухаєш про їхній реальний досвід, а не питаєш «чи сподобалась би вам така фіча». Ключове правило: питай про минуле й теперішнє («розкажи, як ти востаннє це робив»), а не про гіпотетичне майбутнє — люди погано прогнозують свою поведінку. Уникай навідних питань і не продавай своє рішення. Мета discovery — зменшити ризик побудувати те, що нікому не потрібно.",
+        "resource": {
+          "label": "The Mom Test — офіційний сайт книги про інтерв'ю з користувачами",
+          "url": "https://www.momtestbook.com/"
+        }
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: інтерв'ю",
+        "body": "Яке питання найкраще підходить для інтерв'ю з користувачем?",
+        "quiz": {
+          "question": "Яке питання дасть найнадійнішу інформацію під час discovery-інтерв'ю?",
+          "options": [
+            "Розкажіть, як ви востаннє вирішували цю задачу?",
+            "Чи купили б ви нашу нову фічу за 10 доларів?",
+            "Вам би сподобався додаток із такою функцією?",
+            "Скільки б ви платили за ідеальне рішення?"
+          ],
+          "answerIndex": 0,
+          "explanation": "Питання про реальний минулий досвід дає факти, а не здогади; решта — навідні або гіпотетичні."
+        }
+      },
+      {
+        "type": "learn",
+        "title": "JTBD і user stories",
+        "body": "JTBD (Jobs To Be Done) — підхід, за яким люди «наймають» продукт, щоб виконати певну «роботу» у своєму житті. Класика: люди купують не дриль, а «дірку в стіні» для полиці. Формула роботи: «Коли [ситуація], я хочу [мотивація], щоб [результат]». Коли JTBD відома, її перекладають у user stories — короткі описи фіч за формулою «Як [роль], я хочу [дію], щоб [цінність]». Наприклад: «Як новий користувач, я хочу увійти через Google, щоб не створювати ще один пароль». Сторі фіксує потребу й цінність, а не технічну реалізацію, і має критерії приймання — умови, за яких вона вважається виконаною."
+      },
+      {
+        "type": "explain",
+        "title": "Поясни JTBD своїми словами",
+        "body": "Поясни своїми словами, чим JTBD («робота») відрізняється від фічі, і як вона перетворюється на user story. Хороша відповідь: наводить приклад за формулою «Коли…, я хочу…, щоб…» і показує, що продукт «наймають» заради результату, а не заради самої функції."
+      },
+      {
+        "type": "read",
+        "title": "Пріоритизація: RICE і MoSCoW",
+        "body": "Ідей завжди більше, ніж ресурсів, тому PM мусить пріоритизувати. RICE рахує бал за формулою (Reach × Impact × Confidence) / Effort: Reach — скільки людей це зачепить за період, Impact — наскільки сильно (напр. 3=масово, 1=слабо), Confidence — твоя впевненість у оцінках (у %), Effort — трудовитрати в людино-місяцях. Що вищий бал — то раніше береш фічу. MoSCoW простіший: розкладаєш задачі на Must have (без цього реліз не відбудеться), Should have (важливо, але можна відкласти), Could have (приємно мати) і Won't have (не зараз). RICE добре працює для порівняння багатьох фіч за числами, MoSCoW — для швидкого узгодження обсягу релізу з командою.",
+        "resource": {
+          "label": "Intercom: стаття про RICE-фреймворк",
+          "url": "https://www.intercom.com/blog/rice-simple-prioritization-for-product-managers/"
+        }
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: RICE",
+        "body": "Як зміниться пріоритет фічі в RICE?",
+        "quiz": {
+          "question": "У формулі RICE = (Reach × Impact × Confidence) / Effort — що станеться з балом фічі, якщо Effort зросте, а решта не зміниться?",
+          "options": [
+            "Бал зменшиться, тож пріоритет фічі впаде",
+            "Бал зросте, тож пріоритет фічі підвищиться",
+            "Бал не зміниться, бо Effort не впливає",
+            "Фіча автоматично стане Must have"
+          ],
+          "answerIndex": 0,
+          "explanation": "Effort у знаменнику: більше зусиль при тій самій користі — нижчий бал і нижчий пріоритет."
+        }
+      },
+      {
+        "type": "learn",
+        "title": "MVP, PRD і Roadmap: від ідеї до плану",
+        "body": "MVP (мінімально життєздатний продукт) — найменша версія продукту, що вже дає цінність користувачу й дозволяє перевірити ключову гіпотезу, не будуючи все одразу. PRD (Product Requirements Document) — документ, який описує проблему, цільового користувача, мету, обсяг (scope), user stories й метрики успіху; він синхронізує команду щодо того, ЩО будуємо і ЧОМУ. Roadmap (роадмапа) — стратегічний план у часі: що й приблизно коли команда планує зробити, згрупована навколо цілей, а не список точних дат. Разом це логічний ланцюг: discovery виявляє проблему → PRD її фіксує → пріоритизація визначає порядок → MVP перевіряє гіпотезу → roadmap показує рух далі."
+      },
+      {
+        "type": "build",
+        "title": "Мілстоун: міні-PRD для MVP",
+        "body": "Фінальне завдання — збери все разом. Напиши міні-PRD на одну сторінку для MVP застосунку замовлення кави: (1) Проблема й цільовий користувач (спираючись на JTBD), (2) Мета й 1-2 метрики успіху, (3) Scope MVP — 3 фічі, які увійдуть, і 2, які свідомо НЕ увійдуть, (4) Пріоритизуй ці 3 фічі через RICE або MoSCoW, (5) Додай 2-3 user stories за формулою «Як [роль], я хочу [дію], щоб [цінність]». Це твій перший повний продуктовий документ — вітаю з проходженням модуля."
+      }
+    ]
+  },
+  {
+    "slug": "tech-depth",
+    "emoji": "⚙️",
+    "title": "Технічна глибина",
+    "intro": "Пройшовши цей шлях, ти впевнено говоритимеш з інженерами: розумітимеш, як працює веб, API, бази даних і базовий system design — і ставитимеш точні запитання на будь-якому дизайн-рев'ю.",
+    "steps": [
+      {
+        "type": "learn",
+        "title": "Клієнт і сервер",
+        "body": "Веб працює за моделлю клієнт-сервер. Клієнт (браузер чи мобільний застосунок) надсилає запит, а сервер його обробляє й повертає відповідь. Наприклад, коли ти відкриваєш профіль у застосунку, клієнт просить сервер: «дай мені дані користувача 42», сервер бере їх із бази й відправляє назад. Клієнт відповідає за те, що бачить людина (UI), а сервер — за логіку й дані. Для PM це базова карта: майже кожна фіча — це діалог між клієнтом і сервером, і розуміння, де саме «живе» логіка, допомагає оцінювати складність."
+      },
+      {
+        "type": "learn",
+        "title": "Що таке HTTP",
+        "body": "HTTP — це протокол (набір правил), яким клієнт і сервер обмінюються повідомленнями у вебі. Кожна взаємодія — це запит (request) від клієнта і відповідь (response) від сервера. Запит містить метод (що робити), адресу (URL) і часто тіло з даними; відповідь містить статус-код і дані. HTTPS — це той самий HTTP, але зашифрований, тому дані не можна перехопити. Для PM важливо: коли інженер каже «повільний респонс» або «падає на 500-ці», йдеться саме про цей обмін запит-відповідь."
+      },
+      {
+        "type": "learn",
+        "title": "API та REST",
+        "body": "API — це «меню» можливостей, які сервер надає іншим програмам: набір операцій, які можна викликати. REST — популярний стиль побудови API, де кожен ресурс має свою адресу (endpoint), наприклад /users/42. Дії задаються HTTP-методами: GET (отримати дані), POST (створити), PUT/PATCH (оновити), DELETE (видалити). Так замість «зайди на сайт руками» одна система може автоматично запитати дані в іншої. Для PM API — це часто і продукт (те, що продаємо партнерам), і спосіб оцінити, чи фіча вимагає нового endpoint, чи вистачить наявного."
+      },
+      {
+        "type": "quiz",
+        "title": "Методи HTTP",
+        "body": "Перевіримо методи REST.",
+        "quiz": {
+          "question": "Команда хоче додати можливість створити нове замовлення через API. Який HTTP-метод це, найімовірніше, буде?",
+          "options": [
+            "GET",
+            "POST",
+            "DELETE",
+            "HEAD"
+          ],
+          "answerIndex": 1,
+          "explanation": "POST використовують для створення нового ресурсу; GET лише читає дані, DELETE видаляє."
+        }
+      },
+      {
+        "type": "learn",
+        "title": "Статус-коди та JSON",
+        "body": "У відповідь на кожен запит сервер повертає статус-код — трицифрове число про результат. Головні групи: 2xx — успіх (200 OK, 201 Created), 4xx — помилка клієнта (404 Not Found — не знайдено, 401 — не авторизований, 403 — заборонено), 5xx — помилка сервера (500 Internal Server Error). Самі дані найчастіше передаються у форматі JSON — це текст із пар «ключ: значення», наприклад {\"id\": 42, \"name\": \"Оля\"}. JSON легко читає і людина, і програма. Для PM це прямий інструмент: у логах чи в інструментах на кшталт Postman ти сама побачиш, 4xx це чи 5xx, і зрозумієш, чий це баг — клієнта чи сервера."
+      },
+      {
+        "type": "quiz",
+        "title": "Читаємо статус-коди",
+        "body": "Класика, яку варто знати напам'ять.",
+        "quiz": {
+          "question": "Користувачі скаржаться, що сторінка віддає помилку 500. Про що це насамперед сигналізує?",
+          "options": [
+            "Користувач ввів неправильну адресу",
+            "Сталася помилка на боці сервера",
+            "Все добре, запит успішний",
+            "Користувач не авторизований"
+          ],
+          "answerIndex": 1,
+          "explanation": "5xx — це помилки сервера; неправильна адреса дала б 404, а неавторизований доступ — 401/403."
+        }
+      },
+      {
+        "type": "read",
+        "title": "Бази даних: SQL vs NoSQL",
+        "body": "База даних — це де застосунок зберігає дані надовго. SQL-бази (PostgreSQL, MySQL) зберігають дані в таблицях зі суворою структурою (рядки й колонки) і чудові там, де важливі зв'язки й точність — фінанси, замовлення. NoSQL-бази (MongoDB, Redis) гнучкіші: зберігають документи, ключ-значення чи інші формати, добре масштабуються й підходять для великих обсягів простих даних чи швидкої зміни структури. Спрощено: SQL — про порядок і зв'язки, NoSQL — про гнучкість і масштаб. PM не обирає базу сам, але має розуміти компроміс, коли інженер каже «тут нам потрібні транзакції» або «дані надто розкидані для реляційної моделі».",
+        "resource": {
+          "label": "MongoDB: SQL vs NoSQL (просте пояснення)",
+          "url": "https://www.mongodb.com/resources/basics/databases/nosql-explained"
+        }
+      },
+      {
+        "type": "explain",
+        "title": "Поясни своїми словами",
+        "body": "Поясни своїми словами, що відбувається «під капотом», коли ти в застосунку натискаєш «Зберегти профіль». Хороша відповідь проходить весь ланцюжок: клієнт формує HTTP-запит (метод POST/PUT) з даними у JSON → сервер приймає його через API-endpoint → перевіряє й записує в базу даних → повертає статус-код (напр. 200) і відповідь клієнту."
+      },
+      {
+        "type": "build",
+        "title": "System design: спроєктуй фічу",
+        "body": "Візьми знайому фічу — стрічку новин у застосунку — і застосуй два ключові інструменти масштабування. Кеш (напр. Redis) — це швидке тимчасове сховище «під рукою»: часто запитувані дані тримають тут, щоб не смикати повільну базу щоразу (як пам'ятати відповідь, а не гуглити знову). Черга (напр. Kafka, RabbitMQ) — для задач, які не треба робити миттєво: запит кладуть у чергу, і фоновий процес обробляє його потім (так надсилають листи чи сповіщення). Твоє завдання, 3-4 речення: 1) назви одні дані у стрічці, які варто кешувати, і який ризик «застарілих» даних це створює; 2) назви одну дію (напр. розсилку сповіщень підписникам), яку варто винести в чергу, і що від цього виграє користувач. Це готова чернетка твого аргументу на дизайн-рев'ю."
+      }
+    ]
+  },
+  {
+    "slug": "ai-literacy",
+    "emoji": "🤖",
+    "title": "AI-грамотність",
+    "intro": "Пройшовши цей шлях, ти впевнено говоритимеш мовою AI-команди: зрозумієш, як працюють LLM, скільки коштує кожен виклик і як не запустити в продакшн модель, що вигадує факти.",
+    "steps": [
+      {
+        "type": "learn",
+        "title": "Що таке LLM і токени",
+        "body": "LLM (велика мовна модель, як GPT-4 чи Claude) — це модель, натренована передбачати наступний фрагмент тексту на основі попереднього. Вона не «розуміє» світ, а статистично вгадує найімовірніше продовження. Текст модель бачить не як слова, а як токени — шматочки по ~3-4 символи; наприклад «промпт-інжиніринг» може розбитися на 5-6 токенів. Це критично для PM, бо і ліміти, і ціна рахуються саме в токенах, а не в словах чи символах. Груба оцінка: 1000 токенів ≈ 750 англійських слів (для української — менше, бо кирилиця «дорожча»)."
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: токени",
+        "body": "Швидка перевірка розуміння токенів.",
+        "quiz": {
+          "question": "У чому вимірюються і ліміти, і вартість роботи з LLM?",
+          "options": [
+            "У словах",
+            "У токенах",
+            "У символах",
+            "У реченнях"
+          ],
+          "answerIndex": 1,
+          "explanation": "Модель обробляє текст як токени, тому і контекстні ліміти, і біллінг рахуються саме в них."
+        }
+      },
+      {
+        "type": "learn",
+        "title": "Контекстне вікно і температура",
+        "body": "Контекстне вікно — це максимальна кількість токенів, яку модель тримає «в голові» за один виклик: і твій промпт (вхід), і її відповідь (вихід) разом. Якщо діалог перевищує вікно (наприклад 128k токенів ≈ велика книжка), старіші токени «випадають» і модель їх більше не бачить. Температура — це параметр (зазвичай 0-1), що керує випадковістю: низька (0-0.3) дає передбачувані, стабільні відповіді (класифікація, витяг даних, код), висока (0.7-1) — різноманіття й креатив (брейнштормінг, тексти). Важливо: температура не впливає на правдивість — модель може впевнено помилятися і на 0. Як PM, для фічі «витягни суму з рахунка» ти береш низьку, а для «запропонуй назви продукту» — вищу."
+      },
+      {
+        "type": "learn",
+        "title": "Промпт-інжиніринг",
+        "body": "Промпт-інжиніринг — це мистецтво так сформулювати інструкцію, щоб модель дала потрібний результат. Базові прийоми: чітко задати роль і задачу, дати приклади бажаного формату (few-shot), попросити міркувати покроково для складних задач і явно описати формат виходу (наприклад, «поверни JSON з полями name і price»). Поганий промпт «напиши про продукт» дає розмите есе; хороший «Ти копірайтер. Напиши 3 варіанти заголовка (до 60 символів) для лендингу B2B-CRM, тон діловий» дає готовий до використання результат. Для PM це найдешевший важіль якості — часто кращий промпт вирішує проблему без дотренування моделі."
+      },
+      {
+        "type": "build",
+        "title": "Напиши структурований промпт",
+        "body": "Візьми уявну фічу «AI-помічник підсумовує відгуки користувачів». Напиши для неї промпт із чотирма елементами: (1) роль моделі, (2) конкретна задача, (3) один приклад входу й бажаного виходу, (4) явний формат виходу (наприклад, JSON з полями `summary`, `sentiment`, `top_issues`). Мета — щоб інженер міг взяти твій промпт і вставити в код майже без змін."
+      },
+      {
+        "type": "read",
+        "title": "Embeddings і RAG",
+        "body": "Embedding — це перетворення тексту на вектор чисел, де близькі за змістом фрази опиняються поруч у просторі. Це дозволяє шукати за сенсом, а не за точним збігом слів: запит «як повернути кошти» знайде документ «політика рефандів». RAG (Retrieval-Augmented Generation) будується на цьому: коли надходить питання, система спершу знаходить релевантні шматки твоїх документів (через embeddings + векторну базу), а потім вкладає їх у промпт як контекст, і вже тоді модель відповідає. Так LLM відповідає на основі твоїх актуальних даних, а не лише того, що «пам'ятає» з тренування — і рідше вигадує. Для PM RAG — стандартний спосіб зробити «чат із нашою документацією» без дорогого перетренування моделі.",
+        "resource": {
+          "label": "OpenAI: What are embeddings (гайд)",
+          "url": "https://developers.openai.com/api/docs/guides/embeddings"
+        }
+      },
+      {
+        "type": "explain",
+        "title": "Поясни RAG своїми словами",
+        "body": "Поясни своїми словами, як працює RAG і навіщо він потрібен — так, ніби розповідаєш колезі-дизайнеру. Хороша відповідь торкається трьох речей: (1) спершу система знаходить релевантні фрагменти твоїх документів через пошук за змістом (embeddings), (2) потім підкладає їх у промпт як контекст, (3) і завдяки цьому модель відповідає на основі актуальних даних і менше галюцинує."
+      },
+      {
+        "type": "learn",
+        "title": "Галюцинації, evals, безпека й вартість",
+        "body": "Галюцинація — це коли модель впевнено видає вигадку за факт (неіснуюче джерело, фейкову цифру); це не баг, а наслідок того, що вона передбачає правдоподібний текст, а не перевіряє істину. Тому для будь-якої фічі з фактами потрібні evals — набір тестів, що вимірюють якість відповідей на прикладах, як юніт-тести для моделі. Безпека: не клади в промпт зайві персональні дані, зважай на prompt injection (коли зловмисний текст у вхідних даних перехоплює інструкцію) і тримай людину в контурі для важливих рішень. Вартість: платиш за токени входу + виходу, тож довгі промпти й великий контекст = дорожче; RAG, коротші промпти й дешевші моделі для простих задач помітно ріжуть рахунок."
+      },
+      {
+        "type": "quiz",
+        "title": "Мілстоун: збери все разом",
+        "body": "Фінальна перевірка ключових понять шляху.",
+        "quiz": {
+          "question": "Команда будує «чат із базою знань компанії». Що з переліченого найкраще зменшує галюцинації й тримає відповіді актуальними, не перетреновуючи модель?",
+          "options": [
+            "Підняти температуру до максимуму",
+            "Використати RAG: підвантажувати релевантні документи в контекст перед відповіддю",
+            "Просто взяти більшу модель",
+            "Прибрати evals, щоб пришвидшити реліз"
+          ],
+          "answerIndex": 1,
+          "explanation": "RAG підкладає актуальні документи у промпт, тож модель відповідає на основі реальних даних і рідше вигадує — без дорогого перетренування."
+        }
+      }
+    ]
+  },
+  {
+    "slug": "build-ai",
+    "emoji": "🛠️",
+    "title": "Будувати з AI",
+    "intro": "Пройшовши цей шлях, ти зможеш власноруч зібрати й показати одну робочу AI-фічу — від ключа API до демо, яке не соромно показати команді.",
+    "steps": [
+      {
+        "type": "learn",
+        "title": "Що таке LLM API",
+        "body": "API — це спосіб, яким твоя програма «розмовляє» з моделлю (наприклад, GPT від OpenAI чи Claude від Anthropic) через інтернет. Ти надсилаєш запит із текстом (промпт), а модель повертає відповідь — теж текстом. Три ключові речі в кожному виклику: API-ключ (твій секретний пароль для доступу), запит (що ти питаєш) і відповідь (що модель згенерувала). Для PM це важливо, бо саме тут народжується AI-фіча: ти описуєш поведінку словами, а не кодом. Розуміючи механіку виклику, ти можеш реалістично оцінювати, що модель здатна зробити, скільки це коштує і де межі."
+      },
+      {
+        "type": "learn",
+        "title": "API-ключ і безпека",
+        "body": "API-ключ — це рядок символів, який ідентифікує тебе перед сервісом і прив'язаний до оплати. Ти отримуєш його в кабінеті розробника (platform.openai.com або console.anthropic.com) і вставляєш у свою програму. Головне правило: ключ ніколи не можна публікувати — ні в коді на GitHub, ні у фронтенді, ні в скріншотах. Якщо ключ витік, будь-хто може витрачати твої гроші, тому його зберігають у змінних середовища (environment variables) або секретах. Для PM це не дрібниця: витік ключа — реальний інцидент безпеки й неконтрольовані витрати.",
+        "resource": {
+          "label": "OpenAI: Production best practices (API keys)",
+          "url": "https://developers.openai.com/api/docs/guides/production-best-practices"
+        }
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: API-ключ",
+        "body": "Де НЕ можна зберігати API-ключ?",
+        "quiz": {
+          "question": "Ти інтегруєш AI-фічу. Куди точно НЕ можна класти API-ключ?",
+          "options": [
+            "У змінну середовища на сервері",
+            "У код фронтенду, який бачить браузер користувача",
+            "У менеджер секретів хостингу",
+            "У локальний файл .env, який не потрапляє в git"
+          ],
+          "answerIndex": 1,
+          "explanation": "Усе, що потрапляє у фронтенд, видно користувачу — ключ звідти вкрадуть; виклики до LLM роблять із бекенду."
+        }
+      },
+      {
+        "type": "learn",
+        "title": "Анатомія запиту й відповіді",
+        "body": "Типовий запит до LLM містить кілька частин: модель (наприклад, gpt-4o чи claude-sonnet), повідомлення (роль system задає поведінку, роль user — саме запит користувача) і параметри на кшталт temperature (наскільки «творчою» буде відповідь) та max_tokens (обмеження довжини). Токен — це шматочок тексту (приблизно 4 символи), і ти платиш за токени і на вході, і на виході. Відповідь повертається структуровано (зазвичай JSON), де сам згенерований текст лежить у полі content. Розуміючи це, PM може писати чіткіші вимоги: «system-промпт задає тон», «обмеж відповідь 200 токенами», «temperature низька для фактів»."
+      },
+      {
+        "type": "learn",
+        "title": "No-code інструменти",
+        "body": "Щоб зібрати AI-фічу, PM не обов'язково писати код із нуля — є no-code та low-code інструменти. Zapier і Make дозволяють з'єднати тригер (нове повідомлення, рядок у таблиці) із викликом LLM і дією без програмування. Bubble чи Retool допомагають зібрати простий інтерфейс поверх API. Такі інструменти ідеальні для прототипу або внутрішнього демо: ти перевіряєш ідею за години, а не тижні, і показуєш команді щось клікабельне. Обмеження — менше контролю й гнучкості, ніж у власному коді, але для валідації гіпотези цього зазвичай достатньо.",
+        "resource": {
+          "label": "Zapier: AI",
+          "url": "https://zapier.com/ai"
+        }
+      },
+      {
+        "type": "read",
+        "title": "Промпт як специфікація",
+        "body": "Для звичайного софту специфікацію пишуть у документі, а розробник її кодує. З LLM специфікація і є промптом: те, що ти напишеш словами, безпосередньо стає поведінкою фічі. Хороший промпт-специфікація має роль («Ти — асистент підтримки»), чіткі інструкції («відповідай лише про наш продукт»), формат виводу («поверни список із 3 пунктів»), обмеження («не вигадуй фактів») і приклади бажаної відповіді (few-shot). Це означає, що PM може прототипувати й уточнювати поведінку продукту напряму, без розробника — але й відповідальність за якість вимог тепер на тобі. Версіонуй промпти, як код: маленька зміна формулювання може помітно змінити результат.",
+        "resource": {
+          "label": "Anthropic: Prompt engineering overview",
+          "url": "https://platform.claude.com/docs/en/docs/build-with-claude/prompt-engineering/overview"
+        }
+      },
+      {
+        "type": "explain",
+        "title": "Поясни: промпт як специфікація",
+        "body": "Поясни своїми словами, чому промпт для LLM можна вважати «специфікацією продукту». Гарна відповідь торкається того, що в промпті ти словами описуєш бажану поведінку (роль, тон, формат, обмеження, приклади), і саме він визначає, що фіча робитиме — тобто це продуктова вимога, а не просто текст."
+      },
+      {
+        "type": "build",
+        "title": "Напиши промпт-специфікацію",
+        "body": "Обери одну маленьку AI-фічу (наприклад, «бот, що коротко переказує відгуки клієнтів»). Напиши для неї повний промпт-специфікацію з 5 частин: (1) роль моделі, (2) чітка інструкція завдання, (3) формат виводу, (4) 1-2 обмеження («не вигадуй», «максимум 3 речення»), (5) один приклад «вхід → бажаний вихід». Це і буде технічна вимога твоєї фічі."
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: параметри",
+        "body": "Що робить параметр temperature?",
+        "quiz": {
+          "question": "Тобі потрібні максимально стабільні, фактичні відповіді без вигадок. Яке значення temperature обрати?",
+          "options": [
+            "Високе (близько 1.0), щоб модель була креативнішою",
+            "Низьке (близько 0), щоб відповіді були передбачуванішими",
+            "Temperature не впливає на стабільність, лише на швидкість",
+            "Максимальне, бо так модель точніша"
+          ],
+          "answerIndex": 1,
+          "explanation": "Низька temperature робить вибір слів детермінованішим — менше варіативності й вигадок; висока додає креативу й ризику."
+        }
+      }
+    ]
+  },
+  {
+    "slug": "analytics",
+    "emoji": "📊",
+    "title": "Аналітика й метрики",
+    "intro": "Пройшовши цей шлях, ти навчишся ставити метрики так, як це робить сильний технічний PM: обереш North-star, читатимеш воронку AARRR, самостійно витягнеш дані з бази через SQL і зрозумієш, чи справді твій A/B-тест переміг.",
+    "steps": [
+      {
+        "type": "learn",
+        "title": "North-star метрика",
+        "body": "North-star (провідна) метрика — це одне число, що найкраще відображає цінність, яку продукт дає користувачам, і навколо якого команда узгоджує свої рішення. Хороша NSM показує саме отриману цінність, а не просто активність: у Spotify це не «кількість реєстрацій», а «час прослуховування», бо саме він відображає задоволення. Її обирають так, щоб зростання метрики тягнуло за собою й зростання бізнесу. Погана NSM легко «накручується» без реальної користі (наприклад, кількість кліків). Для PM це компас: коли є суперечка про пріоритети, питаєш «що з цього більше зрушить North-star?»."
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: NSM",
+        "body": "Обери найкращу North-star метрику для застосунку доставки їжі.",
+        "quiz": {
+          "question": "Яка метрика найкраще підходить як North-star для сервісу доставки їжі?",
+          "options": [
+            "Кількість завантажень застосунку за місяць",
+            "Кількість успішно доставлених замовлень на активного користувача",
+            "Кількість показів банерів у застосунку",
+            "Кількість натискань на кнопку «Кошик»"
+          ],
+          "answerIndex": 1,
+          "explanation": "Доставлені замовлення відображають реальну отриману цінність; завантаження, покази й кліки легко ростуть без користі для клієнта."
+        }
+      },
+      {
+        "type": "learn",
+        "title": "Воронка AARRR",
+        "body": "AARRR («піратські метрики») — це п'ять стадій життя користувача: Acquisition (як він тебе знайшов), Activation (перший успішний досвід, «ага-момент»), Retention (чи повертається), Referral (чи радить іншим), Revenue (чи платить). Ідея в тому, щоб міряти конверсію між сусідніми стадіями й шукати, де найбільше «протікає». Наприклад, якщо 1000 людей зареєструвались, але лише 200 дійшли до активації — це твоє вузьке місце. Порядок пріоритетів зазвичай: спершу лагодять Retention і Activation, бо без них лити трафік (Acquisition) — марно."
+      },
+      {
+        "type": "learn",
+        "title": "Activation і Retention",
+        "body": "Activation — це момент, коли новий користувач уперше отримує ключову цінність продукту (наприклад, у Facebook історично це «7 друзів за 10 днів»). Retention — частка користувачів, що повертаються через певний час; його часто дивляться як криву утримання по когортах (день 1, день 7, день 30). Здорова retention-крива з часом виходить на плато, а не падає в нуль — це ознака product-market fit. Сильна активація майже завжди піднімає утримання, бо людина швидше зрозуміла, навіщо їй продукт. PM визначає чіткий «момент активації» через дані й будує онбординг так, щоб довести до нього якомога більше новачків."
+      },
+      {
+        "type": "explain",
+        "title": "Поясни своїми словами",
+        "body": "Поясни своїми словами різницю між activation і retention та чому підвищувати retention зазвичай важливіше, ніж лити більше трафіку. Хороша відповідь згадує: активація — це перший «ага-момент» цінності, retention — повернення користувачів у часі, а без утримання новий трафік просто «витікає» з дірявої воронки."
+      },
+      {
+        "type": "read",
+        "title": "Базовий SQL для PM",
+        "body": "SQL дозволяє PM самостійно діставати відповіді з бази, не чекаючи аналітика. Чотири основні частини: SELECT (які стовпці показати), WHERE (фільтр рядків за умовою), GROUP BY (згрупувати рядки й порахувати агрегати на кшталт COUNT/SUM/AVG), JOIN (з'єднати дві таблиці за спільним ключем). Приклад: `SELECT country, COUNT(*) FROM users WHERE created_at >= '2026-01-01' GROUP BY country` порахує нових користувачів по країнах. JOIN потрібен, коли дані розкидані по таблицях: наприклад, з'єднати `users` з `orders` за `user_id`. Важливо: WHERE фільтрує окремі рядки ще до групування, а не готові групи.",
+        "resource": {
+          "label": "SQLBolt — інтерактивні уроки SQL (безкоштовно)",
+          "url": "https://sqlbolt.com"
+        }
+      },
+      {
+        "type": "build",
+        "title": "Напиши свій SQL",
+        "body": "Уяви таблицю `events(user_id, event_name, created_at)`. Напиши SQL-запит, який покаже, скільки унікальних користувачів зробили подію 'purchase' у липні 2026 року. Підказка: використай WHERE для фільтра за event_name і датою, а COUNT(DISTINCT user_id) — щоб не рахувати одного користувача двічі. Спробуй сам перед тим, як дивитись приклад: `SELECT COUNT(DISTINCT user_id) FROM events WHERE event_name = 'purchase' AND created_at >= '2026-07-01' AND created_at < '2026-08-01'`."
+      },
+      {
+        "type": "learn",
+        "title": "A/B-тести й статзначущість",
+        "body": "A/B-тест — це експеримент, де користувачів випадково ділять на групу A (контроль) і групу B (нова версія), щоб чесно порівняти вплив зміни. Статистична значущість (часто p-value < 0.05) відповідає на питання «чи різниця між групами реальна, чи це просто випадковість?». Щоб помітити невеликий ефект, потрібен достатній розмір вибірки, інакше тест нічого не покаже. Часта помилка PM — «підглядати» в результати й зупиняти тест, щойно бачиш перемогу: це роздуває хибнопозитивні результати. І пам'ятай: статистична значущість не дорівнює практичній — приріст на 0.1% може бути «значущим», але не вартим впровадження."
+      },
+      {
+        "type": "quiz",
+        "title": "Мілстоун: читаємо дашборд",
+        "body": "Фінальна перевірка, що збирає все разом. NSM впала на 8%, а паралельний A/B-тест дав p-value = 0.5. Як діяти?",
+        "quiz": {
+          "question": "На дашборді North-star впала на 8%; воронка показує стабільні Acquisition і Activation, але просів Retention день-30; A/B-тест нового онбордингу має p-value = 0.5. Який перший крок найлогічніший?",
+          "options": [
+            "Зупинити A/B-тест як причину падіння North-star",
+            "Копати в Retention день-30 по когортах, бо саме там «протікає» воронка",
+            "Негайно впровадити версію B онбордингу на всіх",
+            "Збільшити бюджет на Acquisition, щоб компенсувати падіння"
+          ],
+          "answerIndex": 1,
+          "explanation": "Acquisition і Activation стабільні, а Retention просів — це вузьке місце; A/B-тест з p-value = 0.5 незначущий, тож не є ні причиною, ні готовим рішенням."
+        }
+      }
+    ]
+  },
+  {
+    "slug": "stakeholders",
+    "emoji": "🤝",
+    "title": "Стейкхолдери й комунікація",
+    "intro": "Пройшовши цей шлях, ти навчишся впевнено презентувати roadmap, вирівнювати founder, інженерів і дизайн навколо спільної мети та перетворювати конфлікти пріоритетів на ясні, задокументовані рішення.",
+    "steps": [
+      {
+        "type": "learn",
+        "title": "Хто такі стейкхолдери",
+        "body": "Стейкхолдер — це будь-хто, чиї інтереси зачіпає твій продукт або хто впливає на рішення щодо нього: founder, інженери, дизайнери, продажі, підтримка, юристи, а також самі користувачі. Для PM це не просто «начальники», а люди з різними цілями, які часто конфліктують: founder хоче швидкості, інженер — якості коду, дизайнер — цілісного досвіду. Твоя робота — не догодити всім, а зробити ці інтереси видимими й узгодити їх навколо спільної мети продукту. Простий інструмент — карта стейкхолдерів за двома осями: рівень впливу та рівень зацікавленості. Тих, у кого високий вплив і висока зацікавленість, тримай найближче: залучай рано й часто."
+      },
+      {
+        "type": "learn",
+        "title": "Доносити «чому», а не лише «що»",
+        "body": "Слабкий PM каже команді «робимо фічу X до п'ятниці». Сильний PM спершу пояснює «чому»: яку проблему користувача чи бізнес-ціль ми вирішуємо і як зрозуміємо, що вдалося. Коли команда розуміє «чому», вона ухвалює кращі мікрорішення без тебе й не потребує мікроменеджменту. Це також будує довіру: люди підтримують те, у творенні сенсу чого брали участь. Практичне правило — формулюй мету через результат для користувача та метрику, а не через список завдань: не «додати онбординг-екран», а «підняти активацію нових користувачів з 40% до 55%, бо вони губляться на першому кроці»."
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: чому «чому»",
+        "body": "Обери найсильніше формулювання цілі для команди.",
+        "quiz": {
+          "question": "Яке формулювання задачі для команди найкраще доносить «чому»?",
+          "options": [
+            "«Додаємо онбординг-екран до п'ятниці»",
+            "«Робимо так, як просив founder»",
+            "«Піднімаємо активацію нових користувачів з 40% до 55%, бо вони губляться на першому кроці»",
+            "«Треба закрити багато тікетів цього спринту»"
+          ],
+          "answerIndex": 2,
+          "explanation": "Лише цей варіант називає проблему користувача та вимірювану ціль, а не просто список завдань чи джерело наказу."
+        }
+      },
+      {
+        "type": "read",
+        "title": "RACI: хто за що відповідає",
+        "body": "RACI — матриця ролей для задачі чи рішення за чотирма буквами. R (Responsible) — хто безпосередньо виконує роботу. A (Accountable) — хто ухвалює фінальне рішення й відповідає за результат; таких має бути рівно один, інакше рішення зависають. C (Consulted) — з ким радимося до рішення (двобічний діалог). I (Informed) — кого просто повідомляємо після (однобічно). Класична пастка — двоє «A» на одну задачу або плутанина між C та I: люди ображаються, коли їх поставили в «I», хоча очікували, що з ними порадяться. RACI особливо рятує в крос-командних рішеннях, де незрозуміло, чиє останнє слово.",
+        "resource": {
+          "label": "Atlassian: RACI charts",
+          "url": "https://www.atlassian.com/work-management/project-management/raci-chart"
+        }
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: RACI",
+        "body": "Пригадай значення літер RACI.",
+        "quiz": {
+          "question": "Скільки осіб має бути в ролі «Accountable» (A) для одного рішення і чому?",
+          "options": [
+            "Якнайбільше — щоб відповідальність була спільною",
+            "Рівно одна — щоб було зрозуміло, за ким фінальне слово",
+            "Жодної — рішення ухвалює вся команда голосуванням",
+            "Стільки ж, скільки й Responsible"
+          ],
+          "answerIndex": 1,
+          "explanation": "Accountable має бути рівно один: єдина точка відповідальності не дає рішенням зависати."
+        }
+      },
+      {
+        "type": "build",
+        "title": "Накидай RACI-матрицю",
+        "body": "Візьми реальне рішення: «Обрати платіжного провайдера для нової підписки». Випиши 4-5 стейкхолдерів (напр. PM, ліда інженерії, дизайнера, фінансиста, founder) і для кожного признач рівно одну роль R, A, C або I. Перевір себе: чи є рівно один A? Чи не сплутав ти тих, з ким радишся (C), з тими, кого лише повідомляєш (I)? Запиши одним рядком, чому саме цей стейкхолдер отримав A."
+      },
+      {
+        "type": "learn",
+        "title": "Презентувати roadmap",
+        "body": "Roadmap — це не список фіч із датами, а розповідь про напрямок: які проблеми ми вирішуємо найближчим часом і чому саме в такому порядку. Групуй роботу за темами чи цілями (наприклад «Now / Next / Later»), а не за точними дедлайнами — це знижує тиск обіцянок і лишає простір для навчання. Під різну аудиторію — різний рівень деталізації: founder-у покажи зв'язок зі стратегією та метриками, інженерам — технічні залежності, продажам — що зможуть обіцяти клієнтам. Завжди готуйся до питання «а чому не X раніше?»: тримай видимими критерії пріоритезації, щоб roadmap виглядав як усвідомлений вибір, а не випадковий список."
+      },
+      {
+        "type": "learn",
+        "title": "Керувати конфліктом пріоритетів",
+        "body": "Конфлікт пріоритетів — норма, а не збій: у founder, продажів та інженерії різні цілі, і всі вони хочуть «своє першим». Твоя сила PM — перевести суперечку з площини думок і статусів у площину спільних критеріїв. Домовтеся про рамку пріоритезації (напр. RICE: Reach, Impact, Confidence, Effort) і оцінюйте ідеї за нею відкрито — тоді сперечаються з цифрами, а не з людьми. Роби компроміс явним: «беремо A зараз, B — наступним; ось на що це впливає». Найгірше рішення — тихо намагатися вмістити все: команда вигорає, а довіра падає, бо ніхто не бачить логіки вибору."
+      },
+      {
+        "type": "explain",
+        "title": "Поясни своїми словами",
+        "body": "Уяви, що founder і лід продажів у чаті вимагають протилежних фіч «на вчора». Поясни своїми словами, як ти, PM, вирівняєш їх навколо спільного рішення. Хороша відповідь згадує: спершу винести на поверхню «чому» кожної сторони (яка мета за проханням), застосувати спільну рамку пріоритезації (напр. RICE) відкрито, і зробити компроміс та його наслідки явними й задокументованими — щоб рішення виглядало як спільний вибір, а не перемога одного над іншим."
+      }
+    ]
+  },
+  {
+    "slug": "portfolio",
+    "emoji": "💼",
+    "title": "Портфоліо AI-PM",
+    "intro": "Пройшовши цей шлях, ти зможеш зібрати портфоліо з двох AI pet-проєктів, які показують рекрутеру не код, а продуктове мислення — і впевнено розповісти їх історію на співбесіді.",
+    "steps": [
+      {
+        "type": "learn",
+        "title": "Навіщо AI-PM портфоліо",
+        "body": "Портфоліо — це доказ продуктового мислення, а не колекція скріншотів. Для Technical PM з AI-навичками воно замінює досвід, якого ще немає у трудовій книжці: показує, що ти вмієш побачити проблему, сформулювати гіпотезу, побудувати рішення з AI і виміряти результат. Рекрутер за 60 секунд шукає відповідь на одне питання: \"Чи мислить ця людина продуктом?\" Два сильних кейси відповідають на нього краще, ніж десять слабких. Головне — не \"я зробив чат-бота\", а \"я вирішив конкретну проблему конкретних людей і ось цифра\"."
+      },
+      {
+        "type": "learn",
+        "title": "Як обрати 2 pet-проєкти",
+        "body": "Бери саме два проєкти, а не один — так ти показуєш діапазон, і не десять, щоб не розпорошити глибину. Хороший AI pet-проєкт відповідає трьом критеріям: (1) є реальна проблема живих користувачів, навіть якщо це ти сам чи 5 друзів; (2) AI тут доречний, а не приклеєний заради хайпу; (3) є хоч якась метрика результату. Ідеальна пара — різні за типом: наприклад, один B2C-інструмент (AI-помічник для нотаток) і один процесний/внутрішній (авто-класифікація тікетів підтримки). Уникай проєктів \"обгортка над ChatGPT без задачі\" — вони не показують продуктового рішення."
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: вибір проєкту",
+        "body": "Який pet-проєкт найсильніший для портфоліо AI-PM?",
+        "quiz": {
+          "question": "Який варіант найкраще підходить як AI pet-проєкт для портфоліо PM?",
+          "options": [
+            "Красивий лендинг про AI без користувачів і без задачі",
+            "Бот, що сумарізує довгі робочі чати — бо колеги втрачали до 40 хв/день на пошук рішень у переписці",
+            "Клон ChatGPT, зроблений щоб потренувати навички промптингу",
+            "Список з 10 різних напівзроблених AI-експериментів"
+          ],
+          "answerIndex": 1,
+          "explanation": "Сильний кейс = реальна проблема реальних людей + доречний AI + вимірюваний результат (40 хв/день); решта не мають задачі або глибини."
+        }
+      },
+      {
+        "type": "learn",
+        "title": "Структура кейсу: 5 блоків",
+        "body": "Кожен кейс описуй за каркасом із п'яти блоків: Проблема → Інсайт → Рішення → Метрика → Навчене. Проблема — чия біль і чому вона болить (з контекстом і, якщо є, цифрою). Інсайт — неочевидне відкриття з ресерчу чи інтерв'ю, яке змінило підхід (\"користувачі не читали саммарі, бо не довіряли AI\"). Рішення — що саме ти побудував і які продуктові рішення прийняв (чому так, а не інакше). Метрика — результат у числах (retention, час, конверсія, NPS). Навчене — що б ти зробив інакше. Цей каркас перетворює \"я зробив штуку\" на історію продуктового мислення."
+      },
+      {
+        "type": "read",
+        "title": "Метрика: як не збрехати цифрою",
+        "body": "Метрика має бути чесною і прив'язаною до проблеми. Погано: \"застосунком скористалося 100 людей\" (це трафік, не цінність). Добре: \"з 20 користувачів 14 повернулися на другий тиждень\" або \"середній час на задачу впав з 8 до 3 хв на вибірці 12 людей\". Навіть на pet-проєкті з 5 користувачами краще мала, але справжня цифра, ніж велика вигадана — на співбесіді розкол буде миттєвим. Якщо кількісної метрики немає, використай якісну: 3 показові цитати користувачів. Завжди вказуй розмір вибірки — це ознака зрілості PM.",
+        "resource": {
+          "label": "Lenny's Newsletter — блог про продукт і метрики",
+          "url": "https://www.lennysnewsletter.com/"
+        }
+      },
+      {
+        "type": "build",
+        "title": "Напиши один кейс за каркасом",
+        "body": "Візьми свій сильніший AI-проєкт (або ідею) і напиши кейс на 150-200 слів рівно за п'ятьма блоками: Проблема, Інсайт, Рішення, Метрика, Навчене. Обмеження: у блоці 'Метрика' — конкретне число з розміром вибірки (навіть якщо вибірка = 5). У 'Інсайт' — одне неочевидне речення, яке починається з 'Виявилось, що…'. Не пиши про технології більше одного речення — фокус на продуктовому рішенні, а не на стеку."
+      },
+      {
+        "type": "explain",
+        "title": "Поясни: проблема vs рішення",
+        "body": "Поясни своїми словами, чому в кейсі блок 'Проблема' має бути сильнішим і конкретнішим за блок 'Рішення'. Хороша відповідь торкається того, що рекрутери оцінюють мислення (чи бачиш ти справжню біль користувача), а не технічну реалізацію, і що будь-яке рішення знецінюється, якщо проблема надумана або розмита."
+      },
+      {
+        "type": "learn",
+        "title": "Оформлення в Notion",
+        "body": "Notion — найшвидший спосіб зробити портфоліо PM без дизайнера. Структура: головна сторінка з коротким \"про мене\" (1 рядок: хто ти + напрям) і галереєю з 2 кейсів у вигляді карток. Кожен кейс — окрема сторінка з обкладинкою, одним реченням-хуком угорі та п'ятьма блоками каркасу як заголовками H2. Додай 1-2 візуали: скріншот продукту, схему флоу або графік метрики. Зроби сторінку публічною (Share → Publish) і скороти посилання. Правило: рекрутер має зрозуміти суть кейсу за 30 секунд скролу, тому виноси головне вгору і використовуй буліти, а не полотна тексту."
+      },
+      {
+        "type": "quiz",
+        "title": "Фінал: storytelling кейсу",
+        "body": "Як найкраще почати усну розповідь кейсу на співбесіді?",
+        "quiz": {
+          "question": "Ти презентуєш AI-кейс інтерв'юеру. З чого почати розповідь?",
+          "options": [
+            "Зі стеку: 'Я використав GPT-4, LangChain і векторну базу…'",
+            "З проблеми й людини: 'Люди Х витрачали Y часу на Z — і ось що я з цим зробив'",
+            "З переліку всіх фіч, які ти встиг реалізувати",
+            "З того, як складно було технічно все налаштувати"
+          ],
+          "answerIndex": 1,
+          "explanation": "Storytelling PM починається з болю користувача (проблема → людина), бо це створює контекст і показує продуктове мислення; стек і фічі — потім і коротко."
+        }
+      }
+    ]
+  },
+  {
+    "slug": "interview",
+    "emoji": "🎯",
+    "title": "Підготовка до співбесід",
+    "intro": "Пройшовши цей шлях, ти впевнено відповідатимеш на product sense, guesstimate, поведінкові та AI-кейси — і зможеш чітко й переконливо розповідати про свої проєкти на співбесіді на Technical PM.",
+    "steps": [
+      {
+        "type": "learn",
+        "title": "Мапа PM-співбесіди",
+        "body": "Співбесіда на Product Manager зазвичай складається з кількох типів раундів, і до кожного готуються по-різному. Основні: product sense (спроєктуй продукт або фічу), estimation/guesstimate (оціни величину без даних), поведінкові питання (розкажи про досвід через STAR), технічні/AI-кейси (як працює система, як застосувати ML), та розмова про твої проєкти. Мета інтерв'юера — не почути «правильну відповідь», а побачити твій хід думок: чи структуровано ти міркуєш, чи ставиш уточнюючі питання, чи думаєш про користувача та бізнес одночасно. Для Technical PM додається акцент на розумінні технічних обмежень і на тому, як ти спілкуєшся з інженерами. Знаючи цю карту, ти заздалегідь розумієш, який «жанр» питання перед тобою і за якою рамкою відповідати."
+      },
+      {
+        "type": "learn",
+        "title": "Product sense: рамка CIRCLES",
+        "body": "Product sense перевіряє, чи вмієш ти проєктувати продукт від потреби користувача до рішення. Популярна рамка — CIRCLES: Comprehend (зрозумій ситуацію), Identify customer (обери сегмент), Report needs (випиши потреби/болі), Cut through prioritization (пріоритизуй), List solutions (згенеруй рішення), Evaluate tradeoffs (зваж компроміси), Summarize (підсумуй рекомендацію). Ключове правило: завжди починай з уточнюючих питань і явно назви, для кого й яку проблему ти вирішуєш, перш ніж пропонувати фічі. Наприклад, на питання «Спроєктуй будильник для незрячих» спершу спитай про контекст, обери сегмент, назви болі (не бачить екран, потрібен тактильний/звуковий зворотний зв'язок), і лише тоді пропонуй рішення. Так ти показуєш user-centric мислення, а не стрибаєш одразу до фіч."
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: product sense",
+        "body": "Тебе просять: «Спроєктуй додаток для доставки продуктів для літніх людей». З чого почати?",
+        "quiz": {
+          "question": "Який перший крок у сильній product-sense відповіді?",
+          "options": [
+            "Одразу перелічити 5 крутих фіч, які спадають на думку",
+            "Поставити уточнюючі питання і визначити сегмент користувача та його головну проблему",
+            "Назвати технологічний стек, на якому будуватимеш додаток",
+            "Оцінити, скільки грошей додаток зароблятиме за рік"
+          ],
+          "answerIndex": 1,
+          "explanation": "Спершу зрозумій контекст і болі користувача — рішення й фічі йдуть уже після цього."
+        }
+      },
+      {
+        "type": "learn",
+        "title": "Guesstimate: розклади на множники",
+        "body": "Estimation-питання (наприклад, «Скільки таксі в Києві?» чи «Який ринок кав'ярень?») перевіряють структуроване мислення, а не точну цифру. Метод: розклади велике невідоме на добуток кількох оцінюваних величин, проговорюючи припущення вголос. Для «скільки замовлень піци в місті на день» можна взяти: населення → частка тих, хто їсть піцу → середня частота замовлень → поділити на дні. Завжди озвучуй кожне припущення («припустимо, місто має ~3 млн жителів»), рахуй круглими числами, а в кінці зроби sanity-check: чи результат правдоподібний за порядком величини. Інтерв'юер оцінює логіку декомпозиції та прозорість припущень — навіть якщо фінальна цифра відрізняється від реальної вдвічі, це нормально."
+      },
+      {
+        "type": "build",
+        "title": "Практика guesstimate",
+        "body": "Візьми питання «Скільки чашок кави випивають у Львові за один день?» і напиши свою оцінку зверху вниз. Обов'язково: (1) почни з населення міста, (2) познач частку людей, що п'ють каву, і скільки чашок на день, (3) додай приблизний внесок туристів/кав'ярень, (4) перемнож і назви фінальне число, (5) зроби sanity-check одним реченням. Записуй кожне припущення окремим рядком — саме структура, а не точність, є метою."
+      },
+      {
+        "type": "learn",
+        "title": "Поведінкові питання: метод STAR",
+        "body": "Поведінкові питання («Розкажи про конфлікт у команді», «Опиши провал») оцінюють за реальним минулим досвідом. Рамка STAR структурує відповідь: Situation (контекст — де й коли), Task (твоє завдання чи виклик), Action (що конкретно зробила саме ти — деталі й рішення), Result (вимірюваний результат, бажано в цифрах, і чого навчилася). Найпоширеніша помилка — забагато часу на Situation і замало на Action; інтерв'юер хоче почути твій особистий внесок, тому кажи «я», а не «ми». Готуй 5–7 історій наперед, які можна переповісти під різні питання (лідерство, конфлікт, провал, вплив на метрику). Result із конкретним числом («скоротили час онбордингу на 30%») робить історію переконливою й пам'ятною. Ця ж рамка працює, коли тебе просять розказати про проєкт, яким ти пишаєшся."
+      },
+      {
+        "type": "read",
+        "title": "AI/технічні кейси для PM",
+        "body": "Для Technical PM з AI-фокусом можуть спитати: «Як би ти застосувала ML для рекомендацій?» або «Як працює цей продукт під капотом?». Тут не потрібно писати код — потрібно показати, що ти розумієш, коли ML доречний, які дані потрібні й як оцінити успіх. Хороша рамка відповіді: (1) чи це взагалі ML-задача, чи вистачило б простих правил; (2) яку задачу вирішуємо — класифікація, ранжування, генерація, прогноз; (3) які потрібні дані та звідки їх взяти; (4) як виміряти якість (precision/recall, а поверх — продуктова метрика типу CTR чи retention); (5) ризики — упередженість даних, помилкові спрацювання, приватність, галюцинації LLM. Завжди зв'язуй технічне рішення з користувацькою цінністю та бізнес-метрикою — саме цього чекають від PM, а не від інженера.",
+        "resource": {
+          "label": "Google People + AI Guidebook",
+          "url": "https://pair.withgoogle.com/guidebook/"
+        }
+      },
+      {
+        "type": "quiz",
+        "title": "Перевірка: AI-кейс",
+        "body": "PM пропонують «додати ML» у продукт. Що зробити першим?",
+        "quiz": {
+          "question": "Який найкращий перший крок, коли пропонують рішення на базі ML?",
+          "options": [
+            "Одразу обрати нейромережу — вона потужніша за прості моделі",
+            "Перевірити, яку задачу вирішуємо і чи не досить простих правил замість ML",
+            "Порахувати, скільки GPU знадобиться для навчання",
+            "Запустити A/B-тест ще до того, як визначено метрику успіху"
+          ],
+          "answerIndex": 1,
+          "explanation": "Спершу визнач задачу й перевір, чи ML взагалі потрібен — часто прості правила дешевші й достатні."
+        }
+      },
+      {
+        "type": "explain",
+        "title": "Мілстоун: mock-інтерв'ю",
+        "body": "Проведи собі повне mock-інтерв'ю вголос (або з другом чи таймером на 30 хв) і поясни вголос, як ти пройшла кожен блок. Візьми по одному питанню кожного типу: одне product sense (за CIRCLES), один guesstimate (декомпозиція + sanity-check), одне поведінкове (STAR), один AI-кейс (задача → дані → метрика → ризики), і розповідь про свій проєкт за STAR. Гарне проходження: у кожному блоці ти вголос називаєш рамку, ставиш уточнюючі питання, структуруєш відповідь і завершуєш чітким підсумком чи рекомендацією. Це фінальний чекпоінт готовності — якщо всі п'ять блоків звучать структуровано й впевнено, ти готова до реальної співбесіди."
+      }
+    ]
+  }
+];
+
+const pathStepId = (slug, i) => `${slug}:${i}`;
+
+function CareerPath({ progress, onDone }) {
+  const [open, setOpen] = useState(null); // { modIdx, stepIdx }
+  const totalSteps = PM_PATH.reduce((s, m) => s + m.steps.length, 0);
+  const doneCount = PM_PATH.reduce((s, m) => s + m.steps.filter((_, i) => progress[pathStepId(m.slug, i)]).length, 0);
+  const openMod = open ? PM_PATH[open.modIdx] : null;
+  const openStep = openMod ? openMod.steps[open.stepIdx] : null;
+
+  if (!PM_PATH.length) return <div className="rounded-2xl bg-white py-10 text-center text-sm text-slate-400 ring-1 ring-indigo-50">Шлях готується…</div>;
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-3xl bg-gradient-to-br from-indigo-500 to-violet-500 p-5 text-white shadow-sm">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white/90"><GraduationCap className="h-4 w-4" /> Шлях: технічний PM з AI</div>
+        <div className="mt-1 text-2xl font-extrabold tabular-nums">{doneCount} / {totalSteps} кроків</div>
+        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/25"><div className="h-full rounded-full bg-white transition-all" style={{ width: `${totalSteps ? (doneCount / totalSteps) * 100 : 0}%` }} /></div>
+        <div className="mt-1.5 text-xs leading-relaxed text-white/80">Маленькі кроки: вивчи → поясни своїми словами → збери → пройди тест. Роби по одному на день. 💪</div>
+      </div>
+
+      {PM_PATH.map((mod, mi) => {
+        const mDone = mod.steps.filter((_, i) => progress[pathStepId(mod.slug, i)]).length;
+        const modDone = mDone === mod.steps.length;
+        return (
+          <div key={mod.slug} className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-indigo-50">
+            <div className="mb-3 flex items-center gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-100 text-2xl">{mod.emoji}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2"><span className="font-bold text-slate-800">{mod.title}</span>{modDone && <Trophy className="h-4 w-4 shrink-0 text-amber-400" />}</div>
+                <div className="text-xs leading-snug text-slate-400">{mod.intro}</div>
+              </div>
+              <span className="shrink-0 text-xs font-bold tabular-nums text-indigo-500">{mDone}/{mod.steps.length}</span>
+            </div>
+            <div className="relative">
+              <span className="pointer-events-none absolute bottom-4 left-[18px] top-4 w-0.5 bg-slate-100" aria-hidden />
+              <div className="relative space-y-1">
+                {mod.steps.map((st, si) => {
+                  const sid = pathStepId(mod.slug, si);
+                  const isDone = !!progress[sid];
+                  const prevDone = si === 0 || !!progress[pathStepId(mod.slug, si - 1)];
+                  const locked = !isDone && !prevDone;
+                  const meta = PATH_STEP_META[st.type] || PATH_STEP_META.learn;
+                  const NodeIcon = isDone ? Check : locked ? Lock : meta.icon;
+                  return (
+                    <div key={sid} className="flex items-center gap-3">
+                      <button disabled={locked} onClick={() => setOpen({ modIdx: mi, stepIdx: si })} className={`relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-full text-white shadow-sm transition ${isDone ? "bg-emerald-500" : locked ? "bg-slate-200 text-slate-400" : `${meta.ring} hover:scale-105`}`}><NodeIcon className="h-4 w-4" /></button>
+                      <button disabled={locked} onClick={() => setOpen({ modIdx: mi, stepIdx: si })} className="min-w-0 flex-1 py-1.5 text-left disabled:cursor-default">
+                        <div className={`text-sm font-semibold ${locked ? "text-slate-300" : isDone ? "text-slate-400" : "text-slate-700"}`}>{st.title}</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-slate-300">{meta.label}</div>
+                      </button>
+                      {isDone && <Check className="mr-1 h-4 w-4 shrink-0 text-emerald-400" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {modDone && <div className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-center text-sm font-semibold text-amber-700">🎉 Модуль пройдено!</div>}
+          </div>
+        );
+      })}
+      <p className="px-2 pb-2 text-center text-xs leading-relaxed text-slate-400">Це стартова база. Проходь у своєму темпі, повертайся до уроків будь-коли. Прогрес зберігається і синхронізується.</p>
+
+      {openStep && <PathLessonModal step={openStep} done={!!progress[pathStepId(openMod.slug, open.stepIdx)]} onClose={() => setOpen(null)} onDone={(v) => { onDone(pathStepId(openMod.slug, open.stepIdx), v); setOpen(null); }} />}
+    </div>
+  );
+}
+
+function PathLessonModal({ step, done, onClose, onDone }) {
+  const meta = PATH_STEP_META[step.type] || PATH_STEP_META.learn;
+  const StepIcon = meta.icon;
+  const [picked, setPicked] = useState(null);
+  const [note, setNote] = useState("");
+  const isQuiz = step.type === "quiz" && step.quiz;
+  const correct = isQuiz && picked === step.quiz.answerIndex;
+  const canFinish = done || !isQuiz || correct;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center gap-2">
+          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white ${meta.ring}`}><StepIcon className="h-4 w-4" /></span>
+          <div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{meta.label}</div><h3 className="text-lg font-bold leading-tight text-slate-900">{step.title}</h3></div>
+          <button onClick={onClose} className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        </div>
+
+        {step.body && <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{step.body}</p>}
+
+        {step.resource?.url && (
+          <a href={step.resource.url} target="_blank" rel="noreferrer" className="mt-3 flex items-center gap-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-100"><BookOpen className="h-4 w-4 shrink-0" /> <span className="min-w-0 flex-1 truncate">{step.resource.label || "Джерело"}</span> <ArrowRight className="h-4 w-4 shrink-0" /></a>
+        )}
+
+        {step.type === "explain" && (
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Поясни своїми словами (для себе — не зберігається)…" className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+        )}
+
+        {isQuiz && (
+          <div className="mt-3 space-y-2">
+            <p className="text-sm font-semibold text-slate-700">{step.quiz.question}</p>
+            {step.quiz.options.map((opt, i) => {
+              const reveal = picked != null;
+              const isRight = i === step.quiz.answerIndex;
+              const chosen = picked === i;
+              const cls = reveal ? (isRight ? "border-emerald-400 bg-emerald-50 text-emerald-800" : chosen ? "border-rose-300 bg-rose-50 text-rose-700" : "border-slate-200 text-slate-400") : "border-slate-200 text-slate-700 hover:border-indigo-300";
+              return <button key={i} disabled={reveal && correct} onClick={() => setPicked(i)} className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition ${cls}`}><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-bold">{String.fromCharCode(65 + i)}</span><span className="min-w-0 flex-1">{opt}</span>{reveal && isRight && <Check className="h-4 w-4 shrink-0" />}</button>;
+            })}
+            {picked != null && <div className={`rounded-xl px-3 py-2 text-sm ${correct ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{correct ? "✓ " : "Майже. "}{step.quiz.explanation}</div>}
+          </div>
+        )}
+
+        <button disabled={!canFinish} onClick={() => onDone(true)} className="mt-4 w-full rounded-2xl bg-indigo-500 py-3 font-bold text-white transition hover:bg-indigo-600 disabled:bg-slate-200 disabled:text-slate-400">{done ? "Пройдено ✓ · закрити" : isQuiz && !correct ? "Обери правильну відповідь" : "Готово ✓"}</button>
+        {done && <button onClick={() => onDone(false)} className="mt-2 w-full text-center text-xs font-semibold text-slate-400">Скинути крок</button>}
       </div>
     </div>
   );

@@ -13,7 +13,9 @@ let accessToken = null; // cached so the unload flush can fire without an async 
 export function initCloud() {
   if (!supabase) {
     supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+      // detectSessionInUrl: true → if a magic-link lands back on the app with
+      // #access_token=… in the URL, the client parses it and establishes the session.
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
     });
     // Keep user + token fresh across token refreshes so the keepalive unload
     // flush always has a valid bearer token to send.
@@ -137,14 +139,18 @@ if (typeof window !== "undefined") {
 /* ---- auth (email OTP code) ---- */
 export async function sendCode(email) {
   if (!supabase) initCloud();
-  const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } });
+  // emailRedirectTo makes the magic-link in the email come back to THIS app (not
+  // whatever the Supabase "Site URL" happens to be) — as long as the origin is an
+  // allowed redirect URL in the Supabase project.
+  const redirect = typeof window !== "undefined" ? window.location.origin : undefined;
+  const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true, emailRedirectTo: redirect } });
   if (error) throw error;
 }
 
 /* Two-way sign-in merge: pull the cloud down (cloud wins on shared keys), and
    upload every local-only key so nothing on this device is stranded off the DB.
    For a brand-new account the cloud is empty, so this uploads everything. */
-async function mergeCloud() {
+export async function mergeCloud() {
   if (!user) return { pulled: 0, pushed: 0 };
   const { data, error } = await supabase.from("kv").select("key,value");
   if (error) throw error;

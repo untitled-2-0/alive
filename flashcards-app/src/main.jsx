@@ -1,7 +1,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import FlashcardsApp from "./FlashcardsApp.jsx";
-import { initCloud, refreshSession, isSignedIn, pullToLocal } from "./cloud.js";
+import { initCloud, refreshSession, isSignedIn, pullToLocal, mergeCloud } from "./cloud.js";
 
 /*
  * window.storage shim — backs the app's storage with localStorage.
@@ -27,11 +27,17 @@ const render = () =>
 // Boot: if a Supabase session exists, pull cloud → local before first paint so
 // the app renders the latest synced data. Always render, even if cloud fails.
 (async () => {
+  // Did we arrive from a magic-link? (token in the URL hash, before the client clears it)
+  const fromMagicLink = typeof window !== "undefined" && /[#&](access_token|error)=/.test(window.location.hash || "");
   try {
     initCloud();
     await refreshSession();
     if (isSignedIn()) {
-      try { await pullToLocal(); } catch (e) { console.warn("[cloud pull]", e?.message || e); }
+      try {
+        // First sign-in via magic-link → two-way merge (upload local + pull cloud),
+        // so nothing on this device is stranded. Normal boot → just pull.
+        if (fromMagicLink) await mergeCloud(); else await pullToLocal();
+      } catch (e) { console.warn("[cloud pull]", e?.message || e); }
     }
   } catch (e) {
     console.warn("[cloud init]", e?.message || e);
