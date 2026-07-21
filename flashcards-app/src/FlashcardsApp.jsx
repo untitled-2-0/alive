@@ -841,12 +841,17 @@ async function loadCalmData() {
   const settings = await store.get(CKEYS.settings, { name: "Спокій" });
   return { fears, thoughts, sessions, settings };
 }
+// Recovery lives inside the Calm tab; its data rides along in Calm's export/reset.
+const RECKEYS = { alcohol: "recovery:alcohol", smoke: "recovery:smoke", triggers: "recovery:triggers", reason: "recovery:reason", noteSeen: "recovery:noteSeen" };
 async function collectCalmExport() {
   const d = await loadCalmData();
-  return { fears: d.fears, thoughts: d.thoughts, sessions: d.sessions, settings: d.settings };
+  const recovery = {};
+  for (const [k, key] of Object.entries(RECKEYS)) recovery[k] = await store.get(key, null);
+  return { fears: d.fears, thoughts: d.thoughts, sessions: d.sessions, settings: d.settings, recovery };
 }
 async function clearCalmData() {
   for (const k of Object.values(CKEYS)) await store.remove(k);
+  for (const k of Object.values(RECKEYS)) await store.remove(k);
 }
 
 // soft optional tick using Web Audio (no asset, no storage)
@@ -5223,6 +5228,7 @@ function CalmSection({ name, onRename }) {
     { id: "fear", label: "Сходинки страху", desc: "Назустріч страху — по одній м'якій сходинці", icon: TrendingUp, color: "#f59e0b" },
     { id: "focus", label: "Таймер фокусу", desc: "Спокійний вдих, потім зосереджена робота", icon: Timer, color: "#10b981" },
     { id: "worry", label: "Час для тривоги", desc: "Виділений час потривожитись — і відпустити", icon: Hourglass, color: "#f472b6" },
+    { id: "recovery", label: "Відновлення", desc: "Тверезість, тригери й підтримка в мить пориву", icon: HandHeart, color: "#0d9488" },
   ];
 
   return (
@@ -5320,6 +5326,7 @@ function CalmSection({ name, onRename }) {
       {cview === "worry" && <WorryTimer onExit={back} onDone={done("worry")} />}
       {cview === "beforework" && <BeforeWork onExit={back} onDone={(sec) => { log("beforework", sec); flash("Готово — у тебе все вийде ✨"); back(); }} />}
       {cview === "stats" && <CalmStats sessions={sessions} onExit={back} />}
+      {cview === "recovery" && <RecoveryView onExit={back} onQuickCalm={(v) => setCview(v)} />}
 
       {toast && <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
     </div>
@@ -7936,6 +7943,190 @@ function FinPayModal({ debt, onClose, onPay }) {
         <p className="mb-3 text-sm text-slate-500">«{debt.name}» · зараз {finFmt(debt.balance)}</p>
         <input autoFocus type="number" min={0} value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="Сума ₴" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-emerald-400 focus:outline-none" onKeyDown={(e) => { if (e.key === "Enter" && Number(amt) > 0) onPay(Number(amt)); }} />
         <button onClick={() => { if (Number(amt) > 0) onPay(Number(amt)); }} className="w-full rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Записати оплату</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Recovery (inside Calm): sobriety + triggers + urge support ---------- */
+const REC_MOODS = ["спокій", "тривога", "сум", "злість", "нудьга", "втома", "радість", "стрес"];
+const REC_COMPANY = ["наодинці", "з друзями", "з родиною", "на людях", "на роботі"];
+const REC_TIME = ["ранок", "день", "вечір", "ніч"];
+const REC_SUBST = { alcohol: { label: "Алкоголь", emoji: "🍷" }, smoke: { label: "Нікотин", emoji: "🚬" }, other: { label: "Інше", emoji: "•" } };
+function recDefault() { return { since: dateKey(Date.now()), best: 0, slips: [] }; }
+
+function RecoveryView({ onExit, onQuickCalm }) {
+  const today = dateKey(Date.now());
+  const [alcohol, setAlcohol] = useState(recDefault());
+  const [smoke, setSmoke] = useState(recDefault());
+  const [triggers, setTriggers] = useState([]);
+  const [reason, setReason] = useState("");
+  const [noteSeen, setNoteSeen] = useState(false);
+  const [urgeOpen, setUrgeOpen] = useState(false);
+  const [logForm, setLogForm] = useState(null); // { substance, type }
+  const [toast, setToast] = useState(null);
+  const flash = (m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2200); };
+
+  const load = useCallback(async () => {
+    setAlcohol((await store.get(RECKEYS.alcohol, null)) || recDefault());
+    setSmoke((await store.get(RECKEYS.smoke, null)) || recDefault());
+    setTriggers(await store.get(RECKEYS.triggers, []));
+    setReason(await store.get(RECKEYS.reason, ""));
+    setNoteSeen(await store.get(RECKEYS.noteSeen, false));
+  }, []);
+  useEffect(() => { load(); const onR = () => load(); window.addEventListener("calm-reset", onR); return () => window.removeEventListener("calm-reset", onR); }, [load]);
+
+  const saveAlcohol = (n) => { setAlcohol(n); store.set(RECKEYS.alcohol, n); };
+  const saveSmoke = (n) => { setSmoke(n); store.set(RECKEYS.smoke, n); };
+  const saveTriggers = (n) => { setTriggers(n); store.set(RECKEYS.triggers, n); };
+  const saveReason = (v) => { setReason(v); store.set(RECKEYS.reason, v); };
+  const dismissNote = () => { setNoteSeen(true); store.set(RECKEYS.noteSeen, true); };
+
+  const resetCounter = (which) => {
+    if (which === "alcohol") { const days = finDaysBetween(alcohol.since, today); saveAlcohol({ since: today, best: Math.max(alcohol.best || 0, days), slips: [...(alcohol.slips || []), today] }); }
+    else { const days = finDaysBetween(smoke.since, today); saveSmoke({ since: today, best: Math.max(smoke.best || 0, days), slips: [...(smoke.slips || []), today] }); }
+  };
+  const saveLog = (entry) => {
+    saveTriggers([{ id: ruid("rt"), date: today, ts: Date.now(), ...entry }, ...triggers]);
+    if (entry.type === "slip" && (entry.substance === "alcohol" || entry.substance === "smoke")) resetCounter(entry.substance);
+    setLogForm(null);
+    flash(entry.type === "slip" ? "Записано. Завтра — новий день 💛" : "Записано. Дякую, що поставила паузу 💪");
+  };
+
+  // pattern summary
+  const patterns = useMemo(() => {
+    if (triggers.length < 2) return null;
+    const top = (key) => { const c = {}; triggers.forEach((t) => { (t[key] || []).forEach ? (t[key] || []).forEach((v) => c[v] = (c[v] || 0) + 1) : (t[key] && (c[t[key]] = (c[t[key]] || 0) + 1)); }); const e = Object.entries(c).sort((a, b) => b[1] - a[1])[0]; return e ? e[0] : null; };
+    return { time: top("time"), mood: top("moods"), company: top("company") };
+  }, [triggers]);
+
+  const Counter = ({ label, emoji, data, which, color }) => {
+    const days = finDaysBetween(data.since, today);
+    return (
+      <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-50">
+        <div className="text-2xl">{emoji}</div>
+        <div className="text-3xl font-black tabular-nums" style={{ color }}>{days}</div>
+        <div className="text-xs font-semibold text-slate-500">{label}</div>
+        <div className="text-[11px] text-slate-400">{days === 1 ? "день" : "днів"}{data.best > 0 ? ` · рекорд ${data.best}` : ""}</div>
+        <button onClick={() => setLogForm({ substance: which, type: "slip" })} className="mt-2 w-full rounded-full bg-slate-50 py-1.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-100">був зрив</button>
+      </div>
+    );
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <CalmHeader title="Відновлення" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">Підтримка, а не контроль. Тут без осуду — кожен день рахується, а зрив не перекреслює прогресу.</p>
+
+      {/* urge button */}
+      <button onClick={() => setUrgeOpen(true)} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-teal-500 to-emerald-500 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:brightness-105">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20"><HandHeart className="h-6 w-6" /></span>
+        <span className="flex-1"><span className="block text-lg font-bold">Мені хочеться вжити зараз</span><span className="block text-sm text-white/90">Натисни — перечекаємо разом.</span></span>
+        <ArrowRight className="h-5 w-5" />
+      </button>
+
+      {/* counters */}
+      <div className="grid grid-cols-2 gap-3">
+        <Counter label="без алкоголю" emoji="🍷" data={alcohol} which="alcohol" color="#0d9488" />
+        <Counter label="без нікотину" emoji="🚬" data={smoke} which="smoke" color="#0ea5e9" />
+      </div>
+
+      {/* reason */}
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-teal-50">
+        <div className="mb-1.5 text-sm font-semibold text-slate-700">Моя причина</div>
+        <textarea value={reason} onChange={(e) => saveReason(e.target.value)} rows={2} placeholder="Заради чого я це роблю? (побачиш це в мить пориву)" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-400 focus:outline-none" />
+      </div>
+
+      {/* trigger journal */}
+      <div className="mt-4 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-slate-700">Тригер-журнал</h2>
+        <button onClick={() => setLogForm({ substance: "alcohol", type: "urge" })} className="inline-flex items-center gap-1 rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-600"><Plus className="h-3.5 w-3.5" /> Записати</button>
+      </div>
+      {patterns && (patterns.time || patterns.mood || patterns.company) && (
+        <div className="mt-2 rounded-2xl bg-teal-50/70 px-3 py-2 text-xs text-teal-800">Найчастіше пориви: {[patterns.time, patterns.mood, patterns.company].filter(Boolean).join(" · ")}. Помічати — вже половина справи.</div>
+      )}
+      <div className="mt-2 space-y-2">
+        {triggers.length === 0 ? (
+          <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-teal-50">Порожньо. Після пориву чи зриву — запиши, що передувало. З часом побачиш свої патерни.</div>
+        ) : triggers.slice(0, 30).map((t) => (
+          <div key={t.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-teal-50">
+            <div className="flex items-center gap-2 text-sm">
+              <span>{REC_SUBST[t.substance]?.emoji}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t.type === "slip" ? "bg-amber-100 text-amber-700" : "bg-teal-100 text-teal-700"}`}>{t.type === "slip" ? "зрив" : "порив"}</span>
+              <span className="ml-auto text-[11px] text-slate-400">{t.date.slice(5)}</span>
+            </div>
+            {(t.moods?.length || t.company?.length || t.time || t.stress) && <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-slate-500">{[t.time, t.stress && `стрес: ${t.stress}`, ...(t.company || []), ...(t.moods || [])].filter(Boolean).map((x, i) => <span key={i} className="rounded-full bg-slate-100 px-2 py-0.5">{x}</span>)}</div>}
+            {t.note && <div className="mt-1 text-xs text-slate-500">{t.note}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* professional note */}
+      {!noteSeen && (
+        <div className="mt-4 flex items-start gap-2 rounded-2xl bg-slate-100/70 px-4 py-3 text-sm text-slate-500">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          <p className="flex-1">Ці інструменти підтримують, але не замінюють фахову допомогу — лікаря, нарколога чи групу. Звернутися по підтримку — це сила, а не слабкість. 💛</p>
+          <button onClick={dismissNote} className="rounded-full p-0.5 text-slate-300 hover:text-slate-500"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* urge overlay */}
+      {urgeOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 backdrop-blur-sm sm:items-center" onClick={() => setUrgeOpen(false)}>
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center">
+              <div className="text-3xl">🌊</div>
+              <h2 className="mt-1 text-lg font-extrabold text-slate-800">Пориви минають хвилями</h2>
+              <p className="mt-1 text-sm text-slate-500">Не мусиш боротися — просто перечекай хвилю. За кілька хвилин відпустить.</p>
+            </div>
+            {reason.trim() && <div className="mt-3 rounded-2xl bg-teal-50 px-4 py-3 text-center text-sm text-teal-800"><span className="text-[11px] font-semibold uppercase tracking-wide text-teal-500">Моя причина</span><div className="mt-0.5">{reason}</div></div>}
+            <div className="mt-4 space-y-2">
+              <button onClick={() => { setUrgeOpen(false); onQuickCalm("breath"); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 hover:ring-sky-200"><span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-500 text-white"><Wind className="h-5 w-5" /></span><span className="flex-1"><span className="block font-bold text-slate-800">Подихати</span><span className="block text-xs text-slate-400">Сповільнити тіло за 2 хвилини</span></span><ArrowRight className="h-4 w-4 text-slate-300" /></button>
+              <button onClick={() => { setUrgeOpen(false); onQuickCalm("ground"); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 hover:ring-indigo-200"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-500 text-white"><Anchor className="h-5 w-5" /></span><span className="flex-1"><span className="block font-bold text-slate-800">Заземлитися 5-4-3-2-1</span><span className="block text-xs text-slate-400">Повернутись у тіло й у момент</span></span><ArrowRight className="h-4 w-4 text-slate-300" /></button>
+              <button onClick={() => { setUrgeOpen(false); setLogForm({ substance: "alcohol", type: "urge" }); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 hover:ring-teal-200"><span className="grid h-10 w-10 place-items-center rounded-xl bg-teal-500 text-white"><NotebookPen className="h-5 w-5" /></span><span className="flex-1"><span className="block font-bold text-slate-800">Записати цей порив</span><span className="block text-xs text-slate-400">Що зараз коїться — для патернів</span></span><ArrowRight className="h-4 w-4 text-slate-300" /></button>
+            </div>
+            <button onClick={() => setUrgeOpen(false)} className="mt-3 w-full rounded-2xl py-2.5 text-sm font-semibold text-slate-400 hover:text-slate-600">Мені вже легше</button>
+          </div>
+        </div>
+      )}
+
+      {logForm && <RecoveryLog init={logForm} onClose={() => setLogForm(null)} onSave={saveLog} />}
+      {toast && <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+function RecoveryLog({ init, onClose, onSave }) {
+  const [substance, setSubstance] = useState(init.substance || "alcohol");
+  const [type, setType] = useState(init.type || "urge");
+  const [time, setTime] = useState("");
+  const [stress, setStress] = useState("");
+  const [company, setCompany] = useState([]);
+  const [moods, setMoods] = useState([]);
+  const [note, setNote] = useState("");
+  const toggle = (arr, v, set) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+  const Chip = ({ on, onClick, children }) => <button onClick={onClick} className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${on ? "bg-teal-500 text-white ring-teal-500" : "bg-white text-slate-500 ring-slate-200"}`}>{children}</button>;
+  return (
+    <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">Що передувало?</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="mb-3 flex gap-2">
+          {Object.entries(REC_SUBST).map(([k, v]) => <Chip key={k} on={substance === k} onClick={() => setSubstance(k)}>{v.emoji} {v.label}</Chip>)}
+        </div>
+        <div className="mb-3 flex gap-2">
+          <Chip on={type === "urge"} onClick={() => setType("urge")}>Порив (втрималась)</Chip>
+          <Chip on={type === "slip"} onClick={() => setType("slip")}>Зрив</Chip>
+        </div>
+        <div className="mb-2 text-xs font-semibold text-slate-500">Коли</div>
+        <div className="mb-3 flex flex-wrap gap-2">{REC_TIME.map((t) => <Chip key={t} on={time === t} onClick={() => setTime(time === t ? "" : t)}>{t}</Chip>)}</div>
+        <div className="mb-2 text-xs font-semibold text-slate-500">Стрес</div>
+        <div className="mb-3 flex flex-wrap gap-2">{["низький", "середній", "високий"].map((s) => <Chip key={s} on={stress === s} onClick={() => setStress(stress === s ? "" : s)}>{s}</Chip>)}</div>
+        <div className="mb-2 text-xs font-semibold text-slate-500">З ким</div>
+        <div className="mb-3 flex flex-wrap gap-2">{REC_COMPANY.map((c) => <Chip key={c} on={company.includes(c)} onClick={() => toggle(company, c, setCompany)}>{c}</Chip>)}</div>
+        <div className="mb-2 text-xs font-semibold text-slate-500">Настрій / стан</div>
+        <div className="mb-3 flex flex-wrap gap-2">{REC_MOODS.map((m) => <Chip key={m} on={moods.includes(m)} onClick={() => toggle(moods, m, setMoods)}>{m}</Chip>)}</div>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Що ще? (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-teal-400 focus:outline-none" />
+        <button onClick={() => onSave({ substance, type, time, stress, company, moods, note: note.trim() })} className="w-full rounded-2xl bg-teal-500 py-3 font-bold text-white hover:bg-teal-600">{type === "slip" ? "Записати зрив (стрік почнеться заново)" : "Записати"}</button>
       </div>
     </div>
   );
