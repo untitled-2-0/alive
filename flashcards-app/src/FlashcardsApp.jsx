@@ -20,7 +20,7 @@ import {
   Utensils, GlassWater, LineChart as LineChartIcon, Cloud, CloudOff, LogOut, Mail,
   Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft, RefreshCw,
   Wrench, Star, Users, Sparkles as SparklesIcon, Scale as ScaleIcon, ArrowLeftRight, Home,
-  HandHeart, ShoppingCart, Wallet, ShoppingBasket,
+  HandHeart, ShoppingCart, Wallet, ShoppingBasket, Search,
 } from "lucide-react";
 import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signOutCloud, refreshSession, syncNow } from "./cloud.js";
 
@@ -1073,6 +1073,7 @@ export default function FlashcardsApp() {
   const [mgmtName, setMgmtName] = useState("Менеджмент");
   const [toolkitName, setToolkitName] = useState("Toolkit");
   const [budgetName, setBudgetName] = useState("Budget");
+  const [inventoryName, setInventoryName] = useState("Inventory");
   const [cloudState, setCloudState] = useState({ signedIn: false, email: null, syncing: false });
   const [toast, setToast] = useState(null);
   const [deckEditor, setDeckEditor] = useState(null); // null | { deck } (deck=null → create)
@@ -1094,18 +1095,20 @@ export default function FlashcardsApp() {
       const mgmtSettings = await store.get("mgmt:settings", { name: "Менеджмент" });
       const toolkitSettings = await store.get(TKEYS.settings, { name: "Toolkit" });
       const budgetSettings = await store.get(BKEYS.settings, { name: "Budget" });
+      const inventorySettings = await store.get(IKEYS.settings, { name: "Inventory" });
       const st = await store.get("stats", {
         history: {},
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["routine", "calm", "fasting", "management", "toolkit", "budget"].includes(ui.section) ? ui.section : "studying");
+      setSection(["routine", "calm", "fasting", "management", "toolkit", "budget", "inventory"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
       setFastingName(fastingSettings?.name || "Fasting");
       setMgmtName(mgmtSettings?.name || "Менеджмент");
       setToolkitName(toolkitSettings?.name || "Toolkit");
       setBudgetName(budgetSettings?.name || "Budget");
+      setInventoryName(inventorySettings?.name || "Inventory");
       setStats(st);
       setGroups(gi.groups || []);
       setDecks(idx.decks || []);
@@ -1196,6 +1199,13 @@ export default function FlashcardsApp() {
     setBudgetName(clean);
     const prev = await store.get(BKEYS.settings, { name: "Budget" });
     await store.set(BKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameInventory = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Inventory";
+    setInventoryName(clean);
+    const prev = await store.get(IKEYS.settings, { name: "Inventory" });
+    await store.set(IKEYS.settings, { ...prev, name: clean });
   }, []);
 
   /* ---------- derived: per-deck due summary ---------- */
@@ -1536,6 +1546,7 @@ export default function FlashcardsApp() {
     await store.remove("mgmt:settings");
     await clearToolkitData();
     await clearBudgetData();
+    await clearInventoryData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
@@ -1546,12 +1557,14 @@ export default function FlashcardsApp() {
     setMgmtName("Менеджмент");
     setToolkitName("Toolkit");
     setBudgetName("Budget");
+    setInventoryName("Inventory");
     flash("All data reset");
     window.dispatchEvent(new CustomEvent("routine-reset"));
     window.dispatchEvent(new CustomEvent("calm-reset"));
     window.dispatchEvent(new CustomEvent("fasting-reset"));
     window.dispatchEvent(new CustomEvent("toolkit-reset"));
     window.dispatchEvent(new CustomEvent("budget-reset"));
+    window.dispatchEvent(new CustomEvent("inventory-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
@@ -1561,9 +1574,10 @@ export default function FlashcardsApp() {
     const mgmt = await store.get("mgmt:settings", { name: "Менеджмент" });
     const toolkit = await collectToolkitExport();
     const budget = await collectBudgetExport();
+    const inventory = await collectInventoryExport();
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 7,
+      version: 8,
       decks,
       groups,
       cards: cardsByDeck,
@@ -1574,6 +1588,7 @@ export default function FlashcardsApp() {
       mgmt,
       toolkit,
       budget,
+      inventory,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1788,6 +1803,7 @@ export default function FlashcardsApp() {
         mgmtName={mgmtName}
         toolkitName={toolkitName}
         budgetName={budgetName}
+        inventoryName={inventoryName}
         cloud={cloudState}
         onSyncNow={doSyncNow}
       />
@@ -1805,6 +1821,8 @@ export default function FlashcardsApp() {
           <ToolkitSection name={toolkitName} onRename={renameToolkit} />
         ) : section === "budget" ? (
           <BudgetSection name={budgetName} onRename={renameBudget} />
+        ) : section === "inventory" ? (
+          <InventorySection name={inventoryName} onRename={renameInventory} />
         ) : (
         <>
       {/* studying top bar */}
@@ -1929,6 +1947,7 @@ export default function FlashcardsApp() {
         mgmtName={mgmtName}
         toolkitName={toolkitName}
         budgetName={budgetName}
+        inventoryName={inventoryName}
         cloud={cloudState}
         onSyncNow={doSyncNow}
       />
@@ -1984,7 +2003,7 @@ export default function FlashcardsApp() {
 /* Nav button                                                          */
 /* ------------------------------------------------------------------ */
 /* Mobile bottom tab bar — shown below lg, replaces the left rail on phones */
-function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, cloud, onSyncNow }) {
+function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, cloud, onSyncNow }) {
   const items = [
     { id: "studying", label: "Навчання", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "Рутина", icon: Sun, badge: 0 },
@@ -1993,6 +2012,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
     { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
     { id: "budget", label: budgetName || "Budget", icon: ShoppingCart, badge: 0 },
+    { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -2003,7 +2023,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
           <span>{cloud.syncing ? "Синхронізація…" : cloud.signedIn ? "Синхронізовано" : "Офлайн"}</span>
         </button>
       )}
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-8">
         {items.map((it) => {
           const active = section === it.id;
           return (
@@ -2039,7 +2059,7 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 /* ------------------------------------------------------------------ */
 /* Sidebar — top-level section navigation                              */
 /* ------------------------------------------------------------------ */
-function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, cloud, onSyncNow }) {
+function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, cloud, onSyncNow }) {
   const items = [
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
@@ -2048,6 +2068,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
     { id: "toolkit", label: toolkitName || "Toolkit", icon: Wrench, badge: 0 },
     { id: "budget", label: budgetName || "Budget", icon: ShoppingCart, badge: 0 },
+    { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
   ];
   const wide = !collapsed;
   return (
@@ -7035,6 +7056,404 @@ function NewMonthModal({ month, next, planned, spent, onClose, onConfirm }) {
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 rounded-2xl bg-slate-100 py-3 font-semibold text-slate-500">Скасувати</button>
           <button onClick={() => onConfirm(keepBudget)} className="flex-1 rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Почати</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* INVENTORY — home checklist (rooms → sections → items)               */
+/* ================================================================== */
+const IKEYS = {
+  rooms: "inventory:rooms",       // [{id, name, sections:[{id,name}]}]
+  items: "inventory:items",       // [{id, roomId, secId, name, rec, where, status, notes}]
+  settings: "inventory:settings", // {name}
+  seeded: "inventory:seeded",
+};
+const INV_STATUSES = [
+  { id: "Є", label: "Є", dot: "#22c55e", bg: "bg-green-50", ring: "ring-green-200", text: "text-green-700", handled: true },
+  { id: "Купити", label: "Купити", dot: "#f59e0b", bg: "bg-amber-50", ring: "ring-amber-200", text: "text-amber-700" },
+  { id: "Замінити за нагоди", label: "Замінити за нагоди", dot: "#0ea5e9", bg: "bg-sky-50", ring: "ring-sky-200", text: "text-sky-700" },
+  { id: "Не потрібно", label: "Не потрібно", dot: "#94a3b8", bg: "bg-slate-100", ring: "ring-slate-200", text: "text-slate-500", handled: true },
+  { id: "Не вирішено", label: "Не вирішено", dot: "#cbd5e1", bg: "bg-white", ring: "ring-slate-200", text: "text-slate-400" },
+];
+const invStatus = (id) => INV_STATUSES.find((s) => s.id === id) || INV_STATUSES[4];
+const INV_DECIDED = (st) => st === "Є" || st === "Не потрібно"; // "handled" for readiness
+
+async function loadInventoryData() {
+  const rooms = await store.get(IKEYS.rooms, null);
+  const items = await store.get(IKEYS.items, null);
+  const settings = await store.get(IKEYS.settings, { name: "Inventory" });
+  return { rooms, items, settings };
+}
+async function collectInventoryExport() { const d = await loadInventoryData(); return { rooms: d.rooms || [], items: d.items || [], settings: d.settings }; }
+async function clearInventoryData() { for (const k of Object.values(IKEYS)) await store.remove(k); }
+
+function InventorySection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState("dash"); // dash | browse | tobuy
+  const [rooms, setRooms] = useState([]);
+  const [items, setItems] = useState([]);
+  const [collapsed, setCollapsed] = useState({});
+  const [statusFilter, setStatusFilter] = useState("");
+  const [roomFilter, setRoomFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [itemEditor, setItemEditor] = useState(null); // {item, roomId, secId}
+  const [mgrOpen, setMgrOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [toast, setToast] = useState(null);
+
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2200); }, []);
+
+  const reload = useCallback(async () => {
+    let d = await loadInventoryData();
+    if (d.rooms === null && d.items === null) {
+      try {
+        const res = await fetch("/inventory-seed.json");
+        const seed = await res.json();
+        const rms = [], its = [];
+        for (const sr of seed.rooms) {
+          const rid = ruid("ir"); const secs = [];
+          for (const ss of sr.sections) {
+            const sid = ruid("is"); secs.push({ id: sid, name: ss.name });
+            for (const si of ss.items) its.push({ id: ruid("ii"), roomId: rid, secId: sid, name: si.name, rec: si.rec || "", where: si.where || "", status: si.status || "Не вирішено", notes: si.notes || "" });
+          }
+          rms.push({ id: rid, name: sr.name, sections: secs });
+        }
+        await store.set(IKEYS.rooms, rms); await store.set(IKEYS.items, its); await store.set(IKEYS.seeded, true);
+        d = await loadInventoryData();
+      } catch (e) { d.rooms = d.rooms || []; d.items = d.items || []; }
+    }
+    setRooms(d.rooms || []); setItems(d.items || []); setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("inventory-reset", onReset);
+    return () => window.removeEventListener("inventory-reset", onReset);
+  }, [reload]);
+
+  const saveRooms = useCallback(async (next) => { setRooms(next); await store.set(IKEYS.rooms, next); }, []);
+  const saveItems = useCallback(async (next) => { setItems(next); await store.set(IKEYS.items, next); }, []);
+
+  const setStatus = (id, status) => setItems((prev) => { const next = prev.map((it) => (it.id === id ? { ...it, status } : it)); store.set(IKEYS.items, next); return next; });
+  const upsertItem = (meta, id) => { if (id) saveItems(items.map((it) => (it.id === id ? { ...it, ...meta } : it))); else saveItems([...items, { id: ruid("ii"), status: "Не вирішено", ...meta }]); };
+  const deleteItem = (id) => saveItems(items.filter((it) => it.id !== id));
+
+  // room / section CRUD
+  const addRoom = (nm) => saveRooms([...rooms, { id: ruid("ir"), name: nm.trim() || "Нова кімната", sections: [] }]);
+  const renameRoom = (id, nm) => saveRooms(rooms.map((r) => (r.id === id ? { ...r, name: nm } : r)));
+  const deleteRoom = (id) => { saveRooms(rooms.filter((r) => r.id !== id)); saveItems(items.filter((it) => it.roomId !== id)); };
+  const moveRoom = (id, dir) => { const i = rooms.findIndex((r) => r.id === id); const j = i + dir; if (i < 0 || j < 0 || j >= rooms.length) return; const n = rooms.slice(); [n[i], n[j]] = [n[j], n[i]]; saveRooms(n); };
+  const addSection = (roomId, nm) => saveRooms(rooms.map((r) => (r.id === roomId ? { ...r, sections: [...r.sections, { id: ruid("is"), name: nm.trim() || "Новий розділ" }] } : r)));
+  const renameSection = (roomId, secId, nm) => saveRooms(rooms.map((r) => (r.id === roomId ? { ...r, sections: r.sections.map((s) => (s.id === secId ? { ...s, name: nm } : s)) } : r)));
+  const deleteSection = (roomId, secId) => { saveRooms(rooms.map((r) => (r.id === roomId ? { ...r, sections: r.sections.filter((s) => s.id !== secId) } : r))); saveItems(items.filter((it) => it.secId !== secId)); };
+  const moveSection = (roomId, secId, dir) => saveRooms(rooms.map((r) => { if (r.id !== roomId) return r; const i = r.sections.findIndex((s) => s.id === secId); const j = i + dir; if (i < 0 || j < 0 || j >= r.sections.length) return r; const n = r.sections.slice(); [n[i], n[j]] = [n[j], n[i]]; return { ...r, sections: n }; }));
+
+  const itemsOfRoom = (rid) => items.filter((it) => it.roomId === rid);
+  const roomStats = (rid) => {
+    const list = itemsOfRoom(rid);
+    const c = { total: list.length, є: 0, buy: 0, no: 0, undec: 0, repl: 0 };
+    for (const it of list) { if (it.status === "Є") c.є++; else if (it.status === "Купити") c.buy++; else if (it.status === "Не потрібно") c.no++; else if (it.status === "Замінити за нагоди") c.repl++; else c.undec++; }
+    c.readiness = c.total ? (c.є + c.no) / c.total : 0;
+    return c;
+  };
+  const overall = useMemo(() => {
+    const total = items.length; const handled = items.filter((it) => INV_DECIDED(it.status)).length;
+    return { total, handled, pct: total ? handled / total : 0 };
+  }, [items]);
+
+  const toBuy = items.filter((it) => it.status === "Купити");
+
+  const copyToBuy = () => {
+    const byRoom = rooms.map((r) => { const list = toBuy.filter((it) => it.roomId === r.id); return list.length ? `${r.name}:\n` + list.map((it) => `  • ${it.name}${it.rec ? ` (${it.rec})` : ""}`).join("\n") : ""; }).filter(Boolean).join("\n\n");
+    const text = "Купити для дому:\n\n" + byRoom;
+    try { navigator.clipboard.writeText(text); flash("Скопійовано у буфер 📋"); } catch { flash("Не вдалося скопіювати"); }
+  };
+  const sendToBudget = async () => {
+    if (!toBuy.length) return;
+    const cats = await store.get(BKEYS.cats, []);
+    const its = await store.get(BKEYS.items, []);
+    let cat = cats.find((c) => c.name === "Дім (інвентар)");
+    let nextCats = cats;
+    if (!cat) { cat = { id: ruid("bc"), emoji: "🏠", name: "Дім (інвентар)" }; nextCats = [...cats, cat]; }
+    const existing = new Set(its.filter((x) => x.catId === cat.id).map((x) => x.name));
+    const add = toBuy.filter((it) => !existing.has(it.name)).map((it) => ({ id: ruid("bi"), catId: cat.id, name: it.name, qty: 1, unit: "шт", price: 0, notes: it.rec ? `реком.: ${it.rec}` : "" }));
+    await store.set(BKEYS.cats, nextCats); await store.set(BKEYS.items, [...its, ...add]);
+    flash(`Додано в Budget: ${add.length} товар(и) 🛒`);
+  };
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-indigo-400"><div className="flex flex-col items-center gap-3"><Home className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-indigo-50/50 to-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-indigo-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          <div className="relative">
+            <button onClick={() => setMenuOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100"><Settings className="h-4 w-4" /></button>
+            {menuOpen && (<>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-11 z-20 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                <button onClick={() => { setMgrOpen(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><ListTree className="h-4 w-4 text-slate-400" /> Кімнати й розділи</button>
+              </div>
+            </>)}
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-5">
+        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-indigo-100">
+          {[["dash", "Готовність", BarChart3], ["browse", "Перелік", ListChecks], ["tobuy", "Купити", ShoppingCart]].map(([k, label, Icon]) => (
+            <button key={k} onClick={() => setView(k)} className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${view === k ? "bg-indigo-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4" /> {label}{k === "tobuy" && toBuy.length > 0 && <span className={`ml-0.5 rounded-full px-1.5 text-[10px] font-bold ${view === k ? "bg-white/25" : "bg-amber-100 text-amber-700"}`}>{toBuy.length}</span>}</button>
+          ))}
+        </div>
+
+        {view === "dash" && <InvDashboard rooms={rooms} overall={overall} roomStats={roomStats} onRoom={(rid) => { setRoomFilter(rid); setView("browse"); }} />}
+        {view === "browse" && <InvBrowse rooms={rooms} items={items} collapsed={collapsed} setCollapsed={setCollapsed}
+          statusFilter={statusFilter} setStatusFilter={setStatusFilter} roomFilter={roomFilter} setRoomFilter={setRoomFilter} query={query} setQuery={setQuery}
+          onStatus={setStatus} onEdit={(it) => setItemEditor({ item: it })} onDelete={deleteItem} onAddItem={(roomId, secId) => setItemEditor({ item: null, roomId, secId })} roomStats={roomStats} />}
+        {view === "tobuy" && <InvToBuy rooms={rooms} toBuy={toBuy} onAcquire={(id) => setStatus(id, "Є")} onCopy={copyToBuy} onSendBudget={sendToBudget} />}
+      </main>
+
+      {itemEditor && <InvItemEditor item={itemEditor.item} rooms={rooms} roomId={itemEditor.roomId} secId={itemEditor.secId}
+        onClose={() => setItemEditor(null)} onDelete={itemEditor.item ? () => { deleteItem(itemEditor.item.id); setItemEditor(null); } : null}
+        onSave={(meta) => { upsertItem(meta, itemEditor.item?.id); setItemEditor(null); }} />}
+      {mgrOpen && <InvManager rooms={rooms} onClose={() => setMgrOpen(false)} onAddRoom={addRoom} onRenameRoom={renameRoom} onDeleteRoom={deleteRoom} onMoveRoom={moveRoom} onAddSection={addSection} onRenameSection={renameSection} onDeleteSection={deleteSection} onMoveSection={moveSection} />}
+
+      {toast && <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg lg:bottom-6">{toast}</div>}
+    </div>
+  );
+}
+
+function InvDashboard({ rooms, overall, roomStats, onRoom }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-indigo-100">
+        <div className="flex items-center gap-4">
+          <ProgressRing pct={overall.pct} size={72} stroke={8}><span className="text-sm font-extrabold text-indigo-600">{Math.round(overall.pct * 100)}%</span></ProgressRing>
+          <div>
+            <div className="text-lg font-extrabold text-slate-900">Готовність дому</div>
+            <div className="text-sm text-slate-500">{overall.handled} з {overall.total} позицій вирішено</div>
+          </div>
+        </div>
+        <p className="mt-3 rounded-xl bg-indigo-50/60 px-3 py-2 text-xs leading-relaxed text-indigo-800">Готовність = (Є + Не потрібно) ÷ усі позиції. Тобто скільки речей уже вирішено — куплено/є або свідомо не треба.</p>
+      </div>
+      <div className="space-y-2.5">
+        {rooms.map((r) => { const c = roomStats(r.id); return (
+          <button key={r.id} onClick={() => onRoom(r.id)} className="block w-full rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-indigo-50 hover:ring-indigo-200">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-800">{r.name}</span>
+              <span className="text-sm font-bold tabular-nums text-indigo-600">{Math.round(c.readiness * 100)}%</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-indigo-50"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${c.readiness * 100}%` }} /></div>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
+              <span>усього {c.total}</span>
+              <span className="text-green-600">Є {c.є}</span>
+              <span className="text-amber-600">Купити {c.buy}</span>
+              <span className="text-slate-500">Не потрібно {c.no}</span>
+              <span>Не вирішено {c.undec}</span>
+            </div>
+          </button>
+        ); })}
+      </div>
+    </div>
+  );
+}
+
+function InvStatusSelect({ value, onChange }) {
+  const s = invStatus(value);
+  return (
+    <div className="relative">
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={`cursor-pointer appearance-none rounded-full py-1 pl-2.5 pr-6 text-xs font-bold ring-1 ${s.bg} ${s.text} ${s.ring} focus:outline-none`}>
+        {INV_STATUSES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 opacity-50" />
+    </div>
+  );
+}
+
+function InvItemRow({ item, onStatus, onEdit, onDelete }) {
+  const [showNotes, setShowNotes] = useState(false);
+  return (
+    <div className="group px-4 py-2.5">
+      <div className="flex items-start gap-2">
+        <button onClick={onEdit} className="min-w-0 flex-1 text-left">
+          <div className="text-sm font-medium text-slate-800">{item.name}</div>
+          <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-slate-400">
+            {item.rec && <span>реком.: <span className="text-slate-500">{item.rec}</span></span>}
+            {item.where && <span>· вдома: <span className="text-slate-500">{item.where}</span></span>}
+          </div>
+        </button>
+        {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-indigo-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
+        <InvStatusSelect value={item.status} onChange={(st) => onStatus(item.id, st)} />
+        <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-rose-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
+      </div>
+      {showNotes && item.notes && <div className="mt-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">{item.notes}</div>}
+    </div>
+  );
+}
+
+function InvBrowse({ rooms, items, collapsed, setCollapsed, statusFilter, setStatusFilter, roomFilter, setRoomFilter, query, setQuery, onStatus, onEdit, onDelete, onAddItem, roomStats }) {
+  const q = query.trim().toLowerCase();
+  const match = (it) => (!statusFilter || it.status === statusFilter) && (!q || it.name.toLowerCase().includes(q));
+  const visRooms = rooms.filter((r) => !roomFilter || r.id === roomFilter);
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Пошук предмета по всьому дому…" className="w-full rounded-2xl border border-indigo-100 bg-white py-2.5 pl-10 pr-9 text-sm shadow-sm focus:border-indigo-300 focus:outline-none" />
+        {query && <button onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"><X className="h-4 w-4" /></button>}
+      </div>
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <select value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)} className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 focus:outline-none"><option value="">Усі кімнати</option>{rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+        <button onClick={() => setStatusFilter("")} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${!statusFilter ? "bg-slate-800 text-white ring-slate-800" : "bg-white text-slate-500 ring-slate-200"}`}>Усі статуси</button>
+        {INV_STATUSES.map((s) => <button key={s.id} onClick={() => setStatusFilter(statusFilter === s.id ? "" : s.id)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${statusFilter === s.id ? `${s.bg} ${s.text} ${s.ring}` : "bg-white text-slate-500 ring-slate-200"}`}>{s.label}</button>)}
+      </div>
+      {visRooms.map((r) => {
+        const roomItems = items.filter((it) => it.roomId === r.id && match(it));
+        if (!roomItems.length && (statusFilter || q)) return null;
+        const c = roomStats(r.id); const decided = c.total - c.undec;
+        return (
+          <div key={r.id} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-indigo-50">
+            <button onClick={() => setCollapsed((m) => ({ ...m, [r.id]: !m[r.id] }))} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
+              <span className="min-w-0 flex-1"><span className="block truncate font-extrabold text-slate-800">{r.name}</span><span className="block text-xs text-slate-400">{decided} з {c.total} вирішено</span></span>
+              <span className="text-sm font-bold tabular-nums text-indigo-600">{Math.round(c.readiness * 100)}%</span>
+              {collapsed[r.id] ? <ChevronRight className="h-4 w-4 text-slate-300" /> : <ChevronDown className="h-4 w-4 text-slate-300" />}
+            </button>
+            {!collapsed[r.id] && (
+              <div className="border-t border-slate-100">
+                {r.sections.map((sec) => {
+                  const secItems = items.filter((it) => it.secId === sec.id && match(it));
+                  if (!secItems.length) return null;
+                  const sTotal = items.filter((it) => it.secId === sec.id).length;
+                  const sDecided = items.filter((it) => it.secId === sec.id && it.status !== "Не вирішено").length;
+                  return (
+                    <div key={sec.id}>
+                      <div className="flex items-center justify-between bg-slate-50/70 px-4 py-1.5"><span className="text-xs font-bold text-slate-500">{sec.name}</span><span className="text-[11px] text-slate-400">{sDecided}/{sTotal}</span></div>
+                      <div className="divide-y divide-slate-50">
+                        {secItems.map((it) => <InvItemRow key={it.id} item={it} onStatus={onStatus} onEdit={() => onEdit(it)} onDelete={() => onDelete(it.id)} />)}
+                        {!statusFilter && !q && <button onClick={() => onAddItem(r.id, sec.id)} className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-xs font-medium text-indigo-600 hover:bg-indigo-50"><Plus className="h-3.5 w-3.5" /> Предмет</button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InvToBuy({ rooms, toBuy, onAcquire, onCopy, onSendBudget }) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-100">
+        <div><div className="text-lg font-extrabold text-slate-900">Купити для дому</div><div className="text-sm text-slate-400">{toBuy.length} позицій · познач ✓ коли придбала</div></div>
+        <ShoppingCart className="h-8 w-8 text-amber-400" />
+      </div>
+      {toBuy.length === 0 ? (
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-indigo-50">Нічого купувати 🎉 Постав комусь статус «Купити» в переліку.</div>
+      ) : (<>
+        <div className="flex gap-2">
+          <button onClick={onCopy} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:ring-indigo-200"><ClipboardPaste className="h-4 w-4" /> Копіювати списком</button>
+          <button onClick={onSendBudget} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:ring-emerald-200"><ShoppingBasket className="h-4 w-4" /> У Budget</button>
+        </div>
+        {rooms.map((r) => { const list = toBuy.filter((it) => it.roomId === r.id); if (!list.length) return null; return (
+          <div key={r.id}>
+            <div className="mb-1.5 px-1 text-sm font-bold text-slate-600">{r.name}</div>
+            <div className="space-y-2">
+              {list.map((it) => (
+                <button key={it.id} onClick={() => onAcquire(it.id)} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3.5 text-left shadow-sm ring-1 ring-slate-100 transition hover:ring-green-200">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-slate-300 text-transparent hover:border-green-400"><Check className="h-4 w-4" /></span>
+                  <span className="min-w-0 flex-1"><span className="block truncate font-semibold text-slate-800">{it.name}</span>{it.rec && <span className="block text-xs text-slate-400">реком.: {it.rec}</span>}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ); })}
+      </>)}
+    </div>
+  );
+}
+
+function InvItemEditor({ item, rooms, roomId, secId, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(item?.name || "");
+  const [rec, setRec] = useState(item?.rec || "");
+  const [where, setWhere] = useState(item?.where || "");
+  const [status, setStatus] = useState(item?.status || "Не вирішено");
+  const [notes, setNotes] = useState(item?.notes || "");
+  const [rid, setRid] = useState(item?.roomId || roomId || rooms[0]?.id);
+  const room = rooms.find((r) => r.id === rid);
+  const [sid, setSid] = useState(item?.secId || secId || room?.sections[0]?.id);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{item ? "Редагувати" : "Новий предмет"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва предмета" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-indigo-400 focus:outline-none" />
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Рекомендовано</span><input value={rec} onChange={(e) => setRec(e.target.value)} placeholder="напр. 2–4" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Статус</span><select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{INV_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
+        </div>
+        <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Де є вдома</span><input value={where} onChange={(e) => setWhere(e.target.value)} placeholder="напр. в шафі на верхній полиці" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none" /></label>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Кімната</span><select value={rid} onChange={(e) => { setRid(e.target.value); const rr = rooms.find((x) => x.id === e.target.value); setSid(rr?.sections[0]?.id); }} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Розділ</span><select value={sid} onChange={(e) => setSid(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{(room?.sections || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+        </div>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Нотатки (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none" />
+        <div className="flex gap-2">
+          <button onClick={() => { if (name.trim() && rid && sid) onSave({ name: name.trim(), rec: rec.trim(), where: where.trim(), status, notes: notes.trim(), roomId: rid, secId: sid }); }} className="flex-1 rounded-2xl bg-indigo-500 py-3 font-bold text-white hover:bg-indigo-600">Зберегти</button>
+          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-rose-50 px-4 py-3 font-semibold text-rose-500 hover:bg-rose-100"><Trash2 className="h-5 w-5" /></button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvManager({ rooms, onClose, onAddRoom, onRenameRoom, onDeleteRoom, onMoveRoom, onAddSection, onRenameSection, onDeleteSection, onMoveSection }) {
+  const [newRoom, setNewRoom] = useState("");
+  const [openRoom, setOpenRoom] = useState(null);
+  const [newSec, setNewSec] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">Кімнати й розділи</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="space-y-2">
+          {rooms.map((r, i) => (
+            <div key={r.id} className="rounded-xl bg-slate-50 p-2">
+              <div className="flex items-center gap-2">
+                <input value={r.name} onChange={(e) => onRenameRoom(r.id, e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-semibold focus:border-indigo-400 focus:outline-none" />
+                <div className="flex shrink-0 flex-col"><button onClick={() => onMoveRoom(r.id, -1)} disabled={i === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 -rotate-90" /></button><button onClick={() => onMoveRoom(r.id, 1)} disabled={i === rooms.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 rotate-90" /></button></div>
+                <button onClick={() => setOpenRoom(openRoom === r.id ? null : r.id)} className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-indigo-500 hover:bg-indigo-50">розділи</button>
+                <button onClick={() => { if (confirm(`Видалити «${r.name}» і всі її предмети?`)) onDeleteRoom(r.id); }} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+              </div>
+              {openRoom === r.id && (
+                <div className="mt-2 space-y-1.5 border-t border-slate-200 pt-2">
+                  {r.sections.map((s, si) => (
+                    <div key={s.id} className="flex items-center gap-2">
+                      <input value={s.name} onChange={(e) => onRenameSection(r.id, s.id, e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none" />
+                      <div className="flex shrink-0 flex-col"><button onClick={() => onMoveSection(r.id, s.id, -1)} disabled={si === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3 w-3 -rotate-90" /></button><button onClick={() => onMoveSection(r.id, s.id, 1)} disabled={si === r.sections.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3 w-3 rotate-90" /></button></div>
+                      <button onClick={() => { if (confirm("Видалити розділ і його предмети?")) onDeleteSection(r.id, s.id); }} className="shrink-0 text-slate-300 hover:text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2"><input value={openRoom === r.id ? newSec : ""} onChange={(e) => setNewSec(e.target.value)} placeholder="Новий розділ" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none" /><button onClick={() => { if (newSec.trim()) { onAddSection(r.id, newSec); setNewSec(""); } }} className="shrink-0 rounded-full bg-slate-700 px-2.5 py-1 text-xs font-semibold text-white">+</button></div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-slate-300 p-2">
+          <input value={newRoom} onChange={(e) => setNewRoom(e.target.value)} placeholder="Нова кімната" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-indigo-400 focus:outline-none" />
+          <button onClick={() => { if (newRoom.trim()) { onAddRoom(newRoom); setNewRoom(""); } }} className="shrink-0 rounded-full bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-900">Додати</button>
         </div>
       </div>
     </div>
