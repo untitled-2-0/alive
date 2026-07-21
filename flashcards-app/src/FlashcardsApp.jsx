@@ -5461,34 +5461,72 @@ function GroundingPractice({ onExit, onDone }) {
 }
 
 /* ---------- Thought record (CBT) ---------- */
+// Stable, module-level field so the textarea keeps focus while typing whole sentences.
+function TRField({ label, hint, rows = 2, value, onChange }) {
+  return (
+    <label className="block"><span className="mb-1 block text-sm font-semibold text-slate-700">{label}</span>{hint && <span className="mb-1 block text-xs text-slate-400">{hint}</span>}
+      <textarea value={value} onChange={onChange} rows={rows} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100" /></label>
+  );
+}
+
+// "How it works" guide — collapsible, calm, verbatim CBT walkthrough.
+function ThoughtGuide() {
+  const rows = [
+    ["Ситуація", "сухо й конкретно, що сталося, як зняла б камера. Не «все жахливо», а «написала колезі о 14:00, він не відповів дві години». Тільки факти, без тлумачень."],
+    ["Автоматична думка", "що миттєво промайнуло в голові, дослівно: «він на мене злий», «я всіх підвела». Саме цю думку будемо перевіряти. Часто вона категорична — «завжди», «ніколи», «всі»."],
+    ["Емоція + %", "назви почуття (тривога, сором, злість) і постав інтенсивність повзунком. Це точка «до». Наприкінці порівняєш — і майже завжди відсоток падає, навіть якщо думка не зникла повністю."],
+    ["Докази за", "чесно: що реально підтверджує думку? Тільки факти, не здогади. Часто виявляється, що «за» — це сама тривога, а твердих фактів обмаль."],
+    ["Докази проти", "серце техніки, тут не лінуйся. Що суперечить думці? Що я забуваю, коли панікую? Опори: чи є інші пояснення? чи бувало інакше й обійшлося? що б я сказала подрузі з такою думкою? найгірший сценарій справді ймовірний — чи просто можливий?"],
+    ["Врівноважена думка", "не «все чудово!» (це фальш, мозок не повірить), а тверезіший, добріший погляд, що враховує і «за», і «проти»: не «він мене ненавидить», а «можливо, він зайнятий; якщо є проблема — з'ясую, коли відповість»."],
+  ];
+  return (
+    <div className="mt-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-violet-100">
+      <h2 className="text-lg font-extrabold text-slate-900">Як працювати з журналом думок</h2>
+      <p className="mt-2 text-sm leading-relaxed text-slate-600">Це техніка з когнітивно-поведінкової терапії. Тривожна думка здається фактом, а насправді це лише одна з версій. Коли ти виносиш її на папір і розкладаєш по поличках — вона втрачає владу.</p>
+      <p className="mt-3 text-sm leading-relaxed text-slate-600"><b className="font-semibold text-slate-800">Головне:</b> заповнюй у момент, коли накрило, або одразу після — не «колись увечері». Свіжа емоція і є той матеріал, з яким працюєш. Іди полями зверху вниз.</p>
+      <div className="mt-3 space-y-2.5">
+        {rows.map(([name, body]) => (
+          <div key={name} className="rounded-xl bg-violet-50/60 p-3">
+            <span className="text-sm font-bold text-violet-800">{name}</span>
+            <span className="text-sm leading-relaxed text-slate-600"> — {body}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-sm leading-relaxed text-slate-600"><b className="font-semibold text-slate-800">Наприкінці:</b> ще раз глянь на емоцію — скільки % тепер? Це зниження і є результат.</p>
+      <p className="mt-3 text-sm leading-relaxed text-slate-600"><b className="font-semibold text-slate-800">Два моменти:</b> не пиши ідеально — криві формулювання нормально, сенс у тому, щоб витягти думку з голови, а не скласти твір. І веди регулярно — на дистанції побачиш, які думки й ситуації запускають тебе найчастіше.</p>
+      <p className="mt-4 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-400">Журнал думок добре доповнює терапію, але не замінює її. Якщо тривога тримається тижнями або заважає функціонувати — це сигнал звернутися до фахівця, а не слабкість.</p>
+    </div>
+  );
+}
+
 function ThoughtRecord({ thoughts, onExit, onSave, onDelete }) {
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ situation: "", thought: "", emotion: "", intensity: 60, forEv: "", against: "", balanced: "" });
+  const [guideOpen, setGuideOpen] = useState(false);
   const startRef = useRef(Date.now());
+  useEffect(() => { let on = true; store.get("calm:trGuideOpen", false).then((v) => { if (on) setGuideOpen(!!v); }); return () => { on = false; }; }, []);
+  const toggleGuide = () => setGuideOpen((v) => { const nv = !v; store.set("calm:trGuideOpen", nv); return nv; });
+  const setField = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
   const save = () => {
     if (!f.thought.trim() && !f.situation.trim()) return;
     onSave({ id: ruid("tr"), date: dateKey(Date.now()), ...f }, Math.round((Date.now() - startRef.current) / 1000));
     setOpen(false); setF({ situation: "", thought: "", emotion: "", intensity: 60, forEv: "", against: "", balanced: "" });
   };
-  const Field = ({ label, hint, k, rows = 2 }) => (
-    <label className="block"><span className="mb-1 block text-sm font-semibold text-slate-700">{label}</span>{hint && <span className="mb-1 block text-xs text-slate-400">{hint}</span>}
-      <textarea value={f[k]} onChange={(e) => setF((s) => ({ ...s, [k]: e.target.value }))} rows={rows} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100" /></label>
-  );
 
   if (open) return (
     <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
       <CalmHeader title="Журнал думок" onExit={() => setOpen(false)} />
       <div className="space-y-3">
-        <Field label="Ситуація" hint="Що відбувалося?" k="situation" />
-        <Field label="Автоматична думка" hint="Що промайнуло в голові?" k="thought" />
+        <TRField label="Ситуація" hint="Що відбувалося?" value={f.situation} onChange={setField("situation")} />
+        <TRField label="Автоматична думка" hint="Що промайнуло в голові?" value={f.thought} onChange={setField("thought")} />
         <div className="rounded-xl bg-white p-3 ring-1 ring-slate-100">
           <div className="mb-1 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Емоція</span><span className="text-sm font-bold text-violet-600 tabular-nums">{f.intensity}%</span></div>
           <input value={f.emotion} onChange={(e) => setF((s) => ({ ...s, emotion: e.target.value }))} placeholder="напр. тривога, сум" className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-violet-400 focus:outline-none" />
           <input type="range" min={0} max={100} value={f.intensity} onChange={(e) => setF((s) => ({ ...s, intensity: +e.target.value }))} className="w-full accent-violet-500" />
         </div>
-        <Field label="Докази за цю думку" k="forEv" />
-        <Field label="Докази проти неї" k="against" />
-        <Field label="Врівноважена думка" hint="Добріший, реалістичніший погляд" k="balanced" />
+        <TRField label="Докази за цю думку" value={f.forEv} onChange={setField("forEv")} />
+        <TRField label="Докази проти неї" value={f.against} onChange={setField("against")} />
+        <TRField label="Врівноважена думка" hint="Добріший, реалістичніший погляд" value={f.balanced} onChange={setField("balanced")} />
         <button onClick={save} className="w-full rounded-2xl bg-violet-500 py-3 font-bold text-white hover:bg-violet-600">Зберегти запис</button>
       </div>
     </div>
@@ -5497,6 +5535,11 @@ function ThoughtRecord({ thoughts, onExit, onSave, onDelete }) {
   return (
     <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
       <CalmHeader title="Журнал думок" onExit={onExit} right={<button onClick={() => { startRef.current = Date.now(); setOpen(true); }} className="inline-flex items-center gap-1 rounded-full bg-violet-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-violet-600"><Plus className="h-4 w-4" /> Новий</button>} />
+      <button onClick={toggleGuide} className="mb-1 inline-flex items-center gap-1 text-sm font-semibold text-violet-600 hover:text-violet-700">
+        <Info className="h-4 w-4" /> Як це працює {guideOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+      </button>
+      {guideOpen && <ThoughtGuide />}
+      <div className="mt-3" />
       {thoughts.length === 0 ? (
         <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-violet-50">Записів ще немає. Злови тривожну думку і розплутай її.</div>
       ) : (
