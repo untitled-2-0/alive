@@ -589,6 +589,7 @@ const RKEYS = {
   seeded: "routine:seeded",
   xp: "routine:xp",         // { xp: number }
   rewards: "routine:rewards", // [{ id, label, cost, unlockedAt }]
+  pomo: "routine:pomo",      // { work, break } Pomodoro settings
 };
 const cKey = (date) => `routine:completions:${date}`;
 
@@ -679,17 +680,18 @@ async function loadRoutineData() {
   const moods = await store.get(RKEYS.mood, {});
   const xp = await store.get(RKEYS.xp, { xp: 0 });
   const rewards = await store.get(RKEYS.rewards, []);
+  const pomo = await store.get(RKEYS.pomo, { work: 25, break: 5 });
   const completions = {};
   for (const d of cindex) {
     const doc = await store.get(cKey(d), null);
     if (doc) completions[d] = doc;
   }
-  return { tasks, categories, cindex, completions, streak, moods, xp, rewards };
+  return { tasks, categories, cindex, completions, streak, moods, xp, rewards, pomo };
 }
 
 async function collectRoutineExport() {
   const d = await loadRoutineData();
-  return { tasks: d.tasks || [], categories: d.categories || [], completions: d.completions, streak: d.streak, moods: d.moods, xp: d.xp, rewards: d.rewards };
+  return { tasks: d.tasks || [], categories: d.categories || [], completions: d.completions, streak: d.streak, moods: d.moods, xp: d.xp, rewards: d.rewards, pomo: d.pomo };
 }
 
 async function clearRoutineData() {
@@ -4316,6 +4318,8 @@ function RoutineSection() {
   const [recapOpen, setRecapOpen] = useState(false);
   const [levelUp, setLevelUp] = useState(null);
   const [energyFilter, setEnergyFilter] = useState(null); // null | "quick" | "low"
+  const [pomo, setPomo] = useState(null); // { task, mode: "2min" | "pomodoro" }
+  const [pomoSettings, setPomoSettings] = useState({ work: 25, break: 5 });
   const timerRef = useRef(null);
 
   const today = dateKey(Date.now());
@@ -4335,6 +4339,7 @@ function RoutineSection() {
     setTasks(d.tasks || []); setCategories(d.categories || []); setCompletions(d.completions);
     setCindex(d.cindex); setStreakMeta(d.streak || { best: 0, lastCelebrated: "" }); setMoods(d.moods || {});
     setXp((d.xp && d.xp.xp) || 0); setRewards(d.rewards || []);
+    setPomoSettings(d.pomo || { work: 25, break: 5 });
     setLoading(false);
   }, []);
 
@@ -4525,6 +4530,8 @@ function RoutineSection() {
   const dismissChallenge = useCallback(async (cid) => { const d = { ...(completionsRef.current[selDate] || {}) }; d.ch = { dismissed: { ...(d.ch?.dismissed || {}), [cid]: true }, awarded: { ...(d.ch?.awarded || {}) } }; await persistCompletion(selDate, d); }, [completions, selDate, persistCompletion]);
   const carryOver = useCallback(async () => { const tomorrow = dateKey(Date.now() + 86400000); const ids = new Set(carryList.map((c) => c.id)); await saveTasks(tasks.map((t) => (ids.has(t.id) ? { ...t, date: tomorrow } : t))); setRecapOpen(false); flash("Перенесено на завтра 💛"); }, [tasks, carryList, saveTasks, flash]);
   const focusDone = useCallback(async (task) => { const d = { ...(completionsRef.current[selDate] || {}) }; d.tasks = { ...(d.tasks || {}), [task.id]: true }; await commitDoc(d); maybeCelebrate({ ...completions, [selDate]: d }); }, [completions, selDate, commitDoc, maybeCelebrate]);
+  const logPomo = useCallback((taskId, secs) => { const d = { ...(completionsRef.current[selDate] || {}) }; d.pomo = { ...(d.pomo || {}) }; d.pomo[taskId] = (d.pomo[taskId] || 0) + secs; persistCompletion(selDate, d); flash(`Записано ${Math.round(secs / 60)} хв роботи 🍅`); }, [selDate, persistCompletion, flash]);
+  const savePomoSettings = useCallback((s) => { setPomoSettings(s); store.set(RKEYS.pomo, s); }, []);
 
   if (loading) {
     return <div className="flex flex-1 items-center justify-center text-pink-400"><div className="flex flex-col items-center gap-3"><Sun className="h-8 w-8 animate-pulse" /><span className="text-sm">Loading your routine…</span></div></div>;
@@ -4631,7 +4638,7 @@ function RoutineSection() {
             ) : shownTasks.map((t) => (
               <TaskCard key={t.id} task={t} done={!!doc.tasks?.[t.id]} doc={doc}
                 timer={timer?.taskId === t.id ? timer : null}
-                onToggle={() => toggleTask(t.id)} onOpen={() => setDetailId(t.id)} onStartTimer={() => startTimer(t)} onStopTimer={() => stopTimer(true)} />
+                onToggle={() => toggleTask(t.id)} onOpen={() => setDetailId(t.id)} onStartTimer={() => startTimer(t)} onStopTimer={() => stopTimer(true)} onTwoMin={() => setPomo({ task: t, mode: "2min" })} />
             ))}
           </div>
         </div>
@@ -4674,8 +4681,12 @@ function RoutineSection() {
           onDelete={() => { if (confirm("Delete this task?")) { deleteTask(detailTask.id); setDetailId(null); } }}
           onToggle={() => toggleTask(detailTask.id)}
           onToggleSub={(sid) => toggleSubtask(detailTask.id, sid)}
-          onStartTimer={() => startTimer(detailTask)} onStopTimer={() => stopTimer(true)} />
+          onStartTimer={() => startTimer(detailTask)} onStopTimer={() => stopTimer(true)}
+          onTwoMin={() => { setPomo({ task: detailTask, mode: "2min" }); setDetailId(null); }}
+          onPomodoro={() => { setPomo({ task: detailTask, mode: "pomodoro" }); setDetailId(null); }} />
       )}
+
+      {pomo && <RoutinePomodoro task={pomo.task} mode={pomo.mode} settings={pomoSettings} onClose={() => setPomo(null)} onLog={logPomo} onSaveSettings={savePomoSettings} />}
 
       {/* task editor */}
       {taskEditor && (
@@ -4737,7 +4748,7 @@ function WeekStrip({ selDate, today, completions, tasks, onPick }) {
   );
 }
 
-function TaskCard({ task, done, doc, timer, onToggle, onOpen, onStartTimer, onStopTimer }) {
+function TaskCard({ task, done, doc, timer, onToggle, onOpen, onStartTimer, onStopTimer, onTwoMin }) {
   const p = getPastel(task.color);
   const timed = task.goal?.type === "timed";
   const goalSecs = timer ? timer.elapsed : (doc.goal?.[task.id] || 0);
@@ -4760,6 +4771,7 @@ function TaskCard({ task, done, doc, timer, onToggle, onOpen, onStartTimer, onSt
           {done && task.estMin > 0 && goalSecs > 0 && <span className="rounded-full bg-white/70 px-1.5 font-medium opacity-90">оцінка {task.estMin}хв · факт {Math.max(1, Math.round(goalSecs / 60))}хв</span>}
         </div>
       </button>
+      {!done && !timer && onTwoMin && <button onClick={onTwoMin} title="Почни з 2 хвилин" className="grid h-9 shrink-0 place-items-center rounded-full bg-white/80 px-2.5 text-[11px] font-bold" style={{ color: p.ink }}>▶ 2хв</button>}
       {timed && !done && (
         timer ? (
           <button onClick={onStopTimer} className="grid h-9 w-16 shrink-0 place-items-center rounded-full bg-white/80 text-xs font-bold tabular-nums" style={{ color: p.ink }}>{fmt(timer.target - timer.elapsed)}</button>
@@ -4774,11 +4786,13 @@ function TaskCard({ task, done, doc, timer, onToggle, onOpen, onStartTimer, onSt
   );
 }
 
-function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onToggle, onToggleSub, onStartTimer, onStopTimer }) {
+function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onToggle, onToggleSub, onStartTimer, onStopTimer, onTwoMin, onPomodoro }) {
   const p = getPastel(task.color);
   const done = !!doc.tasks?.[task.id];
   const timed = task.goal?.type === "timed";
   const goalSecs = timer ? timer.elapsed : (doc.goal?.[task.id] || 0);
+  const pomoSecs = doc.pomo?.[task.id] || 0;
+  const noSteps = !(task.subtasks?.length > 0);
   const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
@@ -4799,6 +4813,25 @@ function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onT
         {task.image && <img src={task.image} alt="" className="mb-3 max-h-80 w-full rounded-2xl object-contain bg-slate-50" />}
         {task.note && <p className="mb-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">{task.note}</p>}
         <p className="mb-3 text-sm text-slate-500">{repeatWords(task)}</p>
+
+        {/* ADHD low-barrier start */}
+        {!done && (
+          <div className="mb-3 rounded-2xl bg-rose-50/70 p-3">
+            {task.twoMin && <div className="mb-2 text-sm text-slate-600"><span className="font-semibold text-slate-800">Версія на 2 хв:</span> {task.twoMin}</div>}
+            <div className="flex gap-2">
+              <button onClick={onTwoMin} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-pink-500 py-2.5 text-sm font-bold text-white hover:bg-pink-600">🌱 Почни з 2 хв</button>
+              <button onClick={onPomodoro} className="flex items-center justify-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-600 ring-1 ring-slate-200 hover:ring-pink-200">🍅 Помодоро</button>
+            </div>
+            <p className="mt-1.5 text-center text-[11px] text-slate-400">Не мусиш робити все — лише 2 хвилини. Далі саме піде.</p>
+          </div>
+        )}
+        {pomoSecs > 0 && <p className="mb-3 text-xs font-medium text-pink-500">🍅 відпрацьовано {Math.round(pomoSecs / 60)} хв</p>}
+
+        {noSteps && (
+          <button onClick={onEdit} className="mb-3 flex w-full items-center gap-2 rounded-2xl border border-dashed border-slate-300 px-3 py-2.5 text-left text-sm text-slate-500 hover:bg-slate-50">
+            <span className="text-lg">🧩</span><span className="flex-1">Велика чи розмита задача? Розбий на маленькі кроки — так легше почати.</span><ChevronRight className="h-4 w-4 text-slate-300" />
+          </button>
+        )}
 
         {timed && (
           <div className="mb-3 flex items-center gap-3 rounded-2xl p-3" style={{ backgroundColor: p.card }}>
@@ -4861,6 +4894,7 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
   const [subs, setSubs] = useState(task?.subtasks?.map((s) => ({ ...s })) || []);
   const [subText, setSubText] = useState("");
   const [estMin, setEstMin] = useState(task?.estMin || 0);
+  const [twoMin, setTwoMin] = useState(task?.twoMin || "");
   const [energy, setEnergy] = useState(task?.energy || "");
 
   const toggleDay = (d) => setDays((ds) => (ds.includes(d) ? ds.filter((x) => x !== d) : [...ds, d]));
@@ -4875,7 +4909,7 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
       repeat, time: anytime ? null : time, reminder: reminderOn ? reminder : null, categoryId,
       goal: goalOn ? { type: "timed", minutes: goalMin } : { type: "off" },
       subtasks: subs.filter((s) => s.text.trim()),
-      estMin: estMin || 0, energy: energy || null,
+      estMin: estMin || 0, energy: energy || null, twoMin: twoMin.trim(),
     });
   };
 
@@ -4931,6 +4965,12 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
           <div className="flex gap-2">
             {Object.entries(ENERGY).map(([k, v]) => <button key={k} onClick={() => setEnergy(energy === k ? "" : k)} className={`flex-1 rounded-xl px-2 py-2 text-xs font-semibold ring-1 transition ${energy === k ? "bg-pink-50 text-slate-800 ring-pink-300" : "bg-white text-slate-500 ring-slate-200 hover:ring-pink-200"}`}>{v.emoji} {v.label}</button>)}
           </div>
+        </div>
+
+        {/* 2-minute starter */}
+        <div className="mb-3">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">Версія на 2 хвилини <span className="text-slate-400">(крихітний перший крок, щоб зрушити)</span></div>
+          <input value={twoMin} onChange={(e) => setTwoMin(e.target.value)} placeholder="напр. «Прибрати кухню» → просто звільнити раковину" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none" />
         </div>
 
         <div className="space-y-3">
@@ -8127,6 +8167,90 @@ function RecoveryLog({ init, onClose, onSave }) {
         <div className="mb-3 flex flex-wrap gap-2">{REC_MOODS.map((m) => <Chip key={m} on={moods.includes(m)} onClick={() => toggle(moods, m, setMoods)}>{m}</Chip>)}</div>
         <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Що ще? (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-teal-400 focus:outline-none" />
         <button onClick={() => onSave({ substance, type, time, stress, company, moods, note: note.trim() })} className="w-full rounded-2xl bg-teal-500 py-3 font-bold text-white hover:bg-teal-600">{type === "slip" ? "Записати зрив (стрік почнеться заново)" : "Записати"}</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Routine Pomodoro + 2-minute starter (ADHD low-barrier start) ---------- */
+function RoutinePomodoro({ task, mode, settings, onClose, onLog, onSaveSettings }) {
+  const [stage, setStage] = useState(mode === "pomodoro" ? "setup" : "work"); // setup | work | break | done
+  const [workMin, setWorkMin] = useState(settings.work || 25);
+  const [breakMin, setBreakMin] = useState(settings.break || 5);
+  const [left, setLeft] = useState(120);
+  const [cycles, setCycles] = useState(0);
+  const worked = useRef(0);
+  const iv = useRef(null);
+  const p = getPastel(task.color);
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, s % 60)).padStart(2, "0")}`;
+
+  const run = (secs, isBreak) => {
+    clearInterval(iv.current);
+    setLeft(secs); setStage(isBreak ? "break" : "work");
+    iv.current = setInterval(() => setLeft((l) => {
+      if (!isBreak) worked.current += 1;
+      if (l <= 1) { clearInterval(iv.current); phaseEnd(isBreak); return 0; }
+      return l - 1;
+    }), 1000);
+  };
+  const phaseEnd = (wasBreak) => {
+    if (mode === "2min") { setStage("done"); return; }
+    if (!wasBreak) { setCycles((c) => c + 1); run(breakMin * 60, true); }
+    else run(workMin * 60, false);
+  };
+  useEffect(() => { if (mode === "2min") run(120, false); return () => clearInterval(iv.current); /* eslint-disable-next-line */ }, []);
+  const finish = () => { clearInterval(iv.current); if (worked.current >= 5) onLog(task.id, Math.round(worked.current)); onClose(); };
+  const startPomodoro = () => { onSaveSettings({ work: workMin, break: breakMin }); run(workMin * 60, false); };
+
+  if (mode === "pomodoro" && stage === "setup") {
+    return (
+      <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
+        <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="text-4xl">🍅</div>
+          <h3 className="mt-2 text-lg font-extrabold text-slate-900">Помодоро</h3>
+          <p className="mt-0.5 truncate text-sm text-slate-500">{task.title}</p>
+          <div className="my-4 flex justify-center gap-4">
+            <label className="text-sm"><div className="mb-1 text-xs text-slate-400">Робота</div><input type="number" min={1} max={90} value={workMin} onChange={(e) => setWorkMin(Math.max(1, Math.min(90, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-center text-sm" /> <span className="text-xs text-slate-400">хв</span></label>
+            <label className="text-sm"><div className="mb-1 text-xs text-slate-400">Перерва</div><input type="number" min={1} max={30} value={breakMin} onChange={(e) => setBreakMin(Math.max(1, Math.min(30, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-center text-sm" /> <span className="text-xs text-slate-400">хв</span></label>
+          </div>
+          <button onClick={startPomodoro} className="w-full rounded-2xl bg-pink-500 py-3 font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-600">Почати</button>
+          <button onClick={onClose} className="mt-2 w-full py-2 text-sm font-semibold text-slate-400">Скасувати</button>
+        </div>
+      </div>
+    );
+  }
+
+  const isBreak = stage === "break";
+  const done2 = mode === "2min" && stage === "done";
+  return (
+    <div className="fixed inset-0 z-[55] flex flex-col bg-gradient-to-b from-rose-50 to-pink-100 p-6">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-bold text-slate-400">{mode === "2min" ? "Старт на 2 хвилини" : `Помодоро · коло ${cycles + 1}`}</span>
+        <button onClick={finish} className="rounded-full bg-white/70 p-2 text-slate-500"><X className="h-5 w-5" /></button>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <div className="grid h-20 w-20 place-items-center rounded-3xl text-4xl shadow-lg" style={{ backgroundColor: p.card }}>{task.emoji || "⭐"}</div>
+        <h1 className="mt-4 max-w-md text-2xl font-extrabold text-slate-900">{task.title}</h1>
+        {done2 ? (
+          <>
+            <div className="mt-4 text-5xl">🎉</div>
+            <p className="mt-2 max-w-xs text-lg font-bold text-slate-800">Ти почала — це найважче!</p>
+            <p className="mt-1 max-w-xs text-sm text-slate-500">Початок зроблено. Хочеш проїхати ще трохи на цій хвилі?</p>
+            <div className="mt-5 flex gap-2">
+              <button onClick={() => run(300, false)} className="rounded-2xl bg-pink-500 px-5 py-3 font-bold text-white shadow-lg shadow-pink-500/20">Ще 5 хвилин</button>
+              <button onClick={finish} className="rounded-2xl bg-white px-5 py-3 font-bold text-slate-500 ring-1 ring-slate-200">Досить на зараз</button>
+            </div>
+          </>
+        ) : (
+          <>
+            {mode === "2min" && task.twoMin && <p className="mt-2 max-w-sm rounded-2xl bg-white/70 px-4 py-2 text-sm font-semibold text-slate-700">Тільки це: {task.twoMin}</p>}
+            {mode === "2min" && !task.twoMin && <p className="mt-2 max-w-sm text-sm text-slate-500">Просто почни. Дозволено зробити абияк — головне рушити.</p>}
+            <div className={`mt-6 grid h-56 w-56 place-items-center rounded-full text-white ${isBreak ? "bg-gradient-to-br from-sky-300 to-teal-300" : "bg-gradient-to-br from-pink-400 to-fuchsia-400"}`}>
+              <div className="text-center"><div className="text-xs font-semibold uppercase tracking-widest text-white/80">{isBreak ? "Перерва" : "Робота"}</div><div className="text-6xl font-black tabular-nums">{fmt(left)}</div></div>
+            </div>
+            <button onClick={finish} className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200"><Check className="h-4 w-4" /> Завершити{worked.current >= 60 ? ` (${Math.round(worked.current / 60)} хв)` : ""}</button>
+          </>
+        )}
       </div>
     </div>
   );
