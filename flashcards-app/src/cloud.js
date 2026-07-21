@@ -100,3 +100,12 @@ export async function signOutCloud() {
   try { await supabase.auth.signOut(); } catch { /* ignore */ }
   user = null;
 }
+
+// Force a full two-way sync: push local up, then pull remote down.
+export async function syncNow() {
+  if (!user) return { ok: false };
+  await flush();
+  await pushAllLocal();
+  await pullToLocal();
+  return { ok: true };
+}

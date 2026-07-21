@@ -18,9 +18,9 @@ import {
   Leaf, Pause, SkipForward, ListTree, Heart, Sparkle,
   Coffee, Droplet, Scale, ShieldAlert, Info, Square, TrendingDown,
   Utensils, GlassWater, LineChart as LineChartIcon, Cloud, CloudOff, LogOut, Mail,
-  Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft,
+  Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft, RefreshCw,
 } from "lucide-react";
-import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signOutCloud, refreshSession } from "./cloud.js";
+import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signOutCloud, refreshSession, syncNow } from "./cloud.js";
 
 /* ------------------------------------------------------------------ */
 /* Constants + tiny utils                                              */
@@ -932,6 +932,7 @@ export default function FlashcardsApp() {
   const [calmName, setCalmName] = useState("Calm");
   const [fastingName, setFastingName] = useState("Fasting");
   const [mgmtName, setMgmtName] = useState("Менеджмент");
+  const [cloudState, setCloudState] = useState({ signedIn: false, email: null, syncing: false });
   const [toast, setToast] = useState(null);
   const [deckEditor, setDeckEditor] = useState(null); // null | { deck } (deck=null → create)
   const [groupEditor, setGroupEditor] = useState(null); // null | { group } (group=null → create)
@@ -1004,6 +1005,18 @@ export default function FlashcardsApp() {
       return next;
     });
   }, [section]);
+
+  // cloud sync status for the sidebar indicator
+  useEffect(() => {
+    (async () => { await refreshSession(); setCloudState((s) => ({ ...s, signedIn: cloudSignedIn(), email: currentEmail() })); })();
+  }, []);
+
+  const doSyncNow = useCallback(async () => {
+    if (!cloudSignedIn()) { changeSection("studying"); setView("stats"); return; }
+    setCloudState((s) => ({ ...s, syncing: true }));
+    try { await syncNow(); location.reload(); }
+    catch (e) { setCloudState((s) => ({ ...s, syncing: false })); flash("Помилка синхронізації"); }
+  }, [changeSection, flash]);
 
   const renameCalm = useCallback(async (name) => {
     const clean = (name || "").trim() || "Calm";
@@ -1588,6 +1601,8 @@ export default function FlashcardsApp() {
         calmName={calmName}
         fastingName={fastingName}
         mgmtName={mgmtName}
+        cloud={cloudState}
+        onSyncNow={doSyncNow}
       />
 
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
@@ -1782,7 +1797,7 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 /* ------------------------------------------------------------------ */
 /* Sidebar — top-level section navigation                              */
 /* ------------------------------------------------------------------ */
-function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName }) {
+function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, cloud, onSyncNow }) {
   const items = [
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
@@ -1823,9 +1838,30 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
         })}
       </nav>
 
+      {/* cloud sync status */}
+      {cloud && (
+        <button
+          onClick={onSyncNow}
+          disabled={cloud.syncing}
+          title={cloud.signedIn ? `Синхронізовано: ${cloud.email} — натисни, щоб синхронізувати зараз` : "Офлайн — увімкни хмарну синхронізацію"}
+          className={`mx-2 flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition ${cloud.signedIn ? "text-green-600 hover:bg-green-50" : "text-slate-400 hover:bg-slate-100"}`}
+        >
+          <span className="relative shrink-0">
+            {cloud.syncing ? <RefreshCw className="h-4 w-4 animate-spin" /> : cloud.signedIn ? <Cloud className="h-4 w-4" /> : <CloudOff className="h-4 w-4" />}
+            {collapsed && cloud.signedIn && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-green-500 ring-2 ring-white" />}
+          </span>
+          {wide && (
+            <span className="hidden flex-1 items-center justify-between gap-1 lg:flex">
+              <span className="truncate">{cloud.syncing ? "Синхронізація…" : cloud.signedIn ? "Синхронізовано" : "Офлайн"}</span>
+              {cloud.signedIn && !cloud.syncing && <RefreshCw className="h-3.5 w-3.5 shrink-0 opacity-60" />}
+            </span>
+          )}
+        </button>
+      )}
+
       <button
         onClick={onToggle}
-        className="m-2 hidden items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 lg:flex"
+        className="m-2 mt-0 hidden items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 lg:flex"
         title={collapsed ? "Expand" : "Collapse"}
       >
         {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
