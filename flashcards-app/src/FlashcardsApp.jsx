@@ -259,6 +259,330 @@ const STUDY_MODES = [
 ];
 
 /* ------------------------------------------------------------------ */
+/* Languages path: B2 -> C1 curriculum spine + generated lesson cache  */
+/* ------------------------------------------------------------------ */
+const LKEYS = {
+  progress: "languages:progress",
+  xp: "languages:xp",
+  wordStrength: "languages:wordStrength",
+  cacheIndex: "languages:stepCache:index",
+  settings: "languages:settings",
+};
+const langStepKey = (stepId) => `languages:stepCache:${stepId}`;
+
+const LANG_UNITS = [
+  ["Work & Career", "perfect aspects in workplace updates", "work and career collocations", "giving opinions"],
+  ["Technology", "perfect-continuous aspects", "technology and digital habits", "agreeing and disagreeing"],
+  ["Environment", "narrative tenses", "environment and climate vocabulary", "summarising"],
+  ["Health", "all conditionals", "health, symptoms, and lifestyle", "giving advice"],
+  ["Media", "mixed conditionals", "media, news, and misinformation", "hedging"],
+  ["Culture & Society", "wish and if only", "culture and society vocabulary", "persuading"],
+  ["Education", "passive voice nuance", "education and learning systems", "describing advantages"],
+  ["Travel", "causative forms", "travel problems and experiences", "narrating"],
+  ["Money", "reported speech", "money, prices, and value", "negotiating"],
+  ["Science", "relative clauses", "science and research vocabulary", "explaining cause and effect"],
+  ["Emotions", "reduced relative clauses", "emotions and personality", "expressing empathy"],
+  ["Abstract Ideas", "modals of deduction", "abstract nouns and concepts", "hypothesising"],
+  ["Projects", "modals of obligation nuance", "project and deadline collocations", "prioritising"],
+  ["Data", "comparatives and quantifiers", "trends and data language", "describing trends"],
+  ["Stories", "past perfect and narrative sequencing", "storytelling verbs", "narrating"],
+  ["Debate", "articles and determiners nuance", "argument vocabulary", "challenging ideas"],
+  ["Plans", "gerund and infinitive patterns", "future plans and intentions", "planning"],
+  ["Academic Reading", "discourse markers", "academic vocabulary", "summarising arguments"],
+  ["Professional English", "linking and cohesion", "professional idioms", "softening requests"],
+  ["B2 Integration", "B2 grammar review", "B2 phrasal verbs and collocations", "integrated speaking"],
+  ["C1 Work", "inversion after negative adverbials", "advanced workplace nuance", "diplomatic disagreement"],
+  ["C1 Technology", "cleft sentences", "AI, privacy, and innovation", "weighing trade-offs"],
+  ["C1 Environment", "participle clauses", "sustainability and policy", "evaluating evidence"],
+  ["C1 Health", "nominalisation", "public health and wellbeing", "qualified recommendations"],
+  ["C1 Media", "fronting and emphasis", "media bias and framing", "critical response"],
+  ["C1 Society", "advanced relative structures", "social change and identity", "nuanced opinions"],
+  ["C1 Education", "substitution and ellipsis", "lifelong learning", "comparing systems"],
+  ["C1 Travel", "advanced narrative style", "migration and mobility", "reflective narration"],
+  ["C1 Money", "concession clauses", "economics and personal finance", "arguing priorities"],
+  ["C1 Science", "hedging grammar", "scientific uncertainty", "careful claims"],
+  ["C1 Emotions", "stance adverbs", "psychology and personality", "interpreting motives"],
+  ["C1 Abstract Ideas", "advanced determiners", "ethics and philosophy", "building abstractions"],
+  ["C1 Leadership", "conditionals for diplomacy", "leadership collocations", "persuading tactfully"],
+  ["C1 Data", "complex comparison", "research, charts, and datasets", "describing trends precisely"],
+  ["C1 Culture", "emphatic structures", "art, culture, and taste", "reviewing"],
+  ["C1 Academic Writing", "cohesion and reference", "academic word families", "synthesising"],
+  ["C1 Idiom & Register", "register shifts", "idioms and phrasal verbs", "choosing tone"],
+  ["C1 Speaking", "spoken discourse markers", "fluency chunks", "holding the floor"],
+  ["C1 Exam Skills", "complex sentence control", "exam and certification language", "time-boxed answering"],
+  ["C1 Integration", "C1 grammar review", "advanced collocations and idioms", "integrated mastery"],
+].map(([theme, grammar, vocabulary, func], i) => ({ id: i + 1, theme, grammar, vocabulary, func, level: i < 20 ? "B2" : "C1" }));
+
+const LANG_STEP_PATTERNS = [
+  "vocabulary", "grammar", "function", "reading", "listening",
+  "grammar", "vocabulary", "cloze", "translation", "speaking",
+  "vocabulary", "grammar", "function", "reading", "listening",
+  "collocations", "idioms", "phrasal verbs", "academic vocabulary", "data",
+  "grammar", "translation", "review", "test prep", "checkpoint",
+];
+
+const LANG_STEPS = LANG_UNITS.flatMap((unit, unitIndex) =>
+  Array.from({ length: 25 }, (_, stepIndex) => {
+    const kind = LANG_STEP_PATTERNS[stepIndex];
+    const globalIndex = unitIndex * 25 + stepIndex;
+    const checkpoint = stepIndex === 24;
+    const skill =
+      kind === "grammar" ? unit.grammar :
+      kind === "function" || kind === "speaking" ? unit.func :
+      kind === "checkpoint" ? `${unit.theme} checkpoint` :
+      `${unit.vocabulary} (${kind})`;
+    return {
+      id: `lang-u${String(unit.id).padStart(2, "0")}-s${String(stepIndex + 1).padStart(2, "0")}`,
+      unitId: unit.id,
+      unitTitle: unit.theme,
+      index: globalIndex,
+      number: globalIndex + 1,
+      unitStep: stepIndex + 1,
+      level: unit.level,
+      kind,
+      skill,
+      checkpoint,
+      xp: checkpoint ? 35 : 12,
+      title: checkpoint ? `Checkpoint: ${unit.theme}` : `${unit.theme}: ${skill}`,
+    };
+  })
+);
+
+function langCompletedCount(progress) {
+  const done = new Set(progress?.completed || []);
+  let n = 0;
+  for (const step of LANG_STEPS) {
+    if (!done.has(step.id)) break;
+    n += 1;
+  }
+  return n;
+}
+
+function langUnitProgress(progress, unitId) {
+  const done = new Set(progress?.completed || []);
+  const steps = LANG_STEPS.filter((s) => s.unitId === unitId);
+  const completed = steps.filter((s) => done.has(s.id)).length;
+  return { completed, total: steps.length, crowned: completed === steps.length };
+}
+
+function normalizeText(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s'-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sameAnswer(given, answer) {
+  const g = normalizeText(given);
+  const answers = Array.isArray(answer) ? answer : [answer];
+  return answers.some((a) => {
+    const n = normalizeText(a);
+    return n && (g === n || g.includes(n) || n.includes(g));
+  });
+}
+
+function normalizeLanguageItem(item) {
+  if (!item || typeof item !== "object") return null;
+  const type = String(item.type || "multiple_choice").toLowerCase().replace(/-/g, "_");
+  const prompt = String(item.prompt || item.question || "").trim();
+  const answer = item.answer ?? item.correct ?? "";
+  if (!prompt || (answer == null && type !== "matching")) return null;
+  return {
+    type,
+    prompt,
+    answer,
+    options: Array.isArray(item.options) ? item.options.map(String).slice(0, 6) : [],
+    pairs: Array.isArray(item.pairs) ? item.pairs.slice(0, 8).map((p) => ({ left: String(p.left || p.word || ""), right: String(p.right || p.definition || "") })).filter((p) => p.left && p.right) : [],
+    words: Array.isArray(item.words) ? item.words.map(String) : [],
+    audioText: String(item.audioText || item.audio || item.sentence || prompt),
+    explanation: String(item.explanation || ""),
+    word: String(item.word || ""),
+  };
+}
+
+function sanitizeLanguageStepContent(raw, step) {
+  const words = Array.isArray(raw?.words) ? raw.words.slice(0, 8) : [];
+  const exercises = Array.isArray(raw?.exercises) ? raw.exercises.slice(0, 8) : [];
+  const test = Array.isArray(raw?.test) ? raw.test.slice(0, 5) : [];
+  return {
+    title: String(raw?.title || step.title),
+    target: String(raw?.target || step.skill),
+    level: raw?.level === "C1" ? "C1" : step.level,
+    emoji: String(raw?.emoji || (step.checkpoint ? "🏆" : "🗣️")),
+    words: words.map((w) => ({
+      word: String(w?.word || w?.phrase || "").trim(),
+      definition: String(w?.definition || "").trim(),
+      example: String(w?.example || "").trim(),
+      gloss: String(w?.gloss || w?.ukrainian || "").trim(),
+    })).filter((w) => w.word && w.definition),
+    reading: {
+      title: String(raw?.reading?.title || "Reading"),
+      text: String(raw?.reading?.text || ""),
+      questions: Array.isArray(raw?.reading?.questions) ? raw.reading.questions.slice(0, 3) : [],
+    },
+    exercises: exercises.map(normalizeLanguageItem).filter(Boolean),
+    test: test.map(normalizeLanguageItem).filter(Boolean),
+  };
+}
+
+function languagePrompt(step) {
+  return `Return ONLY strict JSON. No prose. No markdown fences.
+Create one English learning path step for a Ukrainian learner moving ${step.level} toward C1.
+Step metadata: ${JSON.stringify({ unit: step.unitTitle, step: step.number, level: step.level, kind: step.kind, skill: step.skill, checkpoint: step.checkpoint })}
+Schema:
+{
+  "title": string,
+  "target": string,
+  "level": "B2"|"C1",
+  "emoji": string,
+  "words": [{"word": string, "definition": string, "example": string, "gloss": string}],
+  "reading": {"title": string, "text": string, "questions": [{"question": string, "answer": string, "options": [string]}]},
+  "exercises": [{"type": "multiple_choice"|"cloze"|"matching"|"reorder"|"translate"|"listening", "prompt": string, "answer": string, "options": [string], "pairs": [{"left": string, "right": string}], "words": [string], "audioText": string, "explanation": string, "word": string}],
+  "test": [{"type": "multiple_choice"|"cloze"|"translate"|"listening", "prompt": string, "answer": string, "options": [string], "audioText": string, "explanation": string, "word": string}]
+}
+Requirements: 6-8 target words/phrases, an 80-150 word reading using them, 2-3 reading questions, 5-7 mixed exercises, 3-4 test questions. Keep answers unambiguous and concise. Include Ukrainian glosses.`;
+}
+
+const LANG_FALLBACK_WORDS = {
+  "Work & Career": [["to delegate", "to give a task or responsibility to another person", "A good manager knows when to delegate.", "делегувати"], ["deadline", "the latest time by which something must be finished", "The deadline was tight but realistic.", "дедлайн"], ["to negotiate", "to discuss something to reach an agreement", "They negotiated a flexible schedule.", "вести переговори"], ["workload", "the amount of work someone has to do", "Her workload increased during the launch.", "навантаження"], ["reliable", "able to be trusted", "He is reliable under pressure.", "надійний"], ["promotion", "a move to a higher position", "She earned a promotion after leading the project.", "підвищення"], ["to streamline", "to make a process simpler and faster", "We streamlined the weekly report.", "оптимізувати"], ["feedback", "comments about how well someone did something", "Specific feedback helps people improve.", "відгук"]],
+  Technology: [["privacy", "control over personal information", "Users care about privacy by default.", "приватність"], ["device", "a piece of electronic equipment", "This device syncs across platforms.", "пристрій"], ["automation", "using technology to do work with little human effort", "Automation reduced repetitive tasks.", "автоматизація"], ["to troubleshoot", "to find and fix a problem", "We troubleshot the login issue.", "усувати проблему"], ["interface", "the part of software a user works with", "The interface is clear and fast.", "інтерфейс"], ["to upgrade", "to improve to a newer version", "They upgraded the system overnight.", "оновити"], ["secure", "protected from danger or attack", "Use a secure connection.", "безпечний"], ["feature", "a useful part of a product", "The new feature saves time.", "функція"]],
+  Environment: [["sustainable", "able to continue without harming the future", "The city chose sustainable transport.", "сталий"], ["emissions", "gases released into the air", "Emissions fell after the policy changed.", "викиди"], ["shortage", "a lack of something needed", "A water shortage affected the region.", "нестача"], ["to conserve", "to protect or save resources", "Households were asked to conserve energy.", "зберігати"], ["impact", "a strong effect", "The impact was visible within months.", "вплив"], ["renewable", "naturally replaced and not used up", "Renewable energy is expanding.", "відновлюваний"], ["waste", "unwanted material", "Food waste is costly.", "відходи"], ["policy", "an official plan or rule", "The policy encouraged recycling.", "політика"]],
+};
+const LANG_GENERIC_WORDS = [["to assess", "to judge the quality or value of something", "We need to assess the evidence carefully.", "оцінювати"], ["nuance", "a small but important difference", "The phrase has a nuance of doubt.", "нюанс"], ["to imply", "to suggest without saying directly", "Her tone implied disagreement.", "натякати"], ["evidence", "facts that support a belief", "The evidence supports the claim.", "докази"], ["approach", "a way of dealing with something", "This approach is practical.", "підхід"], ["assumption", "something accepted as true without proof", "That assumption may be wrong.", "припущення"], ["to clarify", "to make something easier to understand", "Could you clarify your point?", "уточнювати"], ["outcome", "the final result", "The outcome was better than expected.", "результат"]];
+
+function fallbackLanguageStep(step) {
+  const base = LANG_FALLBACK_WORDS[step.unitTitle] || LANG_GENERIC_WORDS;
+  const rotated = base.map((x, i) => base[(i + step.unitStep - 1) % base.length]).slice(0, 8);
+  const words = rotated.map(([word, definition, example, gloss]) => ({ word, definition, example, gloss }));
+  const [w1, w2, w3, w4, w5, w6] = words;
+  const grammar = LANG_UNITS[step.unitId - 1]?.grammar || step.skill;
+  return {
+    title: step.checkpoint ? `Checkpoint: ${step.unitTitle}` : `${step.unitTitle}: ${step.kind}`,
+    target: `${step.level} ${step.skill}`,
+    level: step.level,
+    emoji: step.checkpoint ? "🏆" : "🗣️",
+    words,
+    reading: {
+      title: `${step.unitTitle} in context`,
+      text: `In a ${step.level} conversation about ${step.unitTitle.toLowerCase()}, speakers need more than basic vocabulary. They often have to ${w1.word}, explain a ${w2.word}, and respond to ${w3.word} with tact. This step focuses on ${grammar}, so notice how the examples connect actions, reasons, and results. A confident learner can use words like ${w4.word}, ${w5.word}, and ${w6.word} without sounding mechanical. The aim is not perfection; it is clearer, more flexible English that helps you express a precise idea and keep the conversation moving.`,
+      questions: [
+        { question: `What topic is this step about?`, answer: step.unitTitle, options: [step.unitTitle, "Food and cooking", "Sports results", "Ancient history"] },
+        { question: `Which grammar or language focus is mentioned?`, answer: grammar },
+      ],
+    },
+    exercises: [
+      { type: "multiple_choice", prompt: `What does "${w1.word}" mean?`, answer: w1.definition, options: [w1.definition, w2.definition, "a casual greeting", "a type of place"], explanation: w1.example, word: w1.word },
+      { type: "cloze", prompt: `Fill the gap: ${w2.example.replace(new RegExp(w2.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), "_____")}`, answer: w2.word, explanation: w2.definition, word: w2.word },
+      { type: "matching", prompt: "Match each word to its definition.", pairs: [w3, w4, w5].map((w) => ({ left: w.word, right: w.definition })), answer: "all pairs", explanation: "Each word has one precise definition." },
+      { type: "reorder", prompt: "Put the words in order.", words: ["We", "need", "to", "clarify", "the", "outcome"], answer: "We need to clarify the outcome", explanation: "A clear subject + verb + object pattern." },
+      { type: "translate", prompt: `Translate into Ukrainian: ${w6.example}`, answer: w6.gloss, explanation: `Key word: ${w6.word}`, word: w6.word },
+      { type: "listening", prompt: "Listen and type the phrase.", audioText: w1.word, answer: w1.word, explanation: w1.definition, word: w1.word },
+    ],
+    test: [
+      { type: "multiple_choice", prompt: `Choose the best meaning of "${w4.word}".`, answer: w4.definition, options: [w4.definition, w1.definition, "a number in a chart", "a place to stay"], explanation: w4.example, word: w4.word },
+      { type: "cloze", prompt: `Complete: ${w5.example.replace(new RegExp(w5.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), "_____")}`, answer: w5.word, explanation: w5.definition, word: w5.word },
+      { type: "listening", prompt: "Listen and type the sentence.", audioText: w2.example, answer: w2.example, explanation: `Target phrase: ${w2.word}`, word: w2.word },
+    ],
+  };
+}
+
+async function parseAnthropicJson(res) {
+  const data = await res.json();
+  const text = (data?.content || [])
+    .map((part) => (typeof part === "string" ? part : part?.type === "text" ? part.text : ""))
+    .join("\n")
+    .trim();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
+    throw e;
+  }
+}
+
+async function generateLanguageStep(step) {
+  const payload = JSON.stringify({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1000,
+    messages: [{ role: "user", content: languagePrompt(step) }],
+  });
+  const attempts = [
+    {
+      url: "/api/anthropic/messages",
+      headers: { "content-type": "application/json" },
+    },
+    {
+      url: "https://api.anthropic.com/v1/messages",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+    },
+  ];
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      const res = await fetch(attempt.url, { method: "POST", headers: attempt.headers, body: payload });
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const err = await res.json();
+          detail = err?.error?.message || err?.message || "";
+        } catch { /* plain error body */ }
+        throw new Error(detail || `Generation failed (${res.status})`);
+      }
+      return sanitizeLanguageStepContent(await parseAnthropicJson(res), step);
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  console.warn("[languages] Anthropic unavailable, using generated fallback:", lastError?.message || lastError);
+  return fallbackLanguageStep(step);
+}
+
+async function getCachedLanguageStep(step) {
+  const cached = await store.get(langStepKey(step.id), null);
+  if (cached) return cached;
+  const generated = await generateLanguageStep(step);
+  await store.set(langStepKey(step.id), generated);
+  const index = await store.get(LKEYS.cacheIndex, []);
+  if (!index.includes(step.id)) await store.set(LKEYS.cacheIndex, [...index, step.id]);
+  return generated;
+}
+
+async function resetCachedLanguageStep(stepId) {
+  await store.remove(langStepKey(stepId));
+  const index = await store.get(LKEYS.cacheIndex, []);
+  await store.set(LKEYS.cacheIndex, index.filter((id) => id !== stepId));
+}
+
+async function collectLanguagesExport() {
+  const [progress, xp, wordStrength, settings, cacheIndex] = await Promise.all([
+    store.get(LKEYS.progress, { completed: [] }),
+    store.get(LKEYS.xp, { total: 0, byDay: {} }),
+    store.get(LKEYS.wordStrength, {}),
+    store.get(LKEYS.settings, { hearts: true }),
+    store.get(LKEYS.cacheIndex, []),
+  ]);
+  const cache = {};
+  for (const id of cacheIndex) {
+    const step = await store.get(langStepKey(id), null);
+    if (step) cache[id] = step;
+  }
+  return { progress, xp, wordStrength, settings, cacheIndex, cache };
+}
+
+async function clearLanguagesData() {
+  const index = await store.get(LKEYS.cacheIndex, []);
+  for (const id of index) await store.remove(langStepKey(id));
+  for (const k of Object.values(LKEYS)) await store.remove(k);
+}
+
+/* ------------------------------------------------------------------ */
 /* Persistence layer (window.storage) with in-memory fallback          */
 /* ------------------------------------------------------------------ */
 const memFallback = new Map();
@@ -1141,7 +1465,7 @@ export default function FlashcardsApp() {
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["review", "routine", "calm", "fasting", "management", "inventory", "money"].includes(ui.section) ? ui.section : "studying");
+      setSection(["review", "studying", "languages", "routine", "calm", "fasting", "management", "inventory", "money"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
       setFastingName(fastingSettings?.name || "Fasting");
@@ -1547,6 +1871,84 @@ export default function FlashcardsApp() {
     [cardsByDeck, persistDeckCards, flash]
   );
 
+  const addLanguageWeakWords = useCallback(
+    async (words, reason = "missed") => {
+      const cleanWords = (Array.isArray(words) ? words : [words]).filter((w) => w?.word);
+      if (!cleanWords.length) return;
+      let deck = decks.find((d) => d.name === "Languages review");
+      let nextDecks = decks;
+      if (!deck) {
+        deck = newDeck("Languages review", {
+          topic: "Languages",
+          description: "Weak words from the Languages path.",
+          emoji: "🗣️",
+          color: "green",
+          language: "en-US",
+          autoPlay: true,
+        });
+        nextDecks = [...decks, deck];
+        setDecks(nextDecks);
+        await persistIndex(nextDecks);
+      }
+
+      const now = Date.now();
+      const existing = cardsByDeck[deck.id] || [];
+      const byFront = new Map(existing.map((c) => [normalizeText(c.front), c]));
+      let changed = false;
+      const nextCards = [...existing];
+      for (const w of cleanWords) {
+        const key = normalizeText(w.word);
+        if (!key) continue;
+        const body = [
+          w.definition,
+          w.gloss ? `UA: ${w.gloss}` : "",
+          w.example ? `Example: ${w.example}` : "",
+          `Source: Languages path (${reason})`,
+        ].filter(Boolean).join("\n");
+        const current = byFront.get(key);
+        if (current) {
+          const updated = schedule({ ...current, due: Math.min(current.due || now, now) }, reason === "hard" ? "hard" : "again", now, { goal: "longterm" });
+          const i = nextCards.findIndex((c) => c.id === current.id);
+          if (i >= 0) nextCards[i] = { ...updated, back: current.back || body, lang: "en-US" };
+        } else {
+          nextCards.push({ ...makeCard(w.word, body), tags: "languages weak", lang: "en-US" });
+        }
+        changed = true;
+      }
+      if (!changed) return;
+      const strength = await store.get(LKEYS.wordStrength, {});
+      const nextStrength = { ...strength };
+      for (const w of cleanWords) {
+        const key = normalizeText(w.word);
+        if (!key) continue;
+        const prev = nextStrength[key] || { word: w.word, wrong: 0, hard: 0 };
+        nextStrength[key] = {
+          ...prev,
+          word: w.word,
+          definition: w.definition || prev.definition || "",
+          gloss: w.gloss || prev.gloss || "",
+          wrong: prev.wrong + (reason === "hard" ? 0 : 1),
+          hard: prev.hard + (reason === "hard" ? 1 : 0),
+          lastSeen: now,
+        };
+      }
+      setCardsByDeck((m) => ({ ...m, [deck.id]: nextCards }));
+      await persistDeckCards(deck.id, nextCards);
+      await store.set(LKEYS.wordStrength, nextStrength);
+      flash(reason === "hard" ? "Added to Languages review" : "Weak words scheduled for review");
+    },
+    [decks, cardsByDeck, persistIndex, persistDeckCards, flash]
+  );
+
+  const recordLanguageCompletion = useCallback(
+    async (grade = "good") => {
+      const next = bumpStats(stats, { grade, wasNew: false, mature: false });
+      setStats(next);
+      await persistStats(next);
+    },
+    [stats, persistStats]
+  );
+
   /* ---------- study scope resolution (all / group / single deck) ---------- */
   const scopeToDeckIds = useCallback(
     (scope) => {
@@ -1602,6 +2004,7 @@ export default function FlashcardsApp() {
     await clearInventoryData();
     await clearReviewData();
     await clearFinanceData();
+    await clearLanguagesData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
@@ -1623,6 +2026,7 @@ export default function FlashcardsApp() {
     window.dispatchEvent(new CustomEvent("inventory-reset"));
     window.dispatchEvent(new CustomEvent("review-reset"));
     window.dispatchEvent(new CustomEvent("finance-reset"));
+    window.dispatchEvent(new CustomEvent("languages-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
@@ -1636,9 +2040,10 @@ export default function FlashcardsApp() {
     const inventory = await collectInventoryExport();
     const review = await collectReviewExport();
     const finance = await collectFinanceExport();
+    const languages = await collectLanguagesExport();
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 11,
+      version: 12,
       decks,
       groups,
       cards: cardsByDeck,
@@ -1653,6 +2058,7 @@ export default function FlashcardsApp() {
       inventory,
       review,
       finance,
+      languages,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -1715,6 +2121,16 @@ export default function FlashcardsApp() {
     setSetup({ deckScope: deckScope || "all", mode: "due", count: 50 });
     setView("setup");
   }, []);
+
+  const practiceLanguageReview = useCallback(async () => {
+    const deck = decks.find((d) => d.name === "Languages review");
+    if (!deck || !(cardsByDeck[deck.id] || []).length) {
+      flash("No weak language words yet");
+      return;
+    }
+    changeSection("studying");
+    openSetup(deck.id);
+  }, [decks, cardsByDeck, changeSection, openSetup, flash]);
 
   const startSession = useCallback(
     (config) => {
@@ -1877,6 +2293,12 @@ export default function FlashcardsApp() {
       <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-16 lg:pb-0">
         {section === "review" ? (
           <ReviewSection onGo={changeSection} />
+        ) : section === "languages" ? (
+          <LanguagesSection
+            onAddWeakWords={addLanguageWeakWords}
+            onPracticeReview={practiceLanguageReview}
+            onStepComplete={recordLanguageCompletion}
+          />
         ) : section === "routine" ? (
           <RoutineSection />
         ) : section === "calm" ? (
@@ -2074,6 +2496,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
   const items = [
     { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
     { id: "studying", label: "Навчання", icon: GraduationCap, badge: studyingDue },
+    { id: "languages", label: "Languages", icon: Compass, badge: 0 },
     { id: "routine", label: "Рутина", icon: Sun, badge: 0 },
     { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
@@ -2090,12 +2513,12 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
           <span>{cloud.syncing ? "Синхронізація…" : cloud.signedIn ? "Синхронізовано" : "Офлайн"}</span>
         </button>
       )}
-      <div className="grid grid-cols-8">
+      <div className="flex overflow-x-auto px-1">
         {items.map((it) => {
           const active = section === it.id;
           return (
             <button key={it.id} onClick={() => onSection(it.id)} title={it.label}
-              className={`relative flex flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium transition ${active ? "text-rose-600" : "text-slate-400"}`}>
+              className={`relative flex min-w-[64px] flex-col items-center gap-0.5 px-1 py-1.5 text-[10px] font-medium transition ${active ? "text-rose-600" : "text-slate-400"}`}>
               <span className="relative">
                 <it.icon className="h-5 w-5" />
                 {it.badge > 0 && <span className="absolute -right-1.5 -top-1 min-w-[14px] rounded-full bg-rose-500 px-1 text-center text-[9px] font-bold leading-[14px] text-white">{it.badge > 99 ? "99+" : it.badge}</span>}
@@ -2130,6 +2553,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
   const items = [
     { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
+    { id: "languages", label: "Languages", icon: Compass, badge: 0 },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
     { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
@@ -8182,6 +8606,581 @@ function InvManager({ rooms, onClose, onAddRoom, onRenameRoom, onDeleteRoom, onM
       </div>
     </div>
   );
+}
+
+/* ================================================================== */
+/* LANGUAGES - generated B2 -> C1 path                                 */
+/* ================================================================== */
+function LanguagesSection({ onAddWeakWords, onPracticeReview, onStepComplete }) {
+  const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState({ completed: [], completedAt: {} });
+  const [xp, setXp] = useState({ total: 0, byDay: {} });
+  const [selectedId, setSelectedId] = useState("");
+  const [resetSignal, setResetSignal] = useState(0);
+
+  const reload = useCallback(async () => {
+    const [p, x] = await Promise.all([
+      store.get(LKEYS.progress, { completed: [], completedAt: {} }),
+      store.get(LKEYS.xp, { total: 0, byDay: {} }),
+    ]);
+    const safeProgress = { completed: p?.completed || [], completedAt: p?.completedAt || {} };
+    setProgress(safeProgress);
+    setXp({ total: x?.total || 0, byDay: x?.byDay || {} });
+    setSelectedId((cur) => cur || LANG_STEPS[Math.min(langCompletedCount(safeProgress), LANG_STEPS.length - 1)]?.id || LANG_STEPS[0].id);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("languages-reset", onReset);
+    return () => window.removeEventListener("languages-reset", onReset);
+  }, [reload]);
+
+  const completedCount = langCompletedCount(progress);
+  const doneSet = useMemo(() => new Set(progress.completed || []), [progress]);
+  const selected = LANG_STEPS.find((s) => s.id === selectedId) || LANG_STEPS[Math.min(completedCount, LANG_STEPS.length - 1)] || LANG_STEPS[0];
+  const today = dateKey(Date.now());
+  const todayXp = xp.byDay?.[today] || 0;
+  const currentUnit = LANG_UNITS.find((u) => u.id === selected.unitId) || LANG_UNITS[0];
+  const unitProg = langUnitProgress(progress, selected.unitId);
+
+  const selectUnit = useCallback((unitId) => {
+    const steps = LANG_STEPS.filter((s) => s.unitId === unitId);
+    const firstUnlocked = steps.find((s) => s.index <= completedCount && !doneSet.has(s.id));
+    const fallback = steps.find((s) => s.index <= completedCount) || steps[0];
+    if (firstUnlocked || fallback) setSelectedId((firstUnlocked || fallback).id);
+  }, [completedCount, doneSet]);
+
+  const completeStep = useCallback(async (step, content, score, weakWords) => {
+    if (doneSet.has(step.id)) return;
+    if (weakWords?.length) await onAddWeakWords(weakWords, "missed");
+    const nextProgress = {
+      completed: [...(progress.completed || []), step.id],
+      completedAt: { ...(progress.completedAt || {}), [step.id]: Date.now() },
+    };
+    const key = dateKey(Date.now());
+    const earned = step.xp + Math.round(Math.max(0, score - 0.7) * 30);
+    const nextXp = {
+      total: (xp.total || 0) + earned,
+      byDay: { ...(xp.byDay || {}), [key]: (xp.byDay?.[key] || 0) + earned },
+    };
+    setProgress(nextProgress);
+    setXp(nextXp);
+    await store.set(LKEYS.progress, nextProgress);
+    await store.set(LKEYS.xp, nextXp);
+    await onStepComplete(score >= 0.9 ? "easy" : "good");
+    const next = LANG_STEPS[step.index + 1];
+    if (next) setSelectedId(next.id);
+  }, [doneSet, progress, xp, onAddWeakWords, onStepComplete]);
+
+  const resetSelectedStep = useCallback(async () => {
+    if (!selected) return;
+    await resetCachedLanguageStep(selected.id);
+    setResetSignal((n) => n + 1);
+  }, [selected]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen flex-1 items-center justify-center bg-emerald-50 text-emerald-600">
+        <div className="flex flex-col items-center gap-3">
+          <Compass className="h-8 w-8 animate-pulse" />
+          <span className="text-sm font-semibold">Loading Languages path...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-emerald-50 via-sky-50 to-white pb-24 lg:pb-0">
+      <header className="sticky top-0 z-20 border-b border-emerald-100 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex min-h-14 w-full max-w-6xl items-center gap-2 px-3 py-2 sm:px-4">
+          <div className="mr-auto flex min-w-0 items-center gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-500 text-white"><Compass className="h-5 w-5" /></span>
+            <div className="min-w-0">
+              <div className="truncate text-base font-extrabold text-slate-900">Languages</div>
+              <div className="hidden text-xs font-medium text-emerald-700 sm:block">English B2 to C1 path</div>
+            </div>
+          </div>
+          <button onClick={onPracticeReview} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-50">
+            <Repeat className="h-4 w-4" /> Practice
+          </button>
+          <button onClick={resetSelectedStep} className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Regenerate this step">
+            <RefreshCw className="h-4 w-4" />
+          </button>
+        </div>
+      </header>
+
+      <main className="mx-auto grid min-w-0 w-full max-w-6xl gap-4 px-3 py-4 sm:px-4 lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-5 lg:py-5">
+        <aside className="min-w-0 space-y-3 lg:sticky lg:top-20 lg:self-start">
+          <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-100">
+            <div className="bg-emerald-500 p-3 text-white sm:p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold uppercase">Total progress</div>
+                  <div className="text-2xl font-extrabold tabular-nums sm:text-3xl">{completedCount}/1000</div>
+                </div>
+                <Trophy className="h-8 w-8 text-amber-200 sm:h-9 sm:w-9" />
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/25">
+                <div className="h-full rounded-full bg-amber-300" style={{ width: `${(completedCount / LANG_STEPS.length) * 100}%` }} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 divide-x divide-emerald-50 p-3 text-center">
+              <div><div className="text-lg font-extrabold text-slate-900">{xp.total || 0}</div><div className="text-[11px] font-medium text-slate-400">XP</div></div>
+              <div><div className="text-lg font-extrabold text-orange-500">{todayXp}</div><div className="text-[11px] font-medium text-slate-400">today</div></div>
+              <div><div className="text-lg font-extrabold text-amber-500">{LANG_UNITS.filter((u) => langUnitProgress(progress, u.id).crowned).length}</div><div className="text-[11px] font-medium text-slate-400">crowns</div></div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-extrabold text-slate-900">Unit {currentUnit.id}: {currentUnit.theme}</div>
+                <div className="text-xs text-slate-400">{currentUnit.level} · {unitProg.completed}/{unitProg.total} steps</div>
+              </div>
+              {unitProg.crowned ? <Trophy className="h-5 w-5 shrink-0 text-amber-500" /> : <Star className="h-5 w-5 shrink-0 text-sky-400" />}
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-sky-500" style={{ width: `${(unitProg.completed / unitProg.total) * 100}%` }} />
+            </div>
+          </div>
+
+          <div className="lg:hidden">
+            <LanguageUnitStrip progress={progress} currentUnitId={selected.unitId} onSelectUnit={selectUnit} />
+          </div>
+          <div className="lg:hidden">
+            <LanguagePathMap progress={progress} selectedId={selected.id} onSelect={(step) => setSelectedId(step.id)} unitFilter={selected.unitId} compact />
+          </div>
+          <div className="hidden lg:block">
+            <LanguagePathMap progress={progress} selectedId={selected.id} onSelect={(step) => setSelectedId(step.id)} />
+          </div>
+        </aside>
+
+        <LanguageStepPanel
+          key={`${selected.id}:${resetSignal}`}
+          step={selected}
+          unlocked={selected.index <= completedCount}
+          completed={doneSet.has(selected.id)}
+          onComplete={completeStep}
+          onAddWeakWords={onAddWeakWords}
+        />
+      </main>
+    </div>
+  );
+}
+
+function LanguageUnitStrip({ progress, currentUnitId, onSelectUnit }) {
+  return (
+    <div className="-mx-3 max-w-full overflow-x-auto px-3 pb-1">
+      <div className="flex w-max gap-2">
+        {LANG_UNITS.map((unit) => {
+          const prog = langUnitProgress(progress, unit.id);
+          const active = unit.id === currentUnitId;
+          return (
+            <button
+              key={unit.id}
+              onClick={() => onSelectUnit(unit.id)}
+              className={`flex min-w-[126px] items-center gap-2 rounded-2xl px-3 py-2 text-left text-xs font-bold shadow-sm ring-1 transition ${
+                active ? "bg-emerald-500 text-white ring-emerald-500" : "bg-white text-slate-600 ring-emerald-100"
+              }`}
+            >
+              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] ${active ? "bg-white/20" : "bg-emerald-50 text-emerald-600"}`}>{unit.id}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{unit.theme}</span>
+                <span className={`block text-[10px] ${active ? "text-white/80" : "text-slate-400"}`}>{prog.completed}/25</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LanguagePathMap({ progress, selectedId, onSelect, unitFilter = null, compact = false }) {
+  const completedCount = langCompletedCount(progress);
+  const done = new Set(progress.completed || []);
+  const units = unitFilter ? LANG_UNITS.filter((u) => u.id === unitFilter) : LANG_UNITS;
+  return (
+    <div className={`min-w-0 ${compact ? "max-h-none" : "max-h-[66vh]"} overflow-y-auto rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-100`}>
+      {units.map((unit) => {
+        const unitSteps = LANG_STEPS.filter((s) => s.unitId === unit.id);
+        const prog = langUnitProgress(progress, unit.id);
+        return (
+          <div key={unit.id} className={compact ? "" : "mb-5 last:mb-0"}>
+            <div className="sticky top-0 z-10 mb-2 rounded-xl bg-white/95 px-2 py-2 backdrop-blur">
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-xs font-extrabold uppercase text-slate-500">Unit {unit.id} · {unit.theme}</span>
+                <span className="shrink-0 text-[11px] font-bold text-emerald-600">{prog.completed}/{prog.total}</span>
+              </div>
+            </div>
+            <div className={`relative py-1 ${compact ? "grid grid-cols-5 gap-2 sm:grid-cols-8" : "space-y-2"}`}>
+              {unitSteps.map((step, i) => {
+                const completed = done.has(step.id);
+                const current = step.index === completedCount;
+                const locked = step.index > completedCount;
+                const selected = step.id === selectedId;
+                const offsets = [6, 20, 36, 54, 70, 56, 40, 24];
+                return (
+                  <button
+                    key={step.id}
+                    onClick={() => !locked && onSelect(step)}
+                    disabled={locked}
+                    title={step.title}
+                    className={`group flex h-10 w-10 items-center justify-center rounded-full border-2 text-xs font-extrabold shadow-sm transition ${
+                      completed ? "border-emerald-500 bg-emerald-500 text-white" :
+                      current ? "border-amber-400 bg-amber-300 text-amber-950 ring-4 ring-amber-100" :
+                      locked ? "border-slate-200 bg-slate-100 text-slate-300" :
+                      "border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"
+                    } ${selected ? "scale-110" : ""}`}
+                    style={compact ? undefined : { marginLeft: `${offsets[i % offsets.length]}%` }}
+                  >
+                    {locked ? <Lock className="h-4 w-4" /> : completed ? (step.checkpoint ? <Trophy className="h-4 w-4" /> : <Check className="h-4 w-4" />) : step.checkpoint ? <Star className="h-4 w-4" /> : step.unitStep}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LanguageStepPanel({ step, unlocked, completed, onComplete, onAddWeakWords }) {
+  const [state, setState] = useState({ status: unlocked ? "loading" : "locked", content: null, error: "" });
+
+  const load = useCallback(async () => {
+    if (!unlocked) {
+      setState({ status: "locked", content: null, error: "" });
+      return;
+    }
+    setState({ status: "loading", content: null, error: "" });
+    try {
+      const content = await getCachedLanguageStep(step);
+      setState({ status: "ready", content, error: "" });
+    } catch (e) {
+      setState({ status: "error", content: null, error: e?.message || "Could not generate this step." });
+    }
+  }, [step, unlocked]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => { if (alive) await load(); })();
+    return () => { alive = false; };
+  }, [load]);
+
+  if (!unlocked || state.status === "locked") {
+    return (
+      <div className="rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-100">
+        <Lock className="mx-auto h-10 w-10 text-slate-300" />
+        <h2 className="mt-3 text-xl font-extrabold text-slate-900">Locked step</h2>
+        <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">Finish the previous node to open this one. One small win at a time.</p>
+      </div>
+    );
+  }
+
+  if (state.status === "loading") {
+    return (
+      <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-emerald-100">
+        <div className="flex items-center gap-4">
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-emerald-100 text-emerald-600"><Sparkles className="h-7 w-7 animate-pulse" /></div>
+          <div>
+            <h2 className="text-xl font-extrabold text-slate-900">Generating step {step.number}</h2>
+            <p className="text-sm text-slate-500">{step.level} · {step.skill}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-red-100">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-500"><RefreshCw className="h-7 w-7" /></div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl font-extrabold text-slate-900">Step generation needs a retry</h2>
+            <p className="mt-1 text-sm text-slate-500">{step.level} · {step.skill}</p>
+            <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{state.error}</p>
+          </div>
+          <button onClick={load} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-red-500 px-4 py-2 text-sm font-bold text-white hover:bg-red-600">
+            <RefreshCw className="h-4 w-4" /> Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <LanguageLesson
+      step={step}
+      content={state.content}
+      completed={completed}
+      onComplete={onComplete}
+      onAddWeakWords={onAddWeakWords}
+    />
+  );
+}
+
+function LanguageLesson({ step, content, completed, onComplete, onAddWeakWords }) {
+  const [checks, setChecks] = useState({});
+  const [misses, setMisses] = useState({});
+  const [hearts, setHearts] = useState(5);
+  const [celebrated, setCelebrated] = useState(false);
+  const readingItems = (content.reading?.questions || []).map((q, i) => ({
+    type: q.options?.length ? "multiple_choice" : "cloze",
+    prompt: q.question,
+    answer: q.answer,
+    options: q.options || [],
+    explanation: "Check the reading text for the clue.",
+    word: "",
+    id: `reading-${i}`,
+  }));
+  const learningItems = [...readingItems, ...(content.exercises || []).map((x, i) => ({ ...x, id: `exercise-${i}` }))];
+  const testItems = (content.test || []).map((x, i) => ({ ...x, id: `test-${i}` }));
+  const totalInteractions = learningItems.length + testItems.length;
+  const doneInteractions = Object.keys(checks).length;
+  const progressPct = totalInteractions ? Math.round((doneInteractions / totalInteractions) * 100) : 0;
+  const testChecks = testItems.map((it) => checks[it.id]).filter(Boolean);
+  const testReady = testItems.length > 0 && testChecks.length === testItems.length;
+  const score = testReady ? testChecks.filter((x) => x.correct).length / testItems.length : 0;
+  const weakWords = Object.values(misses);
+
+  const markCheck = useCallback((item, correct) => {
+    setChecks((m) => ({ ...m, [item.id]: { correct } }));
+    if (!correct) {
+      setHearts((h) => Math.max(0, h - 1));
+      const w = wordForLanguageItem(item, content.words);
+      if (w) setMisses((m) => ({ ...m, [normalizeText(w.word)]: w }));
+    }
+  }, [content.words]);
+
+  const markHard = useCallback(async (word) => {
+    await onAddWeakWords([word], "hard");
+  }, [onAddWeakWords]);
+
+  const retryTest = () => {
+    const testIds = new Set(testItems.map((it) => it.id));
+    setChecks((m) => Object.fromEntries(Object.entries(m).filter(([id]) => !testIds.has(id))));
+    setHearts(5);
+    setCelebrated(false);
+  };
+
+  const finish = async () => {
+    await onComplete(step, content, score, weakWords);
+    setCelebrated(true);
+  };
+
+  return (
+    <div className="min-w-0 space-y-4">
+      <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-100 sm:rounded-3xl">
+        <div className="bg-gradient-to-r from-emerald-500 via-sky-500 to-amber-400 p-4 text-white sm:p-5">
+          <div className="flex flex-wrap items-start gap-4">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-2xl sm:h-14 sm:w-14 sm:text-3xl">{content.emoji || "🗣️"}</div>
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-bold uppercase">
+                <span className="rounded-full bg-white/20 px-2 py-0.5">Step {step.number}/1000</span>
+                <span className="rounded-full bg-white/20 px-2 py-0.5">{step.level}</span>
+                {step.checkpoint && <span className="rounded-full bg-amber-200 px-2 py-0.5 text-amber-900">checkpoint</span>}
+              </div>
+              <h1 className="text-xl font-extrabold leading-tight sm:text-2xl">{content.title}</h1>
+              <p className="mt-1 text-sm font-medium text-white/85">{content.target}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1 rounded-full bg-white/20 px-3 py-1.5 text-sm font-extrabold">
+              <Heart className="h-4 w-4 fill-white" /> {hearts}
+            </div>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/25">
+            <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progressPct}%` }} />
+          </div>
+        </div>
+
+        <div className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4">
+          {content.words.map((w) => (
+            <div key={w.word} className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100 sm:rounded-2xl">
+              <div className="flex items-start gap-2">
+                <button onClick={() => speak(w.word, "en-US")} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sky-100 text-sky-700" title="Listen">
+                  <Volume2 className="h-4 w-4" />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <div className="font-extrabold text-slate-900">{w.word}</div>
+                  <div className="mt-0.5 text-sm text-slate-600">{w.definition}</div>
+                  {w.gloss && <div className="mt-1 text-xs font-medium text-emerald-700">{w.gloss}</div>}
+                  {w.example && <div className="mt-2 text-xs italic text-slate-500">{w.example}</div>}
+                </div>
+                <button onClick={() => markHard(w)} className="rounded-lg px-2 py-1 text-[11px] font-bold text-amber-600 hover:bg-amber-50">Hard</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100 sm:rounded-3xl sm:p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <BookOpen className="h-5 w-5 text-sky-500" />
+          <h2 className="text-lg font-extrabold text-slate-900">{content.reading?.title || "Reading"}</h2>
+        </div>
+        <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{content.reading?.text}</p>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center gap-2 px-1">
+          <Sparkles className="h-5 w-5 text-emerald-500" />
+          <h2 className="text-lg font-extrabold text-slate-900">Practice</h2>
+        </div>
+        {learningItems.map((item) => (
+          <LanguageQuestion key={item.id} item={item} checked={checks[item.id]} onChecked={(correct) => markCheck(item, correct)} />
+        ))}
+      </section>
+
+      <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100 sm:rounded-3xl sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-amber-500" />
+            <h2 className="text-lg font-extrabold text-slate-900">End-of-step test</h2>
+          </div>
+          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-extrabold text-amber-700">Pass 70%</span>
+        </div>
+        {testItems.map((item) => (
+          <LanguageQuestion key={item.id} item={item} checked={checks[item.id]} onChecked={(correct) => markCheck(item, correct)} />
+        ))}
+        {testReady && (
+          <div className={`rounded-2xl p-4 ${score >= 0.7 ? "bg-emerald-50 ring-1 ring-emerald-100" : "bg-amber-50 ring-1 ring-amber-100"}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className={`text-xl font-extrabold ${score >= 0.7 ? "text-emerald-700" : "text-amber-700"}`}>{Math.round(score * 100)}%</div>
+                <div className="text-sm text-slate-600">{score >= 0.7 ? "Nice. This node is ready to complete." : "Almost. Review the misses and try the test again."}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {score < 0.7 && <button onClick={retryTest} className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-50">Retry test</button>}
+                {score >= 0.7 && !completed && <button onClick={finish} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-extrabold text-white hover:bg-emerald-600"><CheckCircle2 className="h-4 w-4" /> Complete +{step.xp} XP</button>}
+                {completed && <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-100 px-4 py-2 text-sm font-extrabold text-emerald-700"><Trophy className="h-4 w-4" /> Completed</span>}
+              </div>
+            </div>
+          </div>
+        )}
+        {celebrated && <div className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-extrabold text-white shadow-sm">Step complete. The next node is open.</div>}
+      </section>
+    </div>
+  );
+}
+
+function LanguageQuestion({ item, checked, onChecked }) {
+  const [value, setValue] = useState("");
+  const [matches, setMatches] = useState({});
+  const [picked, setPicked] = useState([]);
+  const [chips] = useState(() => item.words?.length ? item.words : String(item.answer || "").split(/\s+/).filter(Boolean).sort(() => 0.5 - Math.random()));
+  const type = item.type || "multiple_choice";
+
+  const currentValue = type === "matching" ? matches : type === "reorder" ? picked.join(" ") : value;
+  const correct = evaluateLanguageItem(item, currentValue);
+  const canCheck =
+    type === "matching" ? item.pairs?.length && Object.keys(matches).length === item.pairs.length :
+    type === "reorder" ? picked.length > 0 :
+    String(value).trim().length > 0;
+
+  const doCheck = () => {
+    if (!canCheck || checked) return;
+    onChecked(correct);
+  };
+
+  return (
+    <div className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-100 sm:rounded-2xl sm:p-4">
+      <div className="mb-3 flex items-start gap-2">
+        <span className={`mt-0.5 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${
+          type === "listening" ? "bg-sky-100 text-sky-700" :
+          type === "translate" ? "bg-violet-100 text-violet-700" :
+          type === "matching" ? "bg-emerald-100 text-emerald-700" :
+          "bg-slate-100 text-slate-600"
+        }`}>{type.replace("_", " ")}</span>
+        <div className="min-w-0 flex-1 text-sm font-semibold text-slate-800">{item.prompt}</div>
+        {type === "listening" && (
+          <button onClick={() => speak(item.audioText || item.answer || item.prompt, "en-US")} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sky-100 text-sky-700" title="Play audio">
+            <Volume2 className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {type === "multiple_choice" && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(item.options?.length ? item.options : [item.answer]).map((opt) => (
+            <button key={opt} disabled={!!checked} onClick={() => setValue(opt)} className={`rounded-xl px-3 py-2 text-left text-sm font-semibold ring-1 transition ${value === opt ? "bg-sky-50 text-sky-700 ring-sky-300" : "bg-slate-50 text-slate-600 ring-slate-100 hover:bg-slate-100"}`}>
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {["cloze", "translate", "listening"].includes(type) && (
+        <input
+          disabled={!!checked}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") doCheck(); }}
+          placeholder={type === "listening" ? "Type what you hear..." : "Your answer..."}
+          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+        />
+      )}
+
+      {type === "reorder" && (
+        <div className="space-y-3">
+          <div className="min-h-11 rounded-xl bg-slate-50 p-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-100">{picked.join(" ") || "Build the sentence..."}</div>
+          <div className="flex flex-wrap gap-2">
+            {chips.map((w, i) => (
+              <button key={`${w}-${i}`} disabled={!!checked || picked.includes(w)} onClick={() => setPicked((p) => [...p, w])} className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-40">{w}</button>
+            ))}
+            {!checked && picked.length > 0 && <button onClick={() => setPicked([])} className="rounded-full px-3 py-1.5 text-sm font-semibold text-slate-400 hover:bg-slate-100">Reset</button>}
+          </div>
+        </div>
+      )}
+
+      {type === "matching" && (
+        <div className="space-y-2">
+          {item.pairs.map((p) => (
+            <label key={p.left} className="grid gap-2 rounded-xl bg-slate-50 p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+              <span className="text-sm font-extrabold text-slate-700">{p.left}</span>
+              <select disabled={!!checked} value={matches[p.left] || ""} onChange={(e) => setMatches((m) => ({ ...m, [p.left]: e.target.value }))} className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm">
+                <option value="">Choose...</option>
+                {item.pairs.map((opt) => <option key={opt.right} value={opt.right}>{opt.right}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <button disabled={!canCheck || !!checked} onClick={doCheck} className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-200 sm:w-auto">
+          Check
+        </button>
+        {checked && (
+          <div className={`min-w-0 flex-1 rounded-xl px-3 py-2 text-sm ${checked.correct ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+            <span className="font-extrabold">{checked.correct ? "Correct." : `Answer: ${Array.isArray(item.answer) ? item.answer[0] : item.answer}`}</span>
+            {item.explanation && <span className="ml-1">{item.explanation}</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function evaluateLanguageItem(item, value) {
+  if (item.type === "matching") {
+    return item.pairs?.every((p) => value?.[p.left] === p.right);
+  }
+  return sameAnswer(value, item.answer);
+}
+
+function wordForLanguageItem(item, words) {
+  if (!words?.length) return null;
+  const direct = normalizeText(item.word);
+  if (direct) {
+    const found = words.find((w) => normalizeText(w.word) === direct || normalizeText(w.word).includes(direct) || direct.includes(normalizeText(w.word)));
+    if (found) return found;
+  }
+  const hay = normalizeText(`${item.prompt} ${item.answer}`);
+  return words.find((w) => hay.includes(normalizeText(w.word))) || words[0];
 }
 
 /* ================================================================== */
