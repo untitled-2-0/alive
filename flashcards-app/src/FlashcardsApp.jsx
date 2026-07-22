@@ -9159,8 +9159,8 @@ function TaperEditor({ med, onClose, onSave }) {
 }
 
 /* ---------- Block 7: Career growth (inside Management) ---------- */
-const CAREERKEYS = { skills: "career:skills", achievements: "career:achievements", reviews: "career:reviews", path: "career:pathProgress" };
-async function collectCareerExport() { return { skills: await store.get(CAREERKEYS.skills, []), achievements: await store.get(CAREERKEYS.achievements, []), reviews: await store.get(CAREERKEYS.reviews, []), path: await store.get(CAREERKEYS.path, {}) }; }
+const CAREERKEYS = { skills: "career:skills", achievements: "career:achievements", reviews: "career:reviews", path: "career:pathProgress", bookPath: "career:bookProgress" };
+async function collectCareerExport() { return { skills: await store.get(CAREERKEYS.skills, []), achievements: await store.get(CAREERKEYS.achievements, []), reviews: await store.get(CAREERKEYS.reviews, []), path: await store.get(CAREERKEYS.path, {}), bookPath: await store.get(CAREERKEYS.bookPath, {}) }; }
 async function clearCareerData() { for (const k of Object.values(CAREERKEYS)) await store.remove(k); await store.remove("career:seeded"); }
 
 function CareerView() {
@@ -9171,6 +9171,8 @@ function CareerView() {
   const [wins, setWins] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [pathProg, setPathProg] = useState({});
+  const [bookProg, setBookProg] = useState({});
+  const [pathTab, setPathTab] = useState("roadmap"); // roadmap | book
   const [skillEd, setSkillEd] = useState(null);
   const [winText, setWinText] = useState("");
   const [reviewText, setReviewText] = useState("");
@@ -9194,10 +9196,12 @@ function CareerView() {
     setSkills(sk);
     setWins(await store.get(CAREERKEYS.achievements, []));
     setPathProg(await store.get(CAREERKEYS.path, {}));
+    setBookProg(await store.get(CAREERKEYS.bookPath, {}));
     const rv = await store.get(CAREERKEYS.reviews, []); setReviews(rv);
     setReviewText((rv.find((r) => r.week === week) || {}).text || "");
   })(); }, [week]);
   const setStepDone = (stepId, done) => setPathProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.path, n); return n; });
+  const setBookStepDone = (stepId, done) => setBookProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.bookPath, n); return n; });
   const saveSkills = (n) => { setSkills(n); store.set(CAREERKEYS.skills, n); };
   const saveWins = (n) => { setWins(n); store.set(CAREERKEYS.achievements, n); };
   const saveReviews = (n) => { setReviews(n); store.set(CAREERKEYS.reviews, n); };
@@ -9215,7 +9219,17 @@ function CareerView() {
         ))}
       </div>
 
-      {tab === "path" && <CareerPath progress={pathProg} onDone={setStepDone} />}
+      {tab === "path" && (
+        <div>
+          <div className="mb-3 flex gap-1.5 rounded-full bg-slate-100 p-1">
+            <button onClick={() => setPathTab("roadmap")} className={`flex-1 rounded-full py-1.5 text-xs font-bold transition ${pathTab === "roadmap" ? "bg-white text-rose-600 shadow-sm" : "text-slate-500"}`}>🧭 Моя роадмапа</button>
+            <button onClick={() => setPathTab("book")} className={`flex-1 rounded-full py-1.5 text-xs font-bold transition ${pathTab === "book" ? "bg-white text-rose-600 shadow-sm" : "text-slate-500"}`}>📚 Курс за книгою</button>
+          </div>
+          {pathTab === "roadmap"
+            ? <CareerPath progress={pathProg} onDone={setStepDone} />
+            : <CareerPath modules={BOOK_PATH} heading="Курс: Managing IT (по книзі)" progress={bookProg} onDone={setBookStepDone} />}
+        </div>
+      )}
 
       {tab === "skills" && (
         <div className="space-y-2">
@@ -10926,27 +10940,30 @@ const PM_PATH = [
   }
 ];
 
+// Book course (18 modules from "Managing Information Technology"), spliced at build time.
+const BOOK_PATH = []; /*__BOOK_PATH__*/
+
 const pathStepId = (slug, i) => `${slug}:${i}`;
 
-function CareerPath({ progress, onDone }) {
+function CareerPath({ modules = PM_PATH, heading = "Шлях: технічний PM з AI", progress, onDone }) {
   const [open, setOpen] = useState(null); // { modIdx, stepIdx }
-  const totalSteps = PM_PATH.reduce((s, m) => s + m.steps.length, 0);
-  const doneCount = PM_PATH.reduce((s, m) => s + m.steps.filter((_, i) => progress[pathStepId(m.slug, i)]).length, 0);
-  const openMod = open ? PM_PATH[open.modIdx] : null;
+  const totalSteps = modules.reduce((s, m) => s + m.steps.length, 0);
+  const doneCount = modules.reduce((s, m) => s + m.steps.filter((_, i) => progress[pathStepId(m.slug, i)]).length, 0);
+  const openMod = open ? modules[open.modIdx] : null;
   const openStep = openMod ? openMod.steps[open.stepIdx] : null;
 
-  if (!PM_PATH.length) return <div className="rounded-2xl bg-white py-10 text-center text-sm text-slate-400 ring-1 ring-rose-50">Шлях готується…</div>;
+  if (!modules.length) return <div className="rounded-2xl bg-white py-10 text-center text-sm text-slate-400 ring-1 ring-rose-50">Курс готується… (контент генерується — зайди трохи згодом)</div>;
 
   return (
     <div className="space-y-5">
       <div className="rounded-3xl bg-gradient-to-br from-rose-500 to-pink-500 p-5 text-white shadow-sm">
-        <div className="flex items-center gap-2 text-sm font-semibold text-white/90"><GraduationCap className="h-4 w-4" /> Шлях: технічний PM з AI</div>
+        <div className="flex items-center gap-2 text-sm font-semibold text-white/90"><GraduationCap className="h-4 w-4" /> {heading}</div>
         <div className="mt-1 text-2xl font-extrabold tabular-nums">{doneCount} / {totalSteps} кроків</div>
         <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/25"><div className="h-full rounded-full bg-white transition-all" style={{ width: `${totalSteps ? (doneCount / totalSteps) * 100 : 0}%` }} /></div>
         <div className="mt-1.5 text-xs leading-relaxed text-white/80">Маленькі кроки: вивчи → поясни своїми словами → збери → пройди тест. Роби по одному на день. 💪</div>
       </div>
 
-      {PM_PATH.map((mod, mi) => {
+      {modules.map((mod, mi) => {
         const mDone = mod.steps.filter((_, i) => progress[pathStepId(mod.slug, i)]).length;
         const modDone = mDone === mod.steps.length;
         return (
