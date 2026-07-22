@@ -21,7 +21,7 @@ import {
   Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft, RefreshCw,
   Wrench, Star, Users, Sparkles as SparklesIcon, Scale as ScaleIcon, ArrowLeftRight, Home,
   HandHeart, ShoppingCart, Wallet, ShoppingBasket, Search,
-  Package, Lock, HelpCircle,
+  Package, Lock, HelpCircle, Stethoscope, TestTube2, Minus,
 } from "lucide-react";
 import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signInWithLink, signOutCloud, refreshSession, syncNow } from "./cloud.js";
 
@@ -1366,6 +1366,76 @@ async function collectToolkitExport() {
 async function clearToolkitData() {
   for (const k of Object.values(TKEYS)) await store.remove(k);
 }
+
+/* ------------------------------------------------------------------ */
+/* Analyses — annual medical checklist                                 */
+/* ------------------------------------------------------------------ */
+const AKEYS = {
+  plans: "analyses:plans", // { [year]: { [itemId]: { target, done, price } } }
+  year: "analyses:year",
+};
+const analysesFmt = (value) => `${Math.round(Number(value) || 0).toLocaleString("uk-UA")} ₴`;
+const ANALYSES_GROUPS = [
+  { id: "pituitary", name: "Гіпофіз і щитоподібна" },
+  { id: "metabolic", name: "Метаболічний блок" },
+  { id: "baseline", name: "Базові аналізи" },
+  { id: "kidneys", name: "Нирки та сеча" },
+  { id: "gyn", name: "Гінекологія" },
+  { id: "imaging", name: "Візуалізація та процедури" },
+  { id: "consultations", name: "Консультації" },
+];
+const ANALYSES_ITEMS = [
+  { id: "prolactin", group: "pituitary", name: "Пролактин + макропролактин", note: "контроль 1–2 рази на рік", target: 2, price: 700 },
+  { id: "thyroid-hormones", group: "pituitary", name: "ТТГ + вільні Т3 і Т4", target: 1, price: 1000 },
+  { id: "thyroid-antibodies", group: "pituitary", name: "Анти-ТПО + анти-ТГ", target: 1, price: 900 },
+  { id: "cortisol-acth", group: "pituitary", name: "Кортизол + АКТГ", target: 1, price: 1100 },
+  { id: "igf-1", group: "pituitary", name: "ІФР-1", target: 1, price: 900 },
+  { id: "reproductive-hormones", group: "pituitary", name: "ЛГ + ФСГ + естрадіол", target: 1, price: 1300 },
+
+  { id: "glucose-hba1c", group: "metabolic", name: "Глюкоза + HbA1c", target: 1, price: 550 },
+  { id: "insulin-homa", group: "metabolic", name: "Інсулін + HOMA-IR", target: 1, price: 650 },
+  { id: "androgens", group: "metabolic", name: "Тестостерон + ДГЕА-С", target: 1, price: 900 },
+
+  { id: "cbc", group: "baseline", name: "Загальний аналіз крові", target: 1, price: 350 },
+  { id: "ferritin-iron", group: "baseline", name: "Феритин + залізо", target: 1, price: 550 },
+  { id: "vitamin-d", group: "baseline", name: "Вітамін D", target: 1, price: 700 },
+  { id: "liver", group: "baseline", name: "Печінкові проби", target: 1, price: 650 },
+  { id: "lipids", group: "baseline", name: "Ліпідограма", target: 1, price: 600 },
+
+  { id: "urinalysis", group: "kidneys", name: "Загальний аналіз сечі", target: 1, price: 250 },
+  { id: "kidney-panel", group: "kidneys", name: "Креатинін + сечовина + ШКФ", target: 1, price: 500 },
+  { id: "electrolytes", group: "kidneys", name: "Електроліти", target: 1, price: 350 },
+  { id: "urine-culture", group: "kidneys", name: "Бакпосів сечі + антибіотикограма", target: 1, price: 550 },
+  { id: "urine-protein", group: "kidneys", name: "Білок / мікроальбумін сечі", target: 1, price: 400 },
+
+  { id: "pap", group: "gyn", name: "ПАП-тест", target: 1, price: 900 },
+  { id: "hpv", group: "gyn", name: "ВПЛ (HPV)", target: 1, price: 1200 },
+  { id: "sti", group: "gyn", name: "Панель ІПСШ", note: "за потреби", target: 0, price: 1600 },
+
+  { id: "pituitary-mri", group: "imaging", name: "МРТ гіпофіза з контрастом", note: "за планом, іноді раз на 2 роки", target: 1, price: 5200 },
+  { id: "thyroid-us", group: "imaging", name: "УЗД щитоподібної", target: 1, price: 700 },
+  { id: "kidney-us", group: "imaging", name: "УЗД нирок і сечового міхура", target: 1, price: 800 },
+  { id: "pelvic-us", group: "imaging", name: "УЗД малого таза", target: 1, price: 900 },
+  { id: "lithotripsy", group: "imaging", name: "Літотрипсія", note: "за потреби", target: 0, price: 8000 },
+  { id: "chest-xray", group: "imaging", name: "Рентген легень", note: "за потреби", target: 0, price: 500 },
+  { id: "heart-us", group: "imaging", name: "УЗД серця", note: "за потреби", target: 0, price: 850 },
+
+  { id: "endocrinologist", group: "consultations", name: "Ендокринолог", target: 2, price: 600 },
+  { id: "nephrologist", group: "consultations", name: "Нефролог / уролог", target: 1, price: 500 },
+  { id: "gynecologist", group: "consultations", name: "Гінеколог", target: 1, price: 500 },
+  { id: "ophthalmologist", group: "consultations", name: "Офтальмолог", note: "периметрія + очне дно", target: 1, price: 700 },
+  { id: "dentist", group: "consultations", name: "Стоматолог", note: "орієнтовно 5 000 ₴ на рік", target: 1, price: 5000 },
+];
+async function loadAnalysesData() {
+  const currentYear = new Date().getFullYear();
+  const [plans, year] = await Promise.all([
+    store.get(AKEYS.plans, {}),
+    store.get(AKEYS.year, currentYear),
+  ]);
+  return { plans: plans || {}, year: Number(year) || currentYear };
+}
+async function collectAnalysesExport() { return loadAnalysesData(); }
+async function clearAnalysesData() { for (const key of Object.values(AKEYS)) await store.remove(key); }
 // effective difficulty score for member on chore (score if using 1-10, else attitude weight)
 function choreScore(ratings, choreId, memberId, useScores) {
   const r = ratings[choreId]?.[memberId];
@@ -1465,7 +1535,7 @@ export default function FlashcardsApp() {
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["review", "studying", "languages", "routine", "calm", "fasting", "management", "inventory", "money"].includes(ui.section) ? ui.section : "studying");
+      setSection(["review", "studying", "languages", "routine", "calm", "fasting", "management", "inventory", "money", "analyses"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
       setFastingName(fastingSettings?.name || "Fasting");
@@ -2005,6 +2075,7 @@ export default function FlashcardsApp() {
     await clearReviewData();
     await clearFinanceData();
     await clearLanguagesData();
+    await clearAnalysesData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
@@ -2027,6 +2098,7 @@ export default function FlashcardsApp() {
     window.dispatchEvent(new CustomEvent("review-reset"));
     window.dispatchEvent(new CustomEvent("finance-reset"));
     window.dispatchEvent(new CustomEvent("languages-reset"));
+    window.dispatchEvent(new CustomEvent("analyses-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
@@ -2041,9 +2113,10 @@ export default function FlashcardsApp() {
     const review = await collectReviewExport();
     const finance = await collectFinanceExport();
     const languages = await collectLanguagesExport();
+    const analyses = await collectAnalysesExport();
     const payload = {
       exportedAt: new Date().toISOString(),
-      version: 12,
+      version: 13,
       decks,
       groups,
       cards: cardsByDeck,
@@ -2059,6 +2132,7 @@ export default function FlashcardsApp() {
       review,
       finance,
       languages,
+      analyses,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -2311,6 +2385,8 @@ export default function FlashcardsApp() {
           <MoneySection budgetName={budgetName} renameBudget={renameBudget} financeName={financeName} renameFinance={renameFinance} onGo={changeSection} />
         ) : section === "inventory" ? (
           <InventorySection name={inventoryName} onRename={renameInventory} />
+        ) : section === "analyses" ? (
+          <AnalysesSection />
         ) : (
         <>
       {/* studying top bar */}
@@ -2502,6 +2578,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
     { id: "money", label: "Гроші", icon: Wallet, badge: 0 },
+    { id: "analyses", label: "Аналізи", icon: Stethoscope, badge: 0 },
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
   ];
   return (
@@ -2559,6 +2636,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
     { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
     { id: "money", label: "Гроші", icon: Wallet, badge: 0 },
+    { id: "analyses", label: "Аналізи", icon: Stethoscope, badge: 0 },
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
   ];
   const wide = !collapsed;
@@ -2624,6 +2702,182 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
         {wide && <span className="hidden lg:inline">Collapse</span>}
       </button>
     </aside>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Analyses — annual checklist                                         */
+/* ------------------------------------------------------------------ */
+function AnalysesStepper({ label, value, onChange }) {
+  const clean = Math.max(0, Math.min(99, Number(value) || 0));
+  return (
+    <div className="min-w-0">
+      <div className="mb-1 text-center text-[10px] font-semibold uppercase text-slate-400">{label}</div>
+      <div className="grid grid-cols-[32px_40px_32px] overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <button onClick={() => onChange(Math.max(0, clean - 1))} aria-label={`Зменшити: ${label}`} title="Зменшити" className="grid h-8 place-items-center text-slate-400 hover:bg-slate-50 hover:text-slate-700"><Minus className="h-3.5 w-3.5" /></button>
+        <input type="number" min={0} max={99} value={clean} onChange={(e) => onChange(Math.max(0, Math.min(99, Number(e.target.value) || 0)))} aria-label={label} className="h-8 w-10 border-x border-slate-200 text-center text-sm font-bold tabular-nums text-slate-700 outline-none focus:bg-sky-50" />
+        <button onClick={() => onChange(Math.min(99, clean + 1))} aria-label={`Збільшити: ${label}`} title="Збільшити" className="grid h-8 place-items-center text-slate-400 hover:bg-slate-50 hover:text-slate-700"><Plus className="h-3.5 w-3.5" /></button>
+      </div>
+    </div>
+  );
+}
+
+function AnalysesPriceInput({ value, onChange }) {
+  return (
+    <label className="col-span-2 w-[216px] min-w-0 sm:col-span-1 sm:w-[132px]">
+      <span className="mb-1 block text-center text-[10px] font-semibold uppercase text-slate-400">Ціна / раз</span>
+      <span className="relative block">
+        <input type="number" min={0} step={50} value={Math.max(0, Number(value) || 0)} onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))} aria-label="Ціна за одне обстеження" className="h-8 w-full rounded-lg border border-slate-200 bg-white py-1 pl-2 pr-6 text-right text-sm font-bold tabular-nums text-slate-700 outline-none focus:border-sky-400 focus:bg-sky-50" />
+        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">₴</span>
+      </span>
+    </label>
+  );
+}
+
+function AnalysesSection() {
+  const currentYear = new Date().getFullYear();
+  const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState(currentYear);
+  const [plans, setPlans] = useState({});
+  const [filter, setFilter] = useState("all");
+
+  const reload = useCallback(async () => {
+    const data = await loadAnalysesData();
+    setYear(data.year); setPlans(data.plans); setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("analyses-reset", onReset);
+    return () => window.removeEventListener("analyses-reset", onReset);
+  }, [reload]);
+
+  const entryFor = useCallback((item) => {
+    const saved = plans[year]?.[item.id];
+    return {
+      target: Math.max(0, Number(saved?.target ?? item.target) || 0),
+      done: Math.max(0, Number(saved?.done) || 0),
+      price: Math.max(0, Number(saved?.price ?? item.price) || 0),
+    };
+  }, [plans, year]);
+
+  const saveEntry = useCallback((item, patch) => {
+    setPlans((prev) => {
+      const saved = prev[year]?.[item.id];
+      const current = { target: Math.max(0, Number(saved?.target ?? item.target) || 0), done: Math.max(0, Number(saved?.done) || 0), price: Math.max(0, Number(saved?.price ?? item.price) || 0) };
+      const merged = { ...current, ...patch };
+      const nextEntry = {
+        target: Math.max(0, Math.min(99, Number(merged.target) || 0)),
+        done: Math.max(0, Math.min(99, Number(merged.done) || 0)),
+        price: Math.max(0, Number(merged.price) || 0),
+      };
+      const next = { ...prev, [year]: { ...(prev[year] || {}), [item.id]: nextEntry } };
+      store.set(AKEYS.plans, next);
+      return next;
+    });
+  }, [year]);
+
+  const setTarget = (item, value) => {
+    const current = entryFor(item);
+    const target = Math.max(0, Math.min(99, Number(value) || 0));
+    saveEntry(item, { target, done: Math.min(current.done, target) });
+  };
+  const setDone = (item, value) => {
+    const current = entryFor(item);
+    const done = Math.max(0, Math.min(99, Number(value) || 0));
+    saveEntry(item, { target: Math.max(current.target, done), done });
+  };
+  const setPrice = (item, value) => saveEntry(item, { price: Math.max(0, Number(value) || 0) });
+  const toggleDone = (item) => {
+    const current = entryFor(item);
+    if (current.target > 0 && current.done >= current.target) saveEntry(item, { done: 0 });
+    else saveEntry(item, { target: Math.max(1, current.target), done: Math.max(1, current.target) });
+  };
+  const selectYear = (nextYear) => { setYear(nextYear); store.set(AKEYS.year, nextYear); };
+
+  const rows = ANALYSES_ITEMS.map((item) => ({ ...item, ...entryFor(item) }));
+  const plannedRows = rows.filter((item) => item.target > 0);
+  const totalTarget = plannedRows.reduce((sum, item) => sum + item.target, 0);
+  const totalDone = plannedRows.reduce((sum, item) => sum + Math.min(item.done, item.target), 0);
+  const completedItems = plannedRows.filter((item) => item.done >= item.target).length;
+  const progress = totalTarget > 0 ? Math.round((totalDone / totalTarget) * 100) : 0;
+  const plannedCost = plannedRows.reduce((sum, item) => sum + item.target * item.price, 0);
+  const spentCost = plannedRows.reduce((sum, item) => sum + Math.min(item.done, item.target) * item.price, 0);
+  const remainingCost = Math.max(0, plannedCost - spentCost);
+  const matchesFilter = (item) => filter === "all" || (filter === "todo" ? item.target > 0 && item.done < item.target : item.target > 0 && item.done >= item.target);
+
+  if (loading) return <div className="flex min-h-screen flex-1 items-center justify-center text-sky-500"><TestTube2 className="h-8 w-8 animate-pulse" /></div>;
+  return (
+    <div className="min-h-screen min-w-0 flex-1 bg-slate-50">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex min-h-14 w-full max-w-4xl items-center gap-3 px-3 py-2 sm:px-4">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-sky-50 text-sky-600"><Stethoscope className="h-5 w-5" /></span>
+          <div className="mr-auto min-w-0"><h1 className="font-bold text-slate-900">Аналізи</h1><p className="hidden text-xs text-slate-400 sm:block">Річний чекліст обстежень</p></div>
+          <div className="flex items-center gap-1">
+            <button onClick={() => selectYear(year - 1)} aria-label="Попередній рік" title="Попередній рік" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><ChevronLeft className="h-4 w-4" /></button>
+            <div className="min-w-16 text-center"><div className="text-sm font-black tabular-nums text-slate-800">{year}</div>{year === currentYear && <div className="text-[9px] font-bold uppercase text-emerald-500">цей рік</div>}</div>
+            <button onClick={() => selectYear(year + 1)} aria-label="Наступний рік" title="Наступний рік" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><ChevronRight className="h-4 w-4" /></button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-4xl space-y-4 px-3 py-4 pb-24 sm:px-4 sm:py-5 lg:pb-8">
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+          <div className="grid gap-px bg-slate-100 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr]">
+            <div className="bg-white p-4">
+              <div className="flex items-end justify-between gap-3"><div><div className="text-xs font-semibold uppercase text-slate-400">Прогрес року</div><div className="mt-1 text-3xl font-black tabular-nums text-slate-900">{progress}%</div></div><Trophy className={`h-8 w-8 ${progress === 100 ? "text-amber-400" : "text-slate-200"}`} /></div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} /></div>
+            </div>
+            <div className="bg-white p-4"><div className="text-xs font-semibold uppercase text-slate-400">Пункти</div><div className="mt-2 text-2xl font-black tabular-nums text-slate-800">{completedItems}<span className="text-base text-slate-300">/{plannedRows.length}</span></div><div className="text-xs text-slate-400">{totalDone}/{totalTarget} виконань</div></div>
+            <div className="bg-white p-4"><div className="text-xs font-semibold uppercase text-slate-400">План на рік</div><div className="mt-2 text-xl font-black tabular-nums text-slate-800">{analysesFmt(plannedCost)}</div><div className="text-xs text-slate-400">за поточними цінами</div></div>
+            <div className="bg-white p-4"><div className="text-xs font-semibold uppercase text-slate-400">Залишилось</div><div className="mt-2 text-xl font-black tabular-nums text-rose-600">{analysesFmt(remainingCost)}</div><div className="text-xs text-slate-400">виконано на {analysesFmt(spentCost)}</div></div>
+          </div>
+          <div className="flex items-start gap-2 border-t border-slate-100 bg-sky-50/60 px-4 py-2.5 text-xs leading-5 text-sky-800"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>Стартові кількості перенесені з твого списку. Змінюй їх відповідно до плану лікаря на цей рік.</span></div>
+        </section>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex rounded-lg bg-slate-200/70 p-0.5" aria-label="Фільтр чекліста">
+            {[["all", "Усі"], ["todo", "Залишилось"], ["done", "Готові"]].map(([key, label]) => <button key={key} onClick={() => setFilter(key)} className={`rounded-md px-3 py-1.5 text-xs font-bold ${filter === key ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{label}</button>)}
+          </div>
+          {year !== currentYear && <button onClick={() => selectYear(currentYear)} className="text-xs font-bold text-sky-600 hover:text-sky-700">Повернутися до {currentYear}</button>}
+        </div>
+
+        <div className="space-y-4">
+          {ANALYSES_GROUPS.map((group) => {
+            const groupRows = rows.filter((item) => item.group === group.id);
+            const visibleRows = groupRows.filter(matchesFilter);
+            if (visibleRows.length === 0) return null;
+            const groupPlanned = groupRows.filter((item) => item.target > 0);
+            const groupDone = groupPlanned.filter((item) => item.done >= item.target).length;
+            const groupCost = groupPlanned.reduce((sum, item) => sum + item.target * item.price, 0);
+            return (
+              <section key={group.id} className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3"><h2 className="font-bold text-slate-800">{group.name}</h2><span className="shrink-0 text-right text-xs font-bold tabular-nums text-slate-400"><span className="block">{groupDone}/{groupPlanned.length}</span><span className="font-semibold text-slate-300">{analysesFmt(groupCost)}</span></span></div>
+                <div className="divide-y divide-slate-100">
+                  {visibleRows.map((item) => {
+                    const complete = item.target > 0 && item.done >= item.target;
+                    return (
+                      <div key={item.id} className={`grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-4 ${complete ? "bg-emerald-50/35" : "bg-white"}`}>
+                        <div className="flex min-w-0 items-start gap-3">
+                          <button onClick={() => toggleDone(item)} aria-label={complete ? `Позначити незавершеним: ${item.name}` : `Позначити виконаним: ${item.name}`} title={complete ? "Позначити незавершеним" : "Позначити виконаним"} className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border transition ${complete ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white text-slate-300 hover:border-emerald-400 hover:text-emerald-500"}`}>{complete ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}</button>
+                          <div className="min-w-0"><div className={`text-sm font-semibold ${complete ? "text-emerald-800" : "text-slate-700"}`}>{item.name}</div>{item.note && <div className="mt-0.5 text-xs leading-4 text-slate-400">{item.note}</div>}{item.target === 0 && <div className="mt-1 text-[10px] font-bold uppercase text-amber-500">Не заплановано</div>}</div>
+                        </div>
+                        <div className="grid grid-cols-[104px_104px] justify-start gap-2 pl-11 sm:grid-cols-[104px_104px_132px] sm:justify-end sm:pl-0">
+                          <AnalysesStepper label="Треба" value={item.target} onChange={(value) => setTarget(item, value)} />
+                          <AnalysesStepper label="Зроблено" value={item.done} onChange={(value) => setDone(item, value)} />
+                          <AnalysesPriceInput value={item.price} onChange={(value) => setPrice(item, value)} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+          {rows.filter(matchesFilter).length === 0 && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center"><CheckCircle2 className="mx-auto h-8 w-8 text-emerald-400" /><div className="mt-2 text-sm font-bold text-slate-700">Усе готово</div><div className="text-xs text-slate-400">Для цього фільтра пунктів немає.</div></div>}
+        </div>
+      </main>
+    </div>
   );
 }
 
@@ -7707,17 +7961,18 @@ function parseBudgetWorkbook(wb) {
 
 function MoneyToggle({ active, onSet }) {
   return (
-    <div className="flex gap-1 rounded-full bg-slate-100 p-0.5">
+    <div className="flex max-w-full gap-1 overflow-x-auto rounded-full bg-slate-100 p-0.5">
+      <button onClick={() => onSet("overview")} className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold transition ${active === "overview" ? "bg-emerald-500 text-white" : "text-slate-500"}`}>Огляд</button>
       <button onClick={() => onSet("budget")} className={`rounded-full px-2.5 py-1 text-xs font-bold transition ${active === "budget" ? "bg-emerald-500 text-white" : "text-slate-500"}`}>🛒 Покупки</button>
       <button onClick={() => onSet("finance")} className={`rounded-full px-2.5 py-1 text-xs font-bold transition ${active === "finance" ? "bg-emerald-500 text-white" : "text-slate-500"}`}>💳 Фінанси</button>
     </div>
   );
 }
 function MoneySection({ budgetName, renameBudget, financeName, renameFinance, onGo }) {
-  const [mv, setMv] = useState("budget");
-  return mv === "budget"
-    ? <BudgetSection name={budgetName} onRename={renameBudget} moneyTab={mv} onMoneyTab={setMv} />
-    : <FinanceSection name={financeName} onRename={renameFinance} onGo={onGo} moneyTab={mv} onMoneyTab={setMv} />;
+  const [mv, setMv] = useState("overview");
+  if (mv === "budget") return <BudgetSection name={budgetName} onRename={renameBudget} moneyTab={mv} onMoneyTab={setMv} />;
+  if (mv === "finance") return <FinanceSection name={financeName} onRename={renameFinance} onGo={onGo} moneyTab={mv} onMoneyTab={setMv} />;
+  return <MoneyOverview moneyTab={mv} onMoneyTab={setMv} />;
 }
 
 function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
@@ -8215,10 +8470,37 @@ function NewMonthModal({ month, next, planned, spent, onClose, onConfirm }) {
 /* ================================================================== */
 const IKEYS = {
   rooms: "inventory:rooms",       // [{id, name, sections:[{id,name}]}]
-  items: "inventory:items",       // [{id, roomId, secId, name, rec, where, status, notes}]
+  items: "inventory:items",       // [{id, roomId, secId, name, rec, where, status, notes, price}]
   settings: "inventory:settings", // {name}
   seeded: "inventory:seeded",
 };
+const INV_DEFAULT_PRICES = {
+  "Бильце": 1500, "Наматрацник": 1500, "Кабель-канали або органайзери для кабелів": 500,
+  "Кошик для білизни": 700, "Органайзери для дрібниць": 1200, "Коробки/контейнери для сезонних речей": 1800,
+  "Коробки для сезонних речей": 1500,
+  "Контейнери для кабелів та адаптерів": 700, "Килимок біля ліжка": 1200, "Серветки сухі": 100,
+  "Аптечка": 1500, "Спрей для тканин/освіжувач": 250, "Серветка або ганчірка для пилу": 150,
+  "Пилосос ручний або мініпилосос": 2000, "Подовжувач для прибирання/зарядки техніки": 600,
+  "Телевізор або проєктор": 15000, "Серветки для взуття": 120, "Дезодорант для взуття": 180,
+  "Малий органайзер для засобів догляду": 400, "Килимок біля входу зовнішній/внутрішній": 1000,
+  "Нічник або світильник з датчиком руху": 500, "Домофон/відеодзвінок": 4000,
+  "Датчик диму/протікання": 800, "Санітайзер": 150, "Органайзер для документів/перепусток": 500,
+  "Маленький смітник": 400, "Вологі серветки": 120, "Ганчірка для взуття/підлоги": 100,
+  "Освіжувач повітря або аромадифузор": 500, "Прозорі контейнери з кришками": 3000,
+  "Великі коробки для сезонних речей": 2500, "Запас губок": 150, "Туалетний папір": 300,
+  "Паперові рушники": 250, "Рукавички для прибирання": 200, "Відро": 300, "Віник/щітка": 450,
+  "Совок": 200, "Щітка для важкодоступних місць": 250, "Мініпилосос": 2000,
+  "Коробка для зимових аксесуарів": 600, "Коробка для літніх речей": 600,
+  "Коробка для святкового декору": 900, "Коробка для гірлянд/подовжувачів": 600,
+  "Валіза або дорожня сумка": 3500, "Запас води": 500, "Коробка для кабелів": 700,
+  "Органайзер для адаптерів": 400, "Запасні батарейки AA/AAA": 500, "Запасні зарядні кабелі": 1000,
+  "Контейнер для старих дисків/SSD/флешок": 500, "Папка для гарантій і документів на техніку": 250,
+  "Запасний подовжувач": 600, "Запасний мережевий фільтр": 800, "Ліхтарик": 700,
+  "Запасні батарейки для ліхтарика": 250, "Вогнегасник": 1400, "Поглиначі вологи/силікагель": 500,
+  "Датчик протікання/диму": 1200, "Навушники": 2500, "Вентилятор або обігрівач": 2500,
+  "Бальзам для губ": 200, "Кошик або коробка для дрібних речей": 500,
+};
+const invDefaultPrice = (name) => Number(INV_DEFAULT_PRICES[name]) || 0;
 const INV_STATUSES = [
   { id: "Є", label: "Є", dot: "#22c55e", bg: "bg-green-50", ring: "ring-green-200", text: "text-green-700", handled: true },
   { id: "Купити", label: "Купити", dot: "#f59e0b", bg: "bg-amber-50", ring: "ring-amber-200", text: "text-amber-700" },
@@ -8231,7 +8513,10 @@ const INV_DECIDED = (st) => st === "Є" || st === "Не потрібно"; // "h
 
 async function loadInventoryData() {
   const rooms = await store.get(IKEYS.rooms, null);
-  const items = await store.get(IKEYS.items, null);
+  const rawItems = await store.get(IKEYS.items, null);
+  const needsPrices = Array.isArray(rawItems) && rawItems.some((it) => it.price == null && invDefaultPrice(it.name) > 0);
+  const items = needsPrices ? rawItems.map((it) => (it.price == null && invDefaultPrice(it.name) > 0 ? { ...it, price: invDefaultPrice(it.name) } : it)) : rawItems;
+  if (needsPrices) await store.set(IKEYS.items, items);
   const settings = await store.get(IKEYS.settings, { name: "Inventory" });
   return { rooms, items, settings };
 }
@@ -8267,7 +8552,7 @@ function InventorySection({ name, onRename }) {
           const rid = ruid("ir"); const secs = [];
           for (const ss of sr.sections) {
             const sid = ruid("is"); secs.push({ id: sid, name: ss.name });
-            for (const si of ss.items) its.push({ id: ruid("ii"), roomId: rid, secId: sid, name: si.name, rec: si.rec || "", where: si.where || "", status: si.status || "Не вирішено", notes: si.notes || "" });
+            for (const si of ss.items) its.push({ id: ruid("ii"), roomId: rid, secId: sid, name: si.name, rec: si.rec || "", where: si.where || "", status: si.status || "Не вирішено", notes: si.notes || "", price: si.price == null ? invDefaultPrice(si.name) : Math.max(0, Number(si.price) || 0) });
           }
           rms.push({ id: rid, name: sr.name, sections: secs });
         }
@@ -8275,7 +8560,11 @@ function InventorySection({ name, onRename }) {
         d = await loadInventoryData();
       } catch (e) { d.rooms = d.rooms || []; d.items = d.items || []; }
     }
-    setRooms(d.rooms || []); setItems(d.items || []); setLoading(false);
+    const currentItems = d.items || [];
+    const needsPrices = currentItems.some((it) => it.price == null && invDefaultPrice(it.name) > 0);
+    const pricedItems = needsPrices ? currentItems.map((it) => (it.price == null && invDefaultPrice(it.name) > 0 ? { ...it, price: invDefaultPrice(it.name) } : it)) : currentItems;
+    if (needsPrices) await store.set(IKEYS.items, pricedItems);
+    setRooms(d.rooms || []); setItems(pricedItems); setLoading(false);
   }, []);
   useEffect(() => {
     reload();
@@ -8288,6 +8577,7 @@ function InventorySection({ name, onRename }) {
   const saveItems = useCallback(async (next) => { setItems(next); await store.set(IKEYS.items, next); }, []);
 
   const setStatus = (id, status) => setItems((prev) => { const next = prev.map((it) => (it.id === id ? { ...it, status } : it)); store.set(IKEYS.items, next); return next; });
+  const setPrice = (id, price) => setItems((prev) => { const next = prev.map((it) => (it.id === id ? { ...it, price: Math.max(0, Number(price) || 0) } : it)); store.set(IKEYS.items, next); return next; });
   const upsertItem = (meta, id) => { if (id) saveItems(items.map((it) => (it.id === id ? { ...it, ...meta } : it))); else saveItems([...items, { id: ruid("ii"), status: "Не вирішено", ...meta }]); };
   const deleteItem = (id) => saveItems(items.filter((it) => it.id !== id));
 
@@ -8317,7 +8607,7 @@ function InventorySection({ name, onRename }) {
   const toBuy = items.filter((it) => it.status === "Купити");
 
   const copyToBuy = () => {
-    const byRoom = rooms.map((r) => { const list = toBuy.filter((it) => it.roomId === r.id); return list.length ? `${r.name}:\n` + list.map((it) => `  • ${it.name}${it.rec ? ` (${it.rec})` : ""}`).join("\n") : ""; }).filter(Boolean).join("\n\n");
+    const byRoom = rooms.map((r) => { const list = toBuy.filter((it) => it.roomId === r.id); return list.length ? `${r.name}:\n` + list.map((it) => `  • ${it.name}${it.rec ? ` (${it.rec})` : ""}${it.price ? ` — ${finFmt(it.price)}` : ""}`).join("\n") : ""; }).filter(Boolean).join("\n\n");
     const text = "Купити для дому:\n\n" + byRoom;
     try { navigator.clipboard.writeText(text); flash("Скопійовано у буфер 📋"); } catch { flash("Не вдалося скопіювати"); }
   };
@@ -8329,7 +8619,7 @@ function InventorySection({ name, onRename }) {
     let nextCats = cats;
     if (!cat) { cat = { id: ruid("bc"), emoji: "🏠", name: "Дім (інвентар)" }; nextCats = [...cats, cat]; }
     const existing = new Set(its.filter((x) => x.catId === cat.id).map((x) => x.name));
-    const add = toBuy.filter((it) => !existing.has(it.name)).map((it) => ({ id: ruid("bi"), catId: cat.id, name: it.name, qty: 1, unit: "шт", price: 0, notes: it.rec ? `реком.: ${it.rec}` : "" }));
+    const add = toBuy.filter((it) => !existing.has(it.name)).map((it) => ({ id: ruid("bi"), catId: cat.id, name: it.name, qty: 1, unit: "шт", price: Number(it.price) || 0, notes: it.rec ? `реком.: ${it.rec}` : "", sourceInventoryId: it.id }));
     await store.set(BKEYS.cats, nextCats); await store.set(BKEYS.items, [...its, ...add]);
     flash(`Додано в Budget: ${add.length} товар(и) 🛒`);
   };
@@ -8367,7 +8657,7 @@ function InventorySection({ name, onRename }) {
         {view === "dash" && <InvDashboard rooms={rooms} overall={overall} roomStats={roomStats} onRoom={(rid) => { setRoomFilter(rid); setView("browse"); }} />}
         {view === "browse" && <InvBrowse rooms={rooms} items={items} collapsed={collapsed} setCollapsed={setCollapsed}
           statusFilter={statusFilter} setStatusFilter={setStatusFilter} roomFilter={roomFilter} setRoomFilter={setRoomFilter} query={query} setQuery={setQuery}
-          onStatus={setStatus} onEdit={(it) => setItemEditor({ item: it })} onDelete={deleteItem} onAddItem={(roomId, secId) => setItemEditor({ item: null, roomId, secId })} roomStats={roomStats} />}
+          onStatus={setStatus} onPrice={setPrice} onEdit={(it) => setItemEditor({ item: it })} onDelete={deleteItem} onAddItem={(roomId, secId) => setItemEditor({ item: null, roomId, secId })} roomStats={roomStats} />}
         {view === "tobuy" && <InvToBuy rooms={rooms} toBuy={toBuy} onAcquire={(id) => setStatus(id, "Є")} onCopy={copyToBuy} onSendBudget={sendToBudget} />}
       </main>
 
@@ -8428,28 +8718,40 @@ function InvStatusSelect({ value, onChange }) {
   );
 }
 
-function InvItemRow({ item, onStatus, onEdit, onDelete }) {
+function InvPriceInput({ value, onChange }) {
+  return (
+    <label className="relative shrink-0">
+      <input type="number" min={0} value={value || ""} onChange={(e) => onChange(e.target.value)} onClick={(e) => e.stopPropagation()} placeholder="ціна" aria-label="Орієнтовна ціна" className="w-24 rounded-full border border-rose-200 bg-white py-1 pl-2 pr-5 text-right text-xs font-bold tabular-nums text-slate-600 focus:border-rose-400 focus:outline-none" />
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">₴</span>
+    </label>
+  );
+}
+
+function InvItemRow({ item, onStatus, onPrice, onEdit, onDelete }) {
   const [showNotes, setShowNotes] = useState(false);
   return (
     <div className="group px-4 py-2.5">
-      <div className="flex items-start gap-2">
-        <button onClick={onEdit} className="min-w-0 flex-1 text-left">
+      <div className="flex flex-wrap items-start gap-2">
+        <button onClick={onEdit} className="min-w-[150px] flex-1 text-left">
           <div className="text-sm font-medium text-slate-800">{item.name}</div>
           <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-slate-400">
             {item.rec && <span>реком.: <span className="text-slate-500">{item.rec}</span></span>}
             {item.where && <span>· вдома: <span className="text-slate-500">{item.where}</span></span>}
           </div>
         </button>
-        {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-rose-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
-        <InvStatusSelect value={item.status} onChange={(st) => onStatus(item.id, st)} />
-        <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+          <InvPriceInput value={item.price} onChange={(price) => onPrice(item.id, price)} />
+          {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-rose-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
+          <InvStatusSelect value={item.status} onChange={(st) => onStatus(item.id, st)} />
+          <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
+        </div>
       </div>
       {showNotes && item.notes && <div className="mt-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">{item.notes}</div>}
     </div>
   );
 }
 
-function InvBrowse({ rooms, items, collapsed, setCollapsed, statusFilter, setStatusFilter, roomFilter, setRoomFilter, query, setQuery, onStatus, onEdit, onDelete, onAddItem, roomStats }) {
+function InvBrowse({ rooms, items, collapsed, setCollapsed, statusFilter, setStatusFilter, roomFilter, setRoomFilter, query, setQuery, onStatus, onPrice, onEdit, onDelete, onAddItem, roomStats }) {
   const q = query.trim().toLowerCase();
   const match = (it) => (!statusFilter || it.status === statusFilter) && (!q || it.name.toLowerCase().includes(q));
   const visRooms = rooms.filter((r) => !roomFilter || r.id === roomFilter);
@@ -8487,7 +8789,7 @@ function InvBrowse({ rooms, items, collapsed, setCollapsed, statusFilter, setSta
                     <div key={sec.id}>
                       <div className="flex items-center justify-between bg-slate-50/70 px-4 py-1.5"><span className="text-xs font-bold text-slate-500">{sec.name}</span><span className="text-[11px] text-slate-400">{sDecided}/{sTotal}</span></div>
                       <div className="divide-y divide-slate-50">
-                        {secItems.map((it) => <InvItemRow key={it.id} item={it} onStatus={onStatus} onEdit={() => onEdit(it)} onDelete={() => onDelete(it.id)} />)}
+                        {secItems.map((it) => <InvItemRow key={it.id} item={it} onStatus={onStatus} onPrice={onPrice} onEdit={() => onEdit(it)} onDelete={() => onDelete(it.id)} />)}
                         {!statusFilter && !q && <button onClick={() => onAddItem(r.id, sec.id)} className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-xs font-medium text-rose-600 hover:bg-rose-50"><Plus className="h-3.5 w-3.5" /> Предмет</button>}
                       </div>
                     </div>
@@ -8503,11 +8805,12 @@ function InvBrowse({ rooms, items, collapsed, setCollapsed, statusFilter, setSta
 }
 
 function InvToBuy({ rooms, toBuy, onAcquire, onCopy, onSendBudget }) {
+  const total = toBuy.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
         <div><div className="text-lg font-extrabold text-slate-900">Купити для дому</div><div className="text-sm text-slate-400">{toBuy.length} позицій · познач ✓ коли придбала</div></div>
-        <ShoppingCart className="h-8 w-8 text-amber-400" />
+        <div className="shrink-0 text-right"><ShoppingCart className="ml-auto h-6 w-6 text-amber-400" /><div className="mt-1 text-sm font-black tabular-nums text-slate-800">{finFmt(total)}</div></div>
       </div>
       {toBuy.length === 0 ? (
         <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-rose-50">Нічого купувати 🎉 Постав комусь статус «Купити» в переліку.</div>
@@ -8524,6 +8827,7 @@ function InvToBuy({ rooms, toBuy, onAcquire, onCopy, onSendBudget }) {
                 <button key={it.id} onClick={() => onAcquire(it.id)} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3.5 text-left shadow-sm ring-1 ring-slate-100 transition hover:ring-green-200">
                   <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-slate-300 text-transparent hover:border-green-400"><Check className="h-4 w-4" /></span>
                   <span className="min-w-0 flex-1"><span className="block truncate font-semibold text-slate-800">{it.name}</span>{it.rec && <span className="block text-xs text-slate-400">реком.: {it.rec}</span>}</span>
+                  <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{it.price ? finFmt(it.price) : "—"}</span>
                 </button>
               ))}
             </div>
@@ -8539,6 +8843,7 @@ function InvItemEditor({ item, rooms, roomId, secId, onClose, onSave, onDelete }
   const [rec, setRec] = useState(item?.rec || "");
   const [where, setWhere] = useState(item?.where || "");
   const [status, setStatus] = useState(item?.status || "Не вирішено");
+  const [price, setPrice] = useState(item?.price ?? invDefaultPrice(item?.name));
   const [notes, setNotes] = useState(item?.notes || "");
   const [rid, setRid] = useState(item?.roomId || roomId || rooms[0]?.id);
   const room = rooms.find((r) => r.id === rid);
@@ -8552,6 +8857,7 @@ function InvItemEditor({ item, rooms, roomId, secId, onClose, onSave, onDelete }
           <label className="block"><span className="mb-1 block text-xs text-slate-500">Рекомендовано</span><input value={rec} onChange={(e) => setRec(e.target.value)} placeholder="напр. 2–4" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-rose-400 focus:outline-none" /></label>
           <label className="block"><span className="mb-1 block text-xs text-slate-500">Статус</span><select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{INV_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
         </div>
+        <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Орієнтовна ціна, ₴</span><input type="number" min={0} value={price || ""} onChange={(e) => setPrice(Math.max(0, Number(e.target.value) || 0))} placeholder="0" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-semibold tabular-nums focus:border-rose-400 focus:outline-none" /></label>
         <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Де є вдома</span><input value={where} onChange={(e) => setWhere(e.target.value)} placeholder="напр. в шафі на верхній полиці" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-rose-400 focus:outline-none" /></label>
         <div className="mb-3 grid grid-cols-2 gap-2">
           <label className="block"><span className="mb-1 block text-xs text-slate-500">Кімната</span><select value={rid} onChange={(e) => { setRid(e.target.value); const rr = rooms.find((x) => x.id === e.target.value); setSid(rr?.sections[0]?.id); }} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
@@ -8559,7 +8865,7 @@ function InvItemEditor({ item, rooms, roomId, secId, onClose, onSave, onDelete }
         </div>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Нотатки (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
         <div className="flex gap-2">
-          <button onClick={() => { if (name.trim() && rid && sid) onSave({ name: name.trim(), rec: rec.trim(), where: where.trim(), status, notes: notes.trim(), roomId: rid, secId: sid }); }} className="flex-1 rounded-2xl bg-rose-500 py-3 font-bold text-white hover:bg-rose-600">Зберегти</button>
+          <button onClick={() => { if (name.trim() && rid && sid) onSave({ name: name.trim(), rec: rec.trim(), where: where.trim(), status, notes: notes.trim(), price: Math.max(0, Number(price) || 0), roomId: rid, secId: sid }); }} className="flex-1 rounded-2xl bg-rose-500 py-3 font-bold text-white hover:bg-rose-600">Зберегти</button>
           {onDelete && <button onClick={onDelete} className="rounded-2xl bg-red-50 px-4 py-3 font-semibold text-red-500 hover:bg-red-100"><Trash2 className="h-5 w-5" /></button>}
         </div>
       </div>
@@ -9385,10 +9691,84 @@ const FNKEYS = {
   expenses: "finance:expenses",   // [{id, date, amount, note, ts}]
   impulse: "finance:impulse",     // { since, best, resisted, slips:[dates] }
   settings: "finance:settings",   // { name, strategy }
+  profile: "finance:profile",     // { openingBalance, buffer }
+  incomes: "finance:incomes",     // [{id, name, amount, day}]
+  fixedCosts: "finance:fixedCosts", // [{id, name, amount, day}]
+  month: "finance:month",         // selected overview month
+  monthPlans: "finance:monthPlans", // { [month]: { profile, incomes, fixedCosts } }
 };
 const finFmt = (n) => `${Math.round((Number(n) || 0)).toLocaleString("uk-UA")} ₴`;
 function finWeekStart(ds) { const d = new Date(ds + "T00:00:00"); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return dateKey(d.getTime()); }
 function finDaysBetween(a, b) { return Math.max(0, Math.floor((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000)); }
+function finOrderDebts(debts, strategy) {
+  return [...debts].sort((a, b) => {
+    const aDone = (Number(a.balance) || 0) <= 0;
+    const bDone = (Number(b.balance) || 0) <= 0;
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    if (strategy === "avalanche") return (Number(b.rate) || 0) - (Number(a.rate) || 0) || (Number(a.balance) || 0) - (Number(b.balance) || 0);
+    if (strategy === "smart") {
+      const rateGap = (Number(b.rate) || 0) - (Number(a.rate) || 0);
+      return Math.abs(rateGap) >= 3 ? rateGap : (Number(a.balance) || 0) - (Number(b.balance) || 0);
+    }
+    return (Number(a.balance) || 0) - (Number(b.balance) || 0);
+  });
+}
+function finPayoffMonths(balance, annualRate, payment) {
+  const b = Number(balance) || 0; const p = Number(payment) || 0; const r = (Number(annualRate) || 0) / 1200;
+  if (b <= 0) return 0;
+  if (p <= 0 || (r > 0 && p <= b * r)) return null;
+  if (r === 0) return Math.ceil(b / p);
+  const months = Math.ceil(-Math.log(1 - (r * b) / p) / Math.log(1 + r));
+  return Number.isFinite(months) && months <= 600 ? months : null;
+}
+function finResolveDebtAllocation(allocation, incomes, debts) {
+  if (!allocation) return { amount: 0, income: null, debt: null };
+  const income = incomes.find((x) => x.id === allocation.incomeId);
+  const debt = debts.find((x) => x.id === allocation.debtId && (Number(x.balance) || 0) > 0);
+  if (!income || !debt) return { amount: 0, income, debt };
+  const incomeAmount = Math.max(0, Number(income.amount) || 0);
+  const requested = allocation.mode === "all" ? incomeAmount : allocation.mode === "half" ? incomeAmount / 2 : Math.max(0, Number(allocation.amount) || 0);
+  const debtCapacity = Math.max(0, Number(debt.balance) || 0);
+  return { amount: Math.min(incomeAmount, requested, debtCapacity), income, debt };
+}
+function finDebtProjection(balance, annualRate, monthlyPayment, maxMonths = 600) {
+  let left = Math.max(0, Number(balance) || 0);
+  const payment = Math.max(0, Number(monthlyPayment) || 0);
+  const monthlyRate = Math.max(0, Number(annualRate) || 0) / 1200;
+  let months = 0; let interest = 0;
+  if (left <= 0) return { months: 0, interest: 0, left: 0, stalled: false };
+  if (payment <= 0 || (monthlyRate > 0 && payment <= left * monthlyRate)) return { months: null, interest: 0, left, stalled: true };
+  while (left > 0.01 && months < maxMonths) {
+    const monthInterest = left * monthlyRate;
+    left += monthInterest; interest += monthInterest;
+    left -= Math.min(left, payment); months += 1;
+  }
+  return { months: left <= 0.01 ? months : null, interest, left: Math.max(0, left), stalled: left > 0.01 };
+}
+function finSavingsProjection({ months, startingSavings, income, fixedCosts, basket, pocket, otherDebtMinimums, debt, debtPayment, savingsAnnualRate = 10 }) {
+  let savings = Number(startingSavings) || 0;
+  let depositedSavings = savings;
+  let depositInterest = 0;
+  let debtLeft = Math.max(0, Number(debt?.balance) || 0);
+  const monthlyRate = Math.max(0, Number(debt?.rate) || 0) / 1200;
+  const monthlySavingsRate = Math.max(0, Number(savingsAnnualRate) || 0) / 1200;
+  let debtClosedAt = debtLeft <= 0 ? 0 : null;
+  for (let i = 1; i <= months; i += 1) {
+    let focusPayment = 0;
+    if (debtLeft > 0.01) {
+      debtLeft += debtLeft * monthlyRate;
+      focusPayment = Math.min(debtLeft, Math.max(0, Number(debtPayment) || 0));
+      debtLeft -= focusPayment;
+      if (debtLeft <= 0.01) { debtLeft = 0; debtClosedAt = i; }
+    }
+    const netSavings = (Number(income) || 0) - (Number(fixedCosts) || 0) - (Number(basket) || 0) - (Number(pocket) || 0) - (Number(otherDebtMinimums) || 0) - focusPayment;
+    const earnedInterest = Math.max(0, depositedSavings) * monthlySavingsRate;
+    depositInterest += earnedInterest;
+    depositedSavings += earnedInterest + netSavings;
+    savings += netSavings;
+  }
+  return { savings, depositedSavings, depositInterest, debtLeft, debtClosedAt };
+}
 
 async function loadFinanceData() {
   const debts = await store.get(FNKEYS.debts, []);
@@ -9396,10 +9776,311 @@ async function loadFinanceData() {
   const expenses = await store.get(FNKEYS.expenses, []);
   const impulse = await store.get(FNKEYS.impulse, null);
   const settings = await store.get(FNKEYS.settings, { name: "Finance", strategy: "snowball" });
-  return { debts, allowance, expenses, impulse, settings };
+  const profile = await store.get(FNKEYS.profile, { openingBalance: 0, buffer: 0 });
+  const incomes = await store.get(FNKEYS.incomes, []);
+  const fixedCosts = await store.get(FNKEYS.fixedCosts, []);
+  const month = await store.get(FNKEYS.month, budDefaultMonth());
+  const monthPlans = await store.get(FNKEYS.monthPlans, {});
+  return { debts, allowance, expenses, impulse, settings, profile, incomes, fixedCosts, month, monthPlans };
 }
-async function collectFinanceExport() { const d = await loadFinanceData(); return { debts: d.debts, allowance: d.allowance, expenses: d.expenses, impulse: d.impulse, settings: d.settings }; }
+async function collectFinanceExport() { const d = await loadFinanceData(); return { debts: d.debts, allowance: d.allowance, expenses: d.expenses, impulse: d.impulse, settings: d.settings, profile: d.profile, incomes: d.incomes, fixedCosts: d.fixedCosts, month: d.month, monthPlans: d.monthPlans }; }
 async function clearFinanceData() { for (const k of Object.values(FNKEYS)) await store.remove(k); }
+
+function MoneyPlanList({ title, hint, items, onChange, onAdd, tone = "emerald" }) {
+  const accent = tone === "sky" ? "text-sky-700 bg-sky-50" : "text-emerald-700 bg-emerald-50";
+  return (
+    <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div><h3 className="font-bold text-slate-800">{title}</h3><p className="text-xs text-slate-400">{hint}</p></div>
+        <button onClick={onAdd} title="Додати" className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${accent}`}><Plus className="h-4 w-4" /></button>
+      </div>
+      {items.length === 0 ? <div className="px-4 py-5 text-center text-sm text-slate-400">Ще нічого не додано</div> : (
+        <div className="divide-y divide-slate-100">
+          {items.map((item) => (
+            <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_90px_48px_28px] items-center gap-2 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_120px_70px_32px]">
+              <input value={item.name} onChange={(e) => onChange(item.id, { name: e.target.value })} placeholder="Назва" className="min-w-0 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" />
+              <label className="relative"><input type="number" min={0} value={item.amount || ""} onChange={(e) => onChange(item.id, { amount: Math.max(0, Number(e.target.value) || 0) })} placeholder="0" className="w-full rounded-lg border border-slate-200 py-1.5 pl-2 pr-5 text-right text-sm font-semibold tabular-nums focus:border-emerald-400 focus:outline-none" /><span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">₴</span></label>
+              <label className="relative"><input type="number" min={1} max={31} value={item.day || ""} onChange={(e) => onChange(item.id, { day: Math.min(31, Math.max(1, Number(e.target.value) || 1)) })} className="w-full rounded-lg border border-slate-200 py-1.5 pl-1 pr-4 text-center text-xs focus:border-emerald-400 focus:outline-none" /><span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-slate-400">д</span></label>
+              <button onClick={() => onChange(item.id, null)} title="Видалити" className="grid h-7 w-7 place-items-center rounded-md text-slate-300 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MoneyOverview({ moneyTab, onMoneyTab }) {
+  const [loading, setLoading] = useState(true);
+  const [budget, setBudget] = useState({ cats: [], items: [], bought: {}, stock: {}, actuals: {} });
+  const [inventory, setInventory] = useState({ rooms: [], items: [] });
+  const [finance, setFinance] = useState({ debts: [], allowance: { amount: 0, period: "day" }, expenses: [], settings: {} });
+  const [profile, setProfile] = useState({ openingBalance: 0, buffer: 0 });
+  const [incomes, setIncomes] = useState([]);
+  const [fixedCosts, setFixedCosts] = useState([]);
+  const [month, setMonth] = useState(budDefaultMonth());
+  const [monthPlans, setMonthPlans] = useState({});
+  const [debtAllocation, setDebtAllocation] = useState(null);
+  const [allocationOpen, setAllocationOpen] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [extraPurchase, setExtraPurchase] = useState("");
+
+  const reload = useCallback(async () => {
+    const [b, f, inv] = await Promise.all([loadBudgetData(), loadFinanceData(), loadInventoryData()]);
+    setBudget({ ...b, cats: b.cats || [], items: b.items || [], bought: b.bought || {}, stock: b.stock || {}, actuals: b.actuals || {} });
+    setInventory({ rooms: inv.rooms || [], items: inv.items || [] });
+    const selectedMonth = f.month || budDefaultMonth();
+    const plans = f.monthPlans || {};
+    const legacyPlan = { profile: f.profile || { openingBalance: 0, buffer: 0 }, incomes: f.incomes || [], fixedCosts: f.fixedCosts || [] };
+    const activePlan = plans[selectedMonth] || legacyPlan;
+    const nextPlans = plans[selectedMonth] ? plans : { ...plans, [selectedMonth]: activePlan };
+    if (!plans[selectedMonth]) await store.set(FNKEYS.monthPlans, nextPlans);
+    setFinance(f); setMonth(selectedMonth); setMonthPlans(nextPlans); setProfile(activePlan.profile); setIncomes(activePlan.incomes); setFixedCosts(activePlan.fixedCosts); setDebtAllocation(activePlan.debtAllocation || null);
+    setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("budget-reset", onReset); window.addEventListener("finance-reset", onReset); window.addEventListener("inventory-reset", onReset);
+    return () => { window.removeEventListener("budget-reset", onReset); window.removeEventListener("finance-reset", onReset); window.removeEventListener("inventory-reset", onReset); };
+  }, [reload]);
+
+  const saveMonthPlan = (nextProfile, nextIncomes, nextFixed, nextAllocation = debtAllocation) => {
+    const nextPlans = { ...monthPlans, [month]: { profile: nextProfile, incomes: nextIncomes, fixedCosts: nextFixed, debtAllocation: nextAllocation } };
+    setMonthPlans(nextPlans); store.set(FNKEYS.monthPlans, nextPlans);
+  };
+  const saveProfile = (patch) => { const next = { ...profile, ...patch }; setProfile(next); store.set(FNKEYS.profile, next); saveMonthPlan(next, incomes, fixedCosts); };
+  const saveIncomes = (next) => { setIncomes(next); store.set(FNKEYS.incomes, next); saveMonthPlan(profile, next, fixedCosts); };
+  const saveFixed = (next) => { setFixedCosts(next); store.set(FNKEYS.fixedCosts, next); saveMonthPlan(profile, incomes, next); };
+  const saveDebtAllocation = (next) => { setDebtAllocation(next); saveMonthPlan(profile, incomes, fixedCosts, next); };
+  const changeList = (list, save, id, patch) => save(patch ? list.map((x) => (x.id === id ? { ...x, ...patch } : x)) : list.filter((x) => x.id !== id));
+  const selectMonth = (nextMonth) => {
+    let nextPlans = monthPlans; let plan = monthPlans[nextMonth];
+    if (!plan) {
+      plan = {
+        profile: { openingBalance: 0, buffer: Number(profile.buffer) || 0 },
+        incomes: incomes.map((x) => ({ ...x })),
+        fixedCosts: fixedCosts.map((x) => ({ ...x })),
+        debtAllocation: null,
+      };
+      nextPlans = { ...monthPlans, [nextMonth]: plan };
+      setMonthPlans(nextPlans); store.set(FNKEYS.monthPlans, nextPlans);
+    }
+    setMonth(nextMonth); setProfile(plan.profile); setIncomes(plan.incomes); setFixedCosts(plan.fixedCosts); setDebtAllocation(plan.debtAllocation || null); setSelected([]); setExtraPurchase("");
+    store.set(FNKEYS.month, nextMonth);
+  };
+
+  const boughtMap = budget.bought[month] || {}; const stockMap = budget.stock[month] || {}; const actualMap = budget.actuals[month] || {};
+  const budgetPurchases = budget.items.filter((it) => !boughtMap[it.id] && budStockFrac(stockMap[it.id]) < 1).map((it) => ({ ...it, optionId: `budget:${it.id}`, source: "Budget", cost: (1 - budStockFrac(stockMap[it.id])) * budLineSum(it) }));
+  const budgetInventoryIds = new Set(budget.items.map((it) => it.sourceInventoryId).filter(Boolean));
+  const budgetNames = new Set(budget.items.map((it) => it.name.trim().toLowerCase()));
+  const inventoryPurchases = month === budDefaultMonth() ? inventory.items.filter((it) => it.status === "Купити" && !budgetInventoryIds.has(it.id) && !budgetNames.has(it.name.trim().toLowerCase())).map((it) => ({ ...it, optionId: `inventory:${it.id}`, source: "Inventory", cost: Number(it.price) || 0 })) : [];
+  const remainingPurchases = [...budgetPurchases, ...inventoryPurchases];
+  const purchasedCost = budget.items.reduce((sum, it) => sum + (boughtMap[it.id] ? (actualMap[it.id] != null ? Number(actualMap[it.id]) || 0 : budLineSum(it)) : 0), 0);
+  const remainingCost = remainingPurchases.reduce((sum, it) => sum + it.cost, 0);
+  const baselineBasket = budget.items.filter((it) => !it.sourceInventoryId).reduce((sum, it) => sum + budLineSum(it), 0);
+  const incomeTotal = incomes.reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+  const fixedTotal = fixedCosts.reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+  const activeDebts = (finance.debts || []).filter((x) => (Number(x.balance) || 0) > 0);
+  const minDebt = activeDebts.reduce((sum, x) => sum + (Number(x.minPayment) || 0), 0);
+  const totalDebt = activeDebts.reduce((sum, x) => sum + (Number(x.balance) || 0), 0);
+  const resolvedAllocation = finResolveDebtAllocation(debtAllocation, incomes, activeDebts);
+  const allocatedIncome = resolvedAllocation.amount;
+  const allocationMinPayment = Number(resolvedAllocation.debt?.minPayment) || 0;
+  const extraDebtPayment = Math.max(0, allocatedIncome - allocationMinPayment);
+  const availableIncome = incomeTotal - extraDebtPayment;
+  const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+  const allowancePlan = (Number(finance.allowance?.amount) || 0) * (finance.allowance?.period === "week" ? 52 / 12 : daysInMonth);
+  const pocketSpent = (finance.expenses || []).filter((x) => x.date?.startsWith(month)).reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+  const pocketCost = Math.max(allowancePlan, pocketSpent);
+  const forecast = (Number(profile.openingBalance) || 0) + availableIncome - fixedTotal - minDebt - purchasedCost - remainingCost - pocketCost;
+  const monthBalance = forecast;
+  const selectedCost = remainingPurchases.filter((it) => selected.includes(it.optionId)).reduce((sum, it) => sum + it.cost, 0);
+  const scenarioBase = (Number(profile.openingBalance) || 0) + availableIncome - fixedTotal - minDebt - purchasedCost - pocketCost;
+  const scenarioResult = scenarioBase - selectedCost - (Number(extraPurchase) || 0);
+  const strategy = finance.settings?.strategy || "snowball";
+  const focusDebt = resolvedAllocation.debt || finOrderDebts(activeDebts, strategy)[0];
+  const extraForDebt = Math.max(0, monthBalance);
+  const focusAllocation = focusDebt?.id === resolvedAllocation.debt?.id ? allocatedIncome : 0;
+  const plannedFocusPayment = focusDebt ? Math.min(Number(focusDebt.balance) || 0, Math.max(Number(focusDebt.minPayment) || 0, focusAllocation)) : 0;
+  const focusPaymentForEstimate = focusDebt ? Math.min(Number(focusDebt.balance) || 0, plannedFocusPayment + extraForDebt) : 0;
+  const payoffMonths = focusDebt ? finPayoffMonths(focusDebt.balance, focusDebt.rate, focusPaymentForEstimate) : 0;
+  const debtAfterPlan = focusDebt ? Math.max(0, (Number(focusDebt.balance) || 0) - plannedFocusPayment) : 0;
+  const otherDebtMinimums = activeDebts.filter((x) => x.id !== focusDebt?.id).reduce((sum, x) => sum + (Number(x.minPayment) || 0), 0);
+  const outcomeClass = monthBalance < 0 ? "text-rose-600" : monthBalance < 1000 ? "text-amber-600" : "text-emerald-600";
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-emerald-500"><Wallet className="h-8 w-8 animate-pulse" /></div>;
+  return (
+    <div className="min-h-screen min-w-0 flex-1 bg-gradient-to-b from-emerald-50/40 via-white to-sky-50/30">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex min-h-14 w-full max-w-4xl items-center gap-2 px-3 py-2 sm:px-4">
+          <div className="mr-auto min-w-0"><div className="font-bold text-slate-900">Гроші</div><div className="hidden text-xs text-slate-400 sm:block">Спільний прогноз</div></div>
+          <MoneyToggle active={moneyTab} onSet={onMoneyTab} />
+        </div>
+      </header>
+      <main className="mx-auto w-full max-w-4xl space-y-4 px-3 py-4 pb-24 sm:px-4 sm:py-5 lg:pb-8">
+        <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-100">
+          <div className="grid gap-px bg-slate-100 sm:grid-cols-2">
+            <label className="flex items-center justify-between gap-3 bg-white px-4 py-3"><span><span className="block text-sm font-semibold text-slate-700">На початок місяця</span><span className="block text-xs text-slate-400">гроші до надходжень і витрат</span></span><span className="relative shrink-0"><input type="number" value={profile.openingBalance || ""} onChange={(e) => saveProfile({ openingBalance: Number(e.target.value) || 0 })} placeholder="0" className="w-28 rounded-lg border border-slate-200 py-1.5 pl-2 pr-5 text-right font-bold tabular-nums focus:border-emerald-400 focus:outline-none" /><span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">₴</span></span></label>
+            <label className="flex items-center justify-between gap-3 bg-white px-4 py-3"><span><span className="block text-sm font-semibold text-slate-700">Вже відкладено</span><span className="block text-xs text-slate-400">окремі заощадження, не витрата місяця</span></span><span className="relative shrink-0"><input type="number" min={0} value={profile.buffer || ""} onChange={(e) => saveProfile({ buffer: Math.max(0, Number(e.target.value) || 0) })} placeholder="0" className="w-28 rounded-lg border border-slate-200 py-1.5 pl-2 pr-5 text-right font-bold tabular-nums focus:border-emerald-400 focus:outline-none" /><span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">₴</span></span></label>
+          </div>
+        </section>
+
+        <section className="rounded-2xl bg-slate-900 p-4 text-white shadow-sm sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <button onClick={() => selectMonth(budShiftMonth(month, -1))} title="Попередній місяць" aria-label="Попередній місяць" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-slate-200 hover:bg-white/20"><ChevronLeft className="h-4 w-4" /></button>
+            <div className="min-w-0 text-center"><div className="text-sm font-bold text-white">{budMonthLabel(month)}</div>{month !== budDefaultMonth() && <button onClick={() => selectMonth(budDefaultMonth())} className="mt-0.5 text-[11px] font-semibold text-emerald-300 hover:text-emerald-200">Поточний місяць</button>}</div>
+            <button onClick={() => selectMonth(budShiftMonth(month, 1))} title="Наступний місяць" aria-label="Наступний місяць" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-slate-200 hover:bg-white/20"><ChevronRight className="h-4 w-4" /></button>
+          </div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-semibold text-slate-400">Прогноз місяця</div><div className={`mt-1 text-3xl font-black tabular-nums ${monthBalance < 0 ? "text-rose-300" : "text-emerald-300"}`}>{monthBalance < 0 ? "−" : "+"}{finFmt(Math.abs(monthBalance))}</div><div className="mt-1 text-xs text-slate-400">після всіх планів; заощадження рахуються окремо</div></div><div className="flex flex-wrap justify-end gap-2"><div className="rounded-xl bg-white/10 px-3 py-2 text-right"><div className="text-[11px] text-slate-400">Відкладено</div><div className="font-bold tabular-nums text-emerald-300">{finFmt(profile.buffer)}</div></div><div className="rounded-xl bg-white/10 px-3 py-2 text-right"><div className="text-[11px] text-slate-400">Усі борги</div><div className="font-bold tabular-nums">{finFmt(totalDebt)}</div></div></div></div>
+          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-white/10 pt-3 text-sm sm:grid-cols-4">
+            <div><span className="text-slate-400">Доходи</span><div className="font-bold text-emerald-300">+{finFmt(incomeTotal)}</div>{allocatedIncome > 0 && <div className="text-[11px] font-semibold text-amber-300">{finFmt(allocatedIncome)} → кредит, мінімум включено</div>}</div>
+            <div><span className="text-slate-400">Обов'язкове</span><div className="font-bold">−{finFmt(fixedTotal + minDebt)}</div></div>
+            <div><span className="text-slate-400">Покупки</span><div className="font-bold">−{finFmt(purchasedCost + remainingCost)}</div></div>
+            <div><span className="text-slate-400">Кишеня</span><div className="font-bold">−{finFmt(pocketCost)}</div></div>
+          </div>
+        </section>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <MoneyPlanList title="Доходи" hint="зарплата, аванс, підробіток" items={incomes} tone="emerald" onAdd={() => saveIncomes([...incomes, { id: ruid("fi"), name: "Зарплата", amount: 0, day: 1 }])} onChange={(id, patch) => changeList(incomes, saveIncomes, id, patch)} />
+          <MoneyPlanList title="Регулярні витрати" hint="оренда, комуналка, підписки" items={fixedCosts} tone="sky" onAdd={() => saveFixed([...fixedCosts, { id: ruid("ff"), name: "", amount: 0, day: 1 }])} onChange={(id, patch) => changeList(fixedCosts, saveFixed, id, patch)} />
+        </div>
+
+        <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-amber-100">
+          <div className="border-b border-slate-100 px-4 py-3"><h3 className="font-bold text-slate-800">А якщо купити?</h3><p className="text-xs text-slate-400">Познач позиції з місячного списку або введи іншу суму</p></div>
+          {remainingPurchases.length > 0 ? <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto">{remainingPurchases.map((it) => <label key={it.optionId} className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-amber-50/40"><input type="checkbox" checked={selected.includes(it.optionId)} onChange={() => setSelected((prev) => prev.includes(it.optionId) ? prev.filter((id) => id !== it.optionId) : [...prev, it.optionId])} className="h-4 w-4 rounded border-slate-300 accent-amber-500" /><span className="min-w-0 flex-1"><span className="block truncate text-sm text-slate-700">{it.name}</span><span className="block text-[10px] text-slate-400">{it.source}</span></span><span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{finFmt(it.cost)}</span></label>)}</div> : <div className="px-4 py-4 text-sm text-slate-400">У Budget та Inventory немає невиконаних покупок.</div>}
+          <div className="grid gap-3 border-t border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-[1fr_170px] sm:items-center"><label className="flex items-center gap-2"><span className="text-sm text-slate-500">Інша покупка</span><span className="relative ml-auto"><input type="number" min={0} value={extraPurchase} onChange={(e) => setExtraPurchase(e.target.value)} placeholder="0" className="w-28 rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-5 text-right text-sm font-bold focus:border-amber-400 focus:outline-none" /><span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">₴</span></span></label><div className="text-left sm:text-right"><div className="text-[11px] text-slate-400">Після вибраного</div><div className={`text-lg font-black tabular-nums ${scenarioResult < 0 ? "text-rose-600" : "text-emerald-600"}`}>{finFmt(scenarioResult)}</div></div></div>
+        </section>
+
+        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
+          <div className="flex items-start gap-3"><Target className="mt-0.5 h-5 w-5 shrink-0 text-sky-500" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-slate-800">Пріоритет боргу</h3>{focusDebt && incomes.some((x) => (Number(x.amount) || 0) > 0) && <button onClick={() => setAllocationOpen(true)} className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700 hover:bg-sky-100">{allocatedIncome > 0 ? "Змінити розподіл" : "Розподілити дохід"}</button>}</div>{focusDebt ? <><div className="mt-2 flex flex-wrap items-baseline justify-between gap-2"><span className="font-semibold text-slate-700">{focusDebt.name}</span><span className="font-black tabular-nums text-slate-900">{finFmt(focusDebt.balance)}</span></div>{allocatedIncome > 0 ? <div className="mt-2 space-y-1 rounded-xl bg-sky-50 px-3 py-2 text-sm"><div className="flex justify-between gap-3 text-sky-800"><span>Із «{resolvedAllocation.income?.name}» на кредит</span><b className="tabular-nums">{finFmt(allocatedIncome)}</b></div><div className="flex justify-between gap-3 text-slate-500"><span>У тому числі мінімальний платіж</span><b className="tabular-nums">{finFmt(Math.min(plannedFocusPayment, Number(focusDebt.minPayment) || 0))}</b></div><div className="flex justify-between gap-3 text-slate-600"><span>Борг після плану</span><b className="tabular-nums">{finFmt(debtAfterPlan)}</b></div></div> : <p className="mt-2 text-sm text-slate-500">Мінімум по всіх боргах уже враховано. Після планів можна спрямувати сюди ще <b className={outcomeClass}>{finFmt(extraForDebt)}</b>{payoffMonths ? ` — орієнтовне закриття за ${payoffMonths} міс.` : ""}</p>}{allocatedIncome > 0 && <button onClick={() => saveDebtAllocation(null)} className="mt-2 text-xs font-semibold text-slate-400 hover:text-red-500">Прибрати розподіл цього місяця</button>}</> : <p className="mt-1 text-sm text-slate-400">Активних боргів немає.</p>}</div></div>
+        </section>
+
+        <MoneyProjectionPanel
+          month={month}
+          income={incomeTotal}
+          fixedCosts={fixedTotal}
+          basket={baselineBasket}
+          pocket={pocketCost}
+          startingSavings={Number(profile.buffer) || 0}
+          focusDebt={focusDebt}
+          debtPayment={plannedFocusPayment}
+          otherDebtMinimums={otherDebtMinimums}
+        />
+      </main>
+      {allocationOpen && <IncomeDebtAllocationModal incomes={incomes} debts={activeDebts} value={debtAllocation} forecastBeforeAllocation={forecast + extraDebtPayment} onClose={() => setAllocationOpen(false)} onSave={(next) => { saveDebtAllocation(next); setAllocationOpen(false); }} />}
+    </div>
+  );
+}
+
+function MoneyProjectionPanel({ month, income, fixedCosts, basket, pocket, startingSavings, focusDebt, debtPayment, otherDebtMinimums }) {
+  const [horizon, setHorizon] = useState(12);
+  const payoff = focusDebt ? finDebtProjection(focusDebt.balance, focusDebt.rate, debtPayment) : null;
+  const savings = finSavingsProjection({
+    months: horizon,
+    startingSavings,
+    income,
+    fixedCosts,
+    basket,
+    pocket,
+    otherDebtMinimums,
+    debt: focusDebt,
+    debtPayment,
+  });
+  const monthlyWhileDebt = income - fixedCosts - basket - pocket - otherDebtMinimums - (focusDebt ? debtPayment : 0);
+  const monthlyAfterDebt = income - fixedCosts - basket - pocket - otherDebtMinimums;
+  const monthlyDepositIncome = Math.max(0, savings.depositedSavings) * 10 / 1200;
+  const savingsDelta = savings.depositedSavings - startingSavings;
+  const payoffMonth = payoff?.months != null && payoff.months > 0 ? budMonthLabel(budShiftMonth(month, payoff.months - 1)) : null;
+  const signed = (value) => `${value < 0 ? "−" : "+"}${finFmt(Math.abs(value))}`;
+
+  return (
+    <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-100">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-600"><TrendingUp className="h-4 w-4" /></span>
+          <div className="min-w-0"><h3 className="font-bold text-slate-800">Прогноз кредиту й заощаджень</h3><p className="text-xs text-slate-400">Якщо щомісячний план не змінюється</p></div>
+        </div>
+        <div className="flex shrink-0 rounded-lg bg-slate-100 p-0.5" aria-label="Горизонт прогнозу">
+          {[6, 12, 24, 36].map((months) => <button key={months} onClick={() => setHorizon(months)} className={`min-w-11 rounded-md px-2 py-1.5 text-xs font-bold ${horizon === months ? "bg-white text-emerald-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{months} міс.</button>)}
+        </div>
+      </div>
+
+      <div className="grid divide-y divide-slate-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <div className="p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-700"><CalendarClock className="h-4 w-4 text-sky-500" />Закриття кредиту</div>
+          {!focusDebt ? <p className="mt-3 text-sm text-slate-400">Активних кредитів немає.</p> : payoff?.stalled ? <div className="mt-3"><div className="text-lg font-black text-amber-600">Дату поки не визначити</div><p className="mt-1 text-xs leading-5 text-slate-500">Платіж {finFmt(debtPayment)} не покриває щомісячні відсотки. Потрібна більша сума платежу.</p></div> : (
+            <div className="mt-3">
+              <div className="text-2xl font-black text-slate-900">{payoffMonth || "Цього місяця"}</div>
+              <p className="mt-0.5 text-sm font-semibold text-sky-600">через {payoff?.months || 0} міс.</p>
+              <div className="mt-3 space-y-1.5 text-xs text-slate-500">
+                <div className="flex justify-between gap-3"><span>Платіж щомісяця</span><b className="tabular-nums text-slate-700">{finFmt(debtPayment)}</b></div>
+                <div className="flex justify-between gap-3"><span>Відсотки до закриття</span><b className="tabular-nums text-slate-700">{finFmt(payoff?.interest || 0)}</b></div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-700"><Wallet className="h-4 w-4 text-emerald-500" />{savings.depositedSavings < 0 ? "Дефіцит" : "На депозиті"} через {horizon} міс.</div>
+          <div className={`mt-3 text-2xl font-black tabular-nums ${savings.depositedSavings < 0 ? "text-rose-600" : "text-emerald-600"}`}>{finFmt(savings.depositedSavings)}</div>
+          <p className={`mt-0.5 text-sm font-semibold ${savingsDelta < 0 ? "text-rose-500" : "text-emerald-600"}`}>{signed(savingsDelta)} до нинішнього запасу</p>
+          {savings.depositedSavings < 0 && <p className="mt-1 text-xs leading-5 text-slate-400">За цих умов витрати перевищують дохід — це нестача коштів, а не доступний залишок.</p>}
+          <div className="mt-3 space-y-1.5 text-xs text-slate-500">
+            <div className="flex justify-between gap-3"><span>Без депозиту</span><b className="tabular-nums text-slate-700">{finFmt(savings.savings)}</b></div>
+            <div className="flex justify-between gap-3"><span>Дохід депозиту на місяць · 10%</span><b className="tabular-nums text-emerald-600">+{finFmt(monthlyDepositIncome)}</b></div>
+            <div className="flex justify-between gap-3"><span>Щомісяця до закриття кредиту</span><b className={`tabular-nums ${monthlyWhileDebt < 0 ? "text-rose-600" : "text-slate-700"}`}>{signed(monthlyWhileDebt)}</b></div>
+            {focusDebt && <div className="flex justify-between gap-3"><span>Після закриття кредиту</span><b className={`tabular-nums ${monthlyAfterDebt < 0 ? "text-rose-600" : "text-emerald-600"}`}>{signed(monthlyAfterDebt)}</b></div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 text-xs leading-5 text-slate-500">
+        <span className="font-bold text-slate-600">У прогнозі щомісяця:</span> дохід {finFmt(income)}, базова корзина Budget {finFmt(basket)}, регулярні витрати {finFmt(fixedCosts)}, кишеня {finFmt(pocket)}{otherDebtMinimums > 0 ? `, інші кредити ${finFmt(otherDebtMinimums)}` : ""}. Старт депозиту — вже відкладено {finFmt(startingSavings)}.
+        <span className="mt-1 block text-slate-400">Депозит: 10% річних зі щомісячною капіталізацією. Платіж повторюється лише в прогнозі й не змінює плани майбутніх місяців.</span>
+      </div>
+    </section>
+  );
+}
+
+function IncomeDebtAllocationModal({ incomes, debts, value, forecastBeforeAllocation, onClose, onSave }) {
+  const usableIncomes = incomes.filter((x) => (Number(x.amount) || 0) > 0);
+  const [incomeId, setIncomeId] = useState(value?.incomeId || usableIncomes[0]?.id || "");
+  const [debtId, setDebtId] = useState(value?.debtId || debts[0]?.id || "");
+  const [mode, setMode] = useState(value?.mode || "all");
+  const [customAmount, setCustomAmount] = useState(value?.amount || "");
+  const draft = { incomeId, debtId, mode, amount: Number(customAmount) || 0 };
+  const resolved = finResolveDebtAllocation(draft, usableIncomes, debts);
+  const minPayment = Number(resolved.debt?.minPayment) || 0;
+  const totalPayment = resolved.debt ? Math.min(Number(resolved.debt.balance) || 0, Math.max(minPayment, resolved.amount)) : 0;
+  const extraPayment = Math.max(0, totalPayment - minPayment);
+  const debtAfter = resolved.debt ? Math.max(0, (Number(resolved.debt.balance) || 0) - totalPayment) : 0;
+  const monthAfter = forecastBeforeAllocation - extraPayment;
+  const sourceAmount = Number(resolved.income?.amount) || 0;
+  const unused = mode === "all" ? Math.max(0, sourceAmount - resolved.amount) : 0;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between"><div><h3 className="text-lg font-bold text-slate-900">Розподілити дохід</h3><p className="text-xs text-slate-400">План лише для цього місяця</p></div><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="space-y-3">
+          <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-500">Звідки</span><select value={incomeId} onChange={(e) => setIncomeId(e.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-sky-400 focus:outline-none">{usableIncomes.map((x) => <option key={x.id} value={x.id}>{x.name || "Дохід"} · {finFmt(x.amount)}</option>)}</select></label>
+          <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-500">На який кредит</span><select value={debtId} onChange={(e) => setDebtId(e.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-sky-400 focus:outline-none">{debts.map((x) => <option key={x.id} value={x.id}>{x.name} · {finFmt(x.balance)}</option>)}</select></label>
+          <div><span className="mb-1.5 block text-xs font-semibold text-slate-500">Скільки із цього доходу</span><div className="grid grid-cols-3 gap-2">{[["half", "50%"], ["all", "100%"], ["custom", "Своя сума"]].map(([key, label]) => <button key={key} onClick={() => setMode(key)} className={`rounded-xl px-2 py-2 text-sm font-bold ring-1 ${mode === key ? "bg-sky-500 text-white ring-sky-500" : "bg-white text-slate-600 ring-slate-200"}`}>{label}</button>)}</div></div>
+          {mode === "custom" && <label className="relative block"><input autoFocus type="number" min={0} value={customAmount} onChange={(e) => setCustomAmount(e.target.value)} placeholder="Сума" className="w-full rounded-xl border border-slate-300 py-2 pl-3 pr-8 text-right text-sm font-bold tabular-nums focus:border-sky-400 focus:outline-none" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">₴</span></label>}
+        </div>
+        <div className="mt-4 overflow-hidden rounded-2xl bg-slate-50 text-sm">
+          <div className="flex justify-between gap-3 border-b border-slate-200 px-3 py-2"><span className="text-slate-500">Із доходу на кредит</span><b className="tabular-nums text-sky-700">{finFmt(resolved.amount)}</b></div>
+          <div className="flex justify-between gap-3 border-b border-slate-200 px-3 py-2"><span className="text-slate-500">У цій сумі мінімальний платіж</span><b className="tabular-nums text-slate-800">{finFmt(Math.min(totalPayment, minPayment))}</b></div>
+          <div className="flex justify-between gap-3 px-3 py-2"><span className="text-slate-500">Борг після плану</span><b className="tabular-nums text-slate-800">{finFmt(debtAfter)}</b></div>
+        </div>
+        {resolved.amount > 0 && resolved.amount < minPayment && <p className="mt-2 text-xs text-amber-600">Обрана сума менша за мінімальний платіж {finFmt(minPayment)}, тому в плані все одно буде враховано мінімум.</p>}
+        <div className={`mt-3 rounded-xl px-3 py-2 text-sm ${monthAfter < 0 ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>Після цього місячний прогноз: <b className="tabular-nums">{monthAfter < 0 ? "−" : "+"}{finFmt(Math.abs(monthAfter))}</b>{monthAfter < 0 && <span className="mt-0.5 block text-xs">Частина інших планів не матиме покриття. Дію все одно можна зберегти.</span>}</div>
+        {unused > 0 && <p className="mt-2 text-xs text-slate-400">{finFmt(unused)} не помістяться в залишок кредиту й залишаться доступними.</p>}
+        <button disabled={resolved.amount <= 0} onClick={() => onSave(draft)} className="mt-4 w-full rounded-2xl bg-sky-500 py-3 font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40">Застосувати до місяця</button>
+      </div>
+    </div>
+  );
+}
 
 function FinanceSection({ name, onRename, onGo, moneyTab, onMoneyTab }) {
   const today = dateKey(Date.now());
@@ -9443,7 +10124,7 @@ function FinanceSection({ name, onRename, onGo, moneyTab, onMoneyTab }) {
   const totalDebt = debts.reduce((s, x) => s + (Number(x.balance) || 0), 0);
   const totalStart = debts.reduce((s, x) => s + (Number(x.start) || Number(x.balance) || 0), 0);
   const totalPaid = totalStart - totalDebt;
-  const ordered = [...debts].sort((a, b) => strategy === "snowball" ? (a.balance - b.balance) : (b.rate - a.rate)).sort((a, b) => (a.balance <= 0) - (b.balance <= 0));
+  const ordered = finOrderDebts(debts, strategy);
   const focus = ordered.find((x) => x.balance > 0);
 
   // allowance / expenses
@@ -9497,8 +10178,8 @@ function FinanceSection({ name, onRename, onGo, moneyTab, onMoneyTab }) {
             {debts.length > 0 && (
               <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-50">
                 <div className="mb-1.5 text-xs font-semibold text-slate-500">Стратегія погашення</div>
-                <div className="flex gap-2">
-                  {[["snowball", "Сніжинка", "спершу найменший борг — швидкі перемоги"], ["avalanche", "Лавина", "спершу найдорожчий % — менше переплати"]].map(([k, label, desc]) => (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {[["snowball", "Сніжинка", "найменший борг — швидкі перемоги"], ["avalanche", "Лавина", "найвищий % — менше переплати"], ["smart", "Баланс", "ставка + швидке закриття"]].map(([k, label, desc]) => (
                     <button key={k} onClick={() => saveStrategy(k)} className={`flex-1 rounded-xl p-2 text-left ring-1 transition ${strategy === k ? "bg-emerald-50 ring-emerald-300" : "bg-white ring-slate-200"}`}><div className="text-sm font-bold text-slate-800">{label}</div><div className="text-[11px] leading-tight text-slate-400">{desc}</div></button>
                   ))}
                 </div>
@@ -9553,7 +10234,7 @@ function FinanceSection({ name, onRename, onGo, moneyTab, onMoneyTab }) {
                 <div className="space-y-1">{periodExp.map((e) => <div key={e.id} className="group flex items-center gap-2 text-sm"><span className="tabular-nums font-semibold text-slate-700">{finFmt(e.amount)}</span><span className="min-w-0 flex-1 truncate text-slate-400">{e.note || "—"}</span><span className="text-[11px] text-slate-300">{e.date.slice(5)}</span><button onClick={() => delExpense(e.id)} className="text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>)}</div>
               </div>
             )}
-            <button onClick={() => onGo && onGo("budget")} className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200 hover:ring-emerald-200"><ShoppingCart className="h-4 w-4" /> Щомісячні покупки — у вкладці Budget</button>
+            <button onClick={() => onMoneyTab && onMoneyTab("budget")} className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200 hover:ring-emerald-200"><ShoppingCart className="h-4 w-4" /> Щомісячні покупки — у вкладці Budget</button>
           </div>
         )}
 
