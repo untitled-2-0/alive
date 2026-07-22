@@ -1264,18 +1264,20 @@ export default function FlashcardsApp() {
     const out = {};
     for (const d of decks) {
       const cards = cardsByDeck[d.id] || [];
-      let learn = 0, review = 0, newTotal = 0;
+      let learn = 0, review = 0, newTotal = 0, learned = 0;
       const stages = {}; // stageId -> count, across ALL cards (interval breakdown)
       for (const c of cards) {
         if (c.state === "new") newTotal += 1;
         else if (c.state === "learning" && c.due <= endTs) learn += 1;
         else if (c.state === "review" && c.due <= endTs) review += 1;
+        // "learned" = mature card: reviewed and on a long (≥21d) interval
+        if (c.state === "review" && (c.interval || 0) >= 21) learned += 1;
         const sid = stageForCard(c).id;
         stages[sid] = (stages[sid] || 0) + 1;
       }
       // Strict "due today" = only cards the schedule actually placed today or earlier.
       // New cards are NOT padded in — they're studied via the "only new"/"all" modes.
-      out[d.id] = { learn, review, newTotal, newDue: newTotal, total: cards.length, due: learn + review, stages };
+      out[d.id] = { learn, review, newTotal, newDue: newTotal, learned, total: cards.length, due: learn + review, stages };
     }
     return out;
   }, [decks, cardsByDeck, stats]);
@@ -2215,6 +2217,13 @@ function HomeView({
   const [dragId, setDragId] = useState(null);
   const [overTarget, setOverTarget] = useState(null); // group id | "ungrouped"
 
+  // learned (mature) vs remaining across all decks
+  const mastery = useMemo(() => {
+    let total = 0, learned = 0, fresh = 0;
+    for (const d of decks) { const s = summary[d.id]; if (!s) continue; total += s.total || 0; learned += s.learned || 0; fresh += s.newTotal || 0; }
+    return { total, learned, fresh, young: Math.max(0, total - learned - fresh), remaining: total - learned };
+  }, [decks, summary]);
+
   const dropProps = (target) => ({
     onDragOver: (e) => { if (dragId) { e.preventDefault(); setOverTarget(target); } },
     onDragLeave: () => setOverTarget((t) => (t === target ? null : t)),
@@ -2277,6 +2286,27 @@ function HomeView({
         <StatTile icon={Flame} label="Streak" value={streak} tint={streak ? "text-orange-500" : "text-slate-400"} sub={streak === 1 ? "day" : "days"} />
         <StatTile icon={Layers} label="Decks" value={decks.length} tint="text-slate-700" />
       </div>
+
+      {/* learned vs remaining */}
+      {mastery.total > 0 && (
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-semibold text-slate-700">Вивчено {mastery.learned.toLocaleString()} з {mastery.total.toLocaleString()} карток</span>
+            <span className="font-bold text-green-600 tabular-nums">{Math.round((mastery.learned / mastery.total) * 100)}%</span>
+          </div>
+          <div className="mt-2 flex h-3 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full bg-green-500 transition-all" style={{ width: `${(mastery.learned / mastery.total) * 100}%` }} />
+            <div className="h-full bg-amber-400 transition-all" style={{ width: `${(mastery.young / mastery.total) * 100}%` }} />
+            <div className="h-full bg-slate-300 transition-all" style={{ width: `${(mastery.fresh / mastery.total) * 100}%` }} />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> вивчено {mastery.learned.toLocaleString()}</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> вчу {mastery.young.toLocaleString()}</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-300" /> ще не починала {mastery.fresh.toLocaleString()}</span>
+            <span className="ml-auto font-semibold text-slate-600">залишилось {mastery.remaining.toLocaleString()}</span>
+          </div>
+        </div>
+      )}
 
       {/* actions */}
       <div className="flex flex-wrap items-center gap-2">
@@ -2421,6 +2451,12 @@ function DeckCard({ deck, s, groups = [], onOpen, onStudy, onEdit, onDelete, onM
             <CountPill n={sum.review} cls="bg-green-100 text-green-700" />
             <span className="text-slate-400">{sum.total} card{sum.total === 1 ? "" : "s"}</span>
           </div>
+          {sum.total > 0 && (
+            <div className="mt-1.5 flex items-center gap-2">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-green-500" style={{ width: `${((sum.learned || 0) / sum.total) * 100}%` }} /></div>
+              <span className="shrink-0 text-[10px] font-medium tabular-nums text-slate-400">вивчено {sum.learned || 0}/{sum.total}</span>
+            </div>
+          )}
         </div>
       </button>
       <div className="flex shrink-0 items-center gap-1">
