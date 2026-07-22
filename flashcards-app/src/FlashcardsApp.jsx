@@ -9177,8 +9177,8 @@ function TaperEditor({ med, onClose, onSave }) {
 }
 
 /* ---------- Block 7: Career growth (inside Management) ---------- */
-const CAREERKEYS = { skills: "career:skills", achievements: "career:achievements", reviews: "career:reviews", path: "career:pathProgress", bookPath: "career:bookProgress", enPath: "career:enProgress" };
-async function collectCareerExport() { return { skills: await store.get(CAREERKEYS.skills, []), achievements: await store.get(CAREERKEYS.achievements, []), reviews: await store.get(CAREERKEYS.reviews, []), path: await store.get(CAREERKEYS.path, {}), bookPath: await store.get(CAREERKEYS.bookPath, {}), enPath: await store.get(CAREERKEYS.enPath, {}) }; }
+const CAREERKEYS = { skills: "career:skills", achievements: "career:achievements", reviews: "career:reviews", path: "career:pathProgress", bookPath: "career:bookProgress", enPath: "career:enProgress", en2Path: "career:en2Progress" };
+async function collectCareerExport() { return { skills: await store.get(CAREERKEYS.skills, []), achievements: await store.get(CAREERKEYS.achievements, []), reviews: await store.get(CAREERKEYS.reviews, []), path: await store.get(CAREERKEYS.path, {}), bookPath: await store.get(CAREERKEYS.bookPath, {}), enPath: await store.get(CAREERKEYS.enPath, {}), en2Path: await store.get(CAREERKEYS.en2Path, {}) }; }
 async function clearCareerData() { for (const k of Object.values(CAREERKEYS)) await store.remove(k); await store.remove("career:seeded"); }
 
 function CareerView() {
@@ -9191,10 +9191,12 @@ function CareerView() {
   const [pathProg, setPathProg] = useState({});
   const [bookProg, setBookProg] = useState({});
   const [enProg, setEnProg] = useState({});
+  const [en2Prog, setEn2Prog] = useState({});
   const [roadmapModules, setRoadmapModules] = useState(null); // fetched from /pm-path.json
   const [bookModules, setBookModules] = useState(null);        // fetched from /book-course.json
   const [enModules, setEnModules] = useState(null);            // fetched from /pm-en-course.json
-  const [pathTab, setPathTab] = useState("roadmap"); // roadmap | book | en
+  const [en2Modules, setEn2Modules] = useState(null);          // fetched from /pm-en2-course.json
+  const [pathTab, setPathTab] = useState("roadmap"); // roadmap | book | en | en2
   const [skillEd, setSkillEd] = useState(null);
   const [winText, setWinText] = useState("");
   const [reviewText, setReviewText] = useState("");
@@ -9220,19 +9222,22 @@ function CareerView() {
     setPathProg(await store.get(CAREERKEYS.path, {}));
     setBookProg(await store.get(CAREERKEYS.bookPath, {}));
     setEnProg(await store.get(CAREERKEYS.enPath, {}));
+    setEn2Prog(await store.get(CAREERKEYS.en2Path, {}));
     const rv = await store.get(CAREERKEYS.reviews, []); setReviews(rv);
     setReviewText((rv.find((r) => r.week === week) || {}).text || "");
   })(); }, [week]);
   const setStepDone = (stepId, done) => setPathProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.path, n); return n; });
   const setBookStepDone = (stepId, done) => setBookProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.bookPath, n); return n; });
   const setEnStepDone = (stepId, done) => setEnProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.enPath, n); return n; });
+  const setEn2StepDone = (stepId, done) => setEn2Prog((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.en2Path, n); return n; });
   // fetch each course JSON when needed (roadmap eagerly since it's the default tab; others lazily)
   useEffect(() => {
     const grab = (url, set) => fetch(url).then((r) => (r.ok ? r.json() : [])).then((d) => set(Array.isArray(d) ? d : [])).catch(() => set([]));
     if (roadmapModules === null) grab("/pm-path.json", setRoadmapModules);
     if (pathTab === "book" && bookModules === null) grab("/book-course.json", setBookModules);
     if (pathTab === "en" && enModules === null) grab("/pm-en-course.json", setEnModules);
-  }, [pathTab, roadmapModules, bookModules, enModules]);
+    if (pathTab === "en2" && en2Modules === null) grab("/pm-en2-course.json", setEn2Modules);
+  }, [pathTab, roadmapModules, bookModules, enModules, en2Modules]);
   const saveSkills = (n) => { setSkills(n); store.set(CAREERKEYS.skills, n); };
   const saveWins = (n) => { setWins(n); store.set(CAREERKEYS.achievements, n); };
   const saveReviews = (n) => { setReviews(n); store.set(CAREERKEYS.reviews, n); };
@@ -9252,14 +9257,15 @@ function CareerView() {
 
       {tab === "path" && (
         <div>
-          <div className="mb-3 grid grid-cols-3 gap-1.5 rounded-2xl bg-slate-100 p-1">
-            {[["roadmap", "🧭 Роадмапа"], ["book", "📚 Managing IT"], ["en", "🇬🇧 PM (English)"]].map(([k, label]) => (
+          <div className="mb-3 grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1">
+            {[["roadmap", "🧭 Роадмапа"], ["book", "📚 Managing IT (укр)"], ["en", "🇬🇧 Pro PM (EN)"], ["en2", "🇬🇧 PM Basics (EN)"]].map(([k, label]) => (
               <button key={k} onClick={() => setPathTab(k)} className={`rounded-xl py-1.5 text-[11px] font-bold leading-tight transition sm:text-xs ${pathTab === k ? "bg-white text-rose-600 shadow-sm" : "text-slate-500"}`}>{label}</button>
             ))}
           </div>
           {pathTab === "roadmap" && <CareerPath modules={roadmapModules || []} heading="Шлях: технічний PM з AI" progress={pathProg} onDone={setStepDone} />}
           {pathTab === "book" && <CareerPath modules={bookModules || []} heading="Курс: Managing IT (по книзі)" progress={bookProg} onDone={setBookStepDone} />}
           {pathTab === "en" && <CareerPath modules={enModules || []} heading="PM course · The Professional Project Manager (English)" progress={enProg} onDone={setEnStepDone} />}
+          {pathTab === "en2" && <CareerPath modules={en2Modules || []} heading="PM course · Project Management by A. Watt (English)" progress={en2Prog} onDone={setEn2StepDone} />}
         </div>
       )}
 
