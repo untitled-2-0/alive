@@ -1,0 +1,13905 @@
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import * as XLSX from "xlsx";
+import Papa from "papaparse";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
+  LineChart, Line,
+} from "recharts";
+import {
+  Brain, Upload, BarChart3, Layers, Plus, Trash2, Download, RotateCcw,
+  ChevronRight, Flame, Clock, FileSpreadsheet, ClipboardPaste, X, Sparkles,
+  GraduationCap, Play, Keyboard, Check, ArrowLeft, Target, Inbox,
+  Pencil, Filter, Zap, Shuffle, Tag, FolderPlus, BookOpen, ChevronDown, Layers3,
+  Image as ImageIcon, ImagePlus, Folder, FolderOpen, Volume2, CalendarClock,
+  Timer, Maximize2, Settings, ChevronsUpDown, CalendarDays,
+  PanelLeftClose, PanelLeft, CheckCircle2, Circle, Sun, Repeat, ListChecks,
+  Trophy, Smile, Menu, GripVertical, ArrowRight, Sunrise,
+  Wind, Waves, Anchor, HeartPulse, TrendingUp, NotebookPen, Hourglass,
+  Leaf, Pause, SkipForward, ListTree, Heart, Sparkle,
+  Coffee, Droplet, Scale, ShieldAlert, Info, Square, TrendingDown,
+  Utensils, GlassWater, LineChart as LineChartIcon, Cloud, CloudOff, LogOut, Mail,
+  Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft, RefreshCw,
+  Wrench, Star, Users, Sparkles as SparklesIcon, Scale as ScaleIcon, ArrowLeftRight, Home,
+  HandHeart, ShoppingCart, Wallet, ShoppingBasket, Search,
+  Package, Lock, HelpCircle, Stethoscope, TestTube2, Minus,
+} from "lucide-react";
+import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signInWithLink, signOutCloud, refreshSession, syncNow } from "./cloud.js";
+
+/* ------------------------------------------------------------------ */
+/* Constants + tiny utils                                              */
+/* ------------------------------------------------------------------ */
+const DAY = 86_400_000;
+const MIN = 60_000;
+const LEARN_STEPS = [1, 10]; // minutes
+const GRADUATE_GOOD = 1; // days
+const GRADUATE_EASY = 4; // days
+const DEFAULT_NEW_PER_DAY = 20;
+const SESSION_REQUEUE_WINDOW = 20 * MIN; // "Again" re-appears within the session
+
+const uid = (p = "id") =>
+  `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+
+const dateKey = (ms) => {
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+    d.getDate()
+  ).padStart(2, "0")}`;
+};
+
+const clampEF = (ef) => Math.max(1.3, ef);
+
+function formatDelta(ms) {
+  if (ms <= 0) return "now";
+  if (ms < DAY) {
+    const m = Math.round(ms / MIN);
+    if (m < 60) return `${m}m`;
+    return `${Math.round(m / 60)}h`;
+  }
+  const days = Math.round(ms / DAY);
+  if (days < 30) return `${days}d`;
+  if (days < 365) return `${Math.round(days / 30)}mo`;
+  return `${(days / 365).toFixed(1)}y`;
+}
+
+/* ------------------------------------------------------------------ */
+/* SM-2 (Anki-flavoured) scheduler                                     */
+/* ------------------------------------------------------------------ */
+// deckOpts (optional): { goal: "longterm" | "deadline", deadline: ms }
+function schedule(card, grade, now, deckOpts) {
+  let ef = clampEF(card.ef || 2.5);
+  let interval = card.interval || 0;
+  let reps = card.reps || 0;
+  let lapses = card.lapses || 0;
+  let stepIdx = card.stepIdx || 0;
+  let state = card.state || "new";
+  let due;
+
+  if (state === "new" || state === "learning") {
+    if (grade === "again") {
+      state = "learning";
+      stepIdx = 0;
+      interval = 0;
+      due = now + LEARN_STEPS[0] * MIN;
+    } else if (grade === "hard") {
+      state = "learning";
+      due = now + LEARN_STEPS[Math.min(stepIdx, LEARN_STEPS.length - 1)] * MIN;
+    } else if (grade === "good") {
+      if (stepIdx >= LEARN_STEPS.length - 1) {
+        state = "review";
+        interval = GRADUATE_GOOD;
+        reps = 1;
+        stepIdx = 0;
+        due = now + interval * DAY;
+      } else {
+        stepIdx += 1;
+        state = "learning";
+        due = now + LEARN_STEPS[stepIdx] * MIN;
+      }
+    } else {
+      // easy — graduate immediately
+      state = "review";
+      interval = GRADUATE_EASY;
+      reps = 1;
+      stepIdx = 0;
+      due = now + interval * DAY;
+    }
+  } else {
+    // review state
+    if (grade === "again") {
+      lapses += 1;
+      ef = clampEF(ef - 0.2);
+      reps = 0;
+      state = "learning";
+      stepIdx = 0;
+      interval = 0;
+      due = now + LEARN_STEPS[0] * MIN;
+    } else if (grade === "hard") {
+      ef = clampEF(ef - 0.15);
+      interval = Math.max(1, Math.round(interval * 1.2));
+      due = now + interval * DAY;
+    } else if (grade === "good") {
+      interval = Math.max(1, Math.round(interval * ef));
+      reps += 1;
+      due = now + interval * DAY;
+    } else {
+      ef = ef + 0.15;
+      interval = Math.max(1, Math.round(interval * ef * 1.3));
+      reps += 1;
+      due = now + interval * DAY;
+    }
+  }
+
+  // Deadline goal: compress review intervals so every card cycles several more
+  // times before the target date instead of being pushed months out.
+  if (state === "review" && deckOpts && deckOpts.goal === "deadline" && deckOpts.deadline) {
+    const daysLeft = (deckOpts.deadline - now) / DAY;
+    const cap = daysLeft <= 1 ? 1 : Math.max(1, Math.floor(daysLeft / 3));
+    interval = Math.min(interval, cap);
+    due = Math.min(now + interval * DAY, deckOpts.deadline);
+    if (due <= now) due = now + Math.max(1, interval) * DAY;
+  }
+
+  // record the interval progression (in days) each time the card lands in review,
+  // so the card can show its schedule in plain words ("1 → 3 → 8 d")
+  let ivls = card.ivls || [];
+  if (state === "review") ivls = [...ivls, interval];
+
+  return { ...card, ef, interval, reps, lapses, stepIdx, due, state, lastReviewed: now, ivls };
+}
+
+// Plain-words spaced-repetition schedule for one card.
+function cardScheduleText(card, now = Date.now()) {
+  if (card.state === "new") return { line: "Нова картка — ще не в графіку", prog: "", next: "" };
+  const ivls = card.ivls || [];
+  const prog = ivls.length ? ivls.map((d) => `${d}`).join(" → ") + " дн" : "";
+  const cur = card.state === "learning" ? "вивчення" : `${card.interval || 1} дн`;
+  const diff = card.due - now;
+  let next;
+  if (diff <= 0) next = "готова зараз";
+  else if (diff < DAY) next = `за ${Math.max(1, Math.round(diff / (60 * 60 * 1000)))} год`;
+  else { const days = Math.round(diff / DAY); next = `за ${days} ${days === 1 ? "день" : days < 5 ? "дні" : "днів"}`; }
+  return { prog, cur, next };
+}
+
+/* ------------------------------------------------------------------ */
+/* Interval / scheduling visualisation                                 */
+/* ------------------------------------------------------------------ */
+// Ordered stages from short (hot) to long (cool). `max` is in days.
+const INTERVAL_STAGES = [
+  { id: "learning", label: "Learning", max: 0, dot: "#e11d48", bg: "bg-red-100", text: "text-red-700" },
+  { id: "1d", label: "1 day", max: 1, dot: "#f97316", bg: "bg-orange-100", text: "text-orange-700" },
+  { id: "3d", label: "3 days", max: 3, dot: "#f59e0b", bg: "bg-amber-100", text: "text-amber-700" },
+  { id: "1w", label: "1 week", max: 7, dot: "#eab308", bg: "bg-yellow-100", text: "text-yellow-700" },
+  { id: "2w", label: "2 weeks", max: 14, dot: "#84cc16", bg: "bg-lime-100", text: "text-lime-700" },
+  { id: "1mo", label: "1 month", max: 30, dot: "#22c55e", bg: "bg-green-100", text: "text-green-700" },
+  { id: "3mo", label: "3 months", max: 90, dot: "#14b8a6", bg: "bg-teal-100", text: "text-teal-700" },
+  { id: "long", label: "Long-term", max: Infinity, dot: "#2563eb", bg: "bg-blue-100", text: "text-blue-700" },
+];
+
+function stageForCard(card) {
+  if (card.state === "new") return { id: "new", label: "New", max: 0, dot: "#94a3b8", bg: "bg-slate-100", text: "text-slate-600" };
+  if (card.state === "learning") return INTERVAL_STAGES[0];
+  const d = card.interval || 0;
+  for (const s of INTERVAL_STAGES) if (d <= s.max) return s;
+  return INTERVAL_STAGES[INTERVAL_STAGES.length - 1];
+}
+
+// human label for a card's interval, e.g. "3d", "2w", "Learning"
+function intervalLabel(card) {
+  if (card.state === "new") return "New";
+  if (card.state === "learning") return "Learning";
+  return formatDelta((card.interval || 1) * DAY);
+}
+
+// "in 3d", "tomorrow", "today", "2h" — relative next-due
+function dueLabel(card, now = Date.now()) {
+  const diff = card.due - now;
+  if (diff <= 0) return "due now";
+  if (diff < DAY) {
+    const h = Math.round(diff / (60 * MIN));
+    return h <= 1 ? "< 1h" : `in ${h}h`;
+  }
+  const days = Math.round(diff / DAY);
+  if (days === 1) return "tomorrow";
+  if (days < 30) return `in ${days}d`;
+  if (days < 365) return `in ${Math.round(days / 30)}mo`;
+  return `in ${(days / 365).toFixed(1)}y`;
+}
+
+const SCHED_GOALS = {
+  longterm: { id: "longterm", label: "Long-term retention", short: "Long-term", icon: Layers3, desc: "Standard SM-2 — intervals grow into months and years." },
+  deadline: { id: "deadline", label: "Short-term / deadline", short: "Deadline", icon: CalendarClock, desc: "Compress intervals to fit before a target date, cycling each card several times." },
+};
+
+function daysUntil(ms, now = Date.now()) {
+  return Math.ceil((ms - now) / DAY);
+}
+
+const GRADES = [
+  { key: "again", label: "Again", hint: "1", cls: "bg-red-600 hover:bg-red-700", ring: "ring-red-300" },
+  { key: "hard", label: "Hard", hint: "2", cls: "bg-amber-500 hover:bg-amber-600", ring: "ring-amber-300" },
+  { key: "good", label: "Good", hint: "3", cls: "bg-green-600 hover:bg-green-700", ring: "ring-green-300" },
+  { key: "easy", label: "Easy", hint: "4", cls: "bg-blue-600 hover:bg-blue-700", ring: "ring-blue-300" },
+];
+
+/* ------------------------------------------------------------------ */
+/* Deck cosmetics + taxonomy                                           */
+/* ------------------------------------------------------------------ */
+const DECK_COLORS = [
+  { id: "indigo", dot: "#4f46e5", bg: "bg-indigo-50", text: "text-indigo-600" },
+  { id: "violet", dot: "#7c3aed", bg: "bg-violet-50", text: "text-violet-600" },
+  { id: "blue", dot: "#2563eb", bg: "bg-blue-50", text: "text-blue-600" },
+  { id: "teal", dot: "#0d9488", bg: "bg-teal-50", text: "text-teal-600" },
+  { id: "green", dot: "#16a34a", bg: "bg-green-50", text: "text-green-600" },
+  { id: "amber", dot: "#d97706", bg: "bg-amber-50", text: "text-amber-600" },
+  { id: "orange", dot: "#ea580c", bg: "bg-orange-50", text: "text-orange-600" },
+  { id: "rose", dot: "#e11d48", bg: "bg-rose-50", text: "text-rose-600" },
+  { id: "pink", dot: "#db2777", bg: "bg-pink-50", text: "text-pink-600" },
+  { id: "slate", dot: "#475569", bg: "bg-slate-100", text: "text-slate-600" },
+];
+const getColor = (id) => DECK_COLORS.find((c) => c.id === id) || DECK_COLORS[0];
+
+const TOPIC_PRESETS = [
+  "Languages", "Biology", "History", "Geography", "Science", "Medicine",
+  "Law", "Business", "Technology", "Math", "Art", "Music", "Exam prep", "Other",
+];
+
+const DECK_EMOJIS = [
+  "📚", "🗣️", "🧬", "🏛️", "🌍", "⚗️", "💊", "⚖️", "💼", "💻",
+  "➗", "🎨", "🎵", "🍳", "⚽", "✈️", "🧠", "📝", "🔬", "🌱", "⭐", "🔥",
+];
+
+const STUDY_MODES = [
+  { id: "due", label: "Due today", icon: Target, desc: "Cards the schedule says are ready, plus new ones up to your daily limit." },
+  { id: "custom", label: "A set number", icon: Layers3, desc: "Study a fixed number of cards, due ones first." },
+  { id: "all", label: "All cards", icon: BookOpen, desc: "Every card in scope, scheduling as normal." },
+  { id: "new", label: "Only new", icon: Sparkles, desc: "Cards you haven't started learning yet." },
+  { id: "review", label: "Only review", icon: RotateCcw, desc: "Cards you've already started — drill them ahead of time." },
+  { id: "cram", label: "Cram", icon: Zap, desc: "Ignore the schedule and drill. Won't change your due dates." },
+];
+
+/* ------------------------------------------------------------------ */
+/* Languages path: B2 -> C1 curriculum spine + generated lesson cache  */
+/* ------------------------------------------------------------------ */
+const LKEYS = {
+  progress: "languages:progress",
+  xp: "languages:xp",
+  wordStrength: "languages:wordStrength",
+  cacheIndex: "languages:stepCache:index",
+  settings: "languages:settings",
+};
+const langStepKey = (stepId) => `languages:stepCache:${stepId}`;
+
+const LANG_UNITS = [
+  ["Work & Career", "perfect aspects in workplace updates", "work and career collocations", "giving opinions"],
+  ["Technology", "perfect-continuous aspects", "technology and digital habits", "agreeing and disagreeing"],
+  ["Environment", "narrative tenses", "environment and climate vocabulary", "summarising"],
+  ["Health", "all conditionals", "health, symptoms, and lifestyle", "giving advice"],
+  ["Media", "mixed conditionals", "media, news, and misinformation", "hedging"],
+  ["Culture & Society", "wish and if only", "culture and society vocabulary", "persuading"],
+  ["Education", "passive voice nuance", "education and learning systems", "describing advantages"],
+  ["Travel", "causative forms", "travel problems and experiences", "narrating"],
+  ["Money", "reported speech", "money, prices, and value", "negotiating"],
+  ["Science", "relative clauses", "science and research vocabulary", "explaining cause and effect"],
+  ["Emotions", "reduced relative clauses", "emotions and personality", "expressing empathy"],
+  ["Abstract Ideas", "modals of deduction", "abstract nouns and concepts", "hypothesising"],
+  ["Projects", "modals of obligation nuance", "project and deadline collocations", "prioritising"],
+  ["Data", "comparatives and quantifiers", "trends and data language", "describing trends"],
+  ["Stories", "past perfect and narrative sequencing", "storytelling verbs", "narrating"],
+  ["Debate", "articles and determiners nuance", "argument vocabulary", "challenging ideas"],
+  ["Plans", "gerund and infinitive patterns", "future plans and intentions", "planning"],
+  ["Academic Reading", "discourse markers", "academic vocabulary", "summarising arguments"],
+  ["Professional English", "linking and cohesion", "professional idioms", "softening requests"],
+  ["B2 Integration", "B2 grammar review", "B2 phrasal verbs and collocations", "integrated speaking"],
+  ["C1 Work", "inversion after negative adverbials", "advanced workplace nuance", "diplomatic disagreement"],
+  ["C1 Technology", "cleft sentences", "AI, privacy, and innovation", "weighing trade-offs"],
+  ["C1 Environment", "participle clauses", "sustainability and policy", "evaluating evidence"],
+  ["C1 Health", "nominalisation", "public health and wellbeing", "qualified recommendations"],
+  ["C1 Media", "fronting and emphasis", "media bias and framing", "critical response"],
+  ["C1 Society", "advanced relative structures", "social change and identity", "nuanced opinions"],
+  ["C1 Education", "substitution and ellipsis", "lifelong learning", "comparing systems"],
+  ["C1 Travel", "advanced narrative style", "migration and mobility", "reflective narration"],
+  ["C1 Money", "concession clauses", "economics and personal finance", "arguing priorities"],
+  ["C1 Science", "hedging grammar", "scientific uncertainty", "careful claims"],
+  ["C1 Emotions", "stance adverbs", "psychology and personality", "interpreting motives"],
+  ["C1 Abstract Ideas", "advanced determiners", "ethics and philosophy", "building abstractions"],
+  ["C1 Leadership", "conditionals for diplomacy", "leadership collocations", "persuading tactfully"],
+  ["C1 Data", "complex comparison", "research, charts, and datasets", "describing trends precisely"],
+  ["C1 Culture", "emphatic structures", "art, culture, and taste", "reviewing"],
+  ["C1 Academic Writing", "cohesion and reference", "academic word families", "synthesising"],
+  ["C1 Idiom & Register", "register shifts", "idioms and phrasal verbs", "choosing tone"],
+  ["C1 Speaking", "spoken discourse markers", "fluency chunks", "holding the floor"],
+  ["C1 Exam Skills", "complex sentence control", "exam and certification language", "time-boxed answering"],
+  ["C1 Integration", "C1 grammar review", "advanced collocations and idioms", "integrated mastery"],
+].map(([theme, grammar, vocabulary, func], i) => ({ id: i + 1, theme, grammar, vocabulary, func, level: i < 20 ? "B2" : "C1" }));
+
+const LANG_STEP_PATTERNS = [
+  "vocabulary", "grammar", "function", "reading", "listening",
+  "grammar", "vocabulary", "cloze", "translation", "speaking",
+  "vocabulary", "grammar", "function", "reading", "listening",
+  "collocations", "idioms", "phrasal verbs", "academic vocabulary", "data",
+  "grammar", "translation", "review", "test prep", "checkpoint",
+];
+
+const LANG_STEPS = LANG_UNITS.flatMap((unit, unitIndex) =>
+  Array.from({ length: 25 }, (_, stepIndex) => {
+    const kind = LANG_STEP_PATTERNS[stepIndex];
+    const globalIndex = unitIndex * 25 + stepIndex;
+    const checkpoint = stepIndex === 24;
+    const skill =
+      kind === "grammar" ? unit.grammar :
+      kind === "function" || kind === "speaking" ? unit.func :
+      kind === "checkpoint" ? `${unit.theme} checkpoint` :
+      `${unit.vocabulary} (${kind})`;
+    return {
+      id: `lang-u${String(unit.id).padStart(2, "0")}-s${String(stepIndex + 1).padStart(2, "0")}`,
+      unitId: unit.id,
+      unitTitle: unit.theme,
+      index: globalIndex,
+      number: globalIndex + 1,
+      unitStep: stepIndex + 1,
+      level: unit.level,
+      kind,
+      skill,
+      checkpoint,
+      xp: checkpoint ? 35 : 12,
+      title: checkpoint ? `Checkpoint: ${unit.theme}` : `${unit.theme}: ${skill}`,
+    };
+  })
+);
+
+function langCompletedCount(progress) {
+  const done = new Set(progress?.completed || []);
+  let n = 0;
+  for (const step of LANG_STEPS) {
+    if (!done.has(step.id)) break;
+    n += 1;
+  }
+  return n;
+}
+
+function langUnitProgress(progress, unitId) {
+  const done = new Set(progress?.completed || []);
+  const steps = LANG_STEPS.filter((s) => s.unitId === unitId);
+  const completed = steps.filter((s) => done.has(s.id)).length;
+  return { completed, total: steps.length, crowned: completed === steps.length };
+}
+
+function normalizeText(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s'-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sameAnswer(given, answer) {
+  const g = normalizeText(given);
+  const answers = Array.isArray(answer) ? answer : [answer];
+  return answers.some((a) => {
+    const n = normalizeText(a);
+    return n && (g === n || g.includes(n) || n.includes(g));
+  });
+}
+
+function normalizeLanguageItem(item) {
+  if (!item || typeof item !== "object") return null;
+  const type = String(item.type || "multiple_choice").toLowerCase().replace(/-/g, "_");
+  const prompt = String(item.prompt || item.question || "").trim();
+  const answer = item.answer ?? item.correct ?? "";
+  if (!prompt || (answer == null && type !== "matching")) return null;
+  return {
+    type,
+    prompt,
+    answer,
+    options: Array.isArray(item.options) ? item.options.map(String).slice(0, 6) : [],
+    pairs: Array.isArray(item.pairs) ? item.pairs.slice(0, 8).map((p) => ({ left: String(p.left || p.word || ""), right: String(p.right || p.definition || "") })).filter((p) => p.left && p.right) : [],
+    words: Array.isArray(item.words) ? item.words.map(String) : [],
+    audioText: String(item.audioText || item.audio || item.sentence || prompt),
+    explanation: String(item.explanation || ""),
+    word: String(item.word || ""),
+  };
+}
+
+function sanitizeLanguageStepContent(raw, step) {
+  const words = Array.isArray(raw?.words) ? raw.words.slice(0, 8) : [];
+  const exercises = Array.isArray(raw?.exercises) ? raw.exercises.slice(0, 8) : [];
+  const test = Array.isArray(raw?.test) ? raw.test.slice(0, 5) : [];
+  return {
+    title: String(raw?.title || step.title),
+    target: String(raw?.target || step.skill),
+    level: raw?.level === "C1" ? "C1" : step.level,
+    emoji: String(raw?.emoji || (step.checkpoint ? "🏆" : "🗣️")),
+    words: words.map((w) => ({
+      word: String(w?.word || w?.phrase || "").trim(),
+      definition: String(w?.definition || "").trim(),
+      example: String(w?.example || "").trim(),
+      gloss: String(w?.gloss || w?.ukrainian || "").trim(),
+    })).filter((w) => w.word && w.definition),
+    reading: {
+      title: String(raw?.reading?.title || "Reading"),
+      text: String(raw?.reading?.text || ""),
+      questions: Array.isArray(raw?.reading?.questions) ? raw.reading.questions.slice(0, 3) : [],
+    },
+    exercises: exercises.map(normalizeLanguageItem).filter(Boolean),
+    test: test.map(normalizeLanguageItem).filter(Boolean),
+  };
+}
+
+function languagePrompt(step) {
+  return `Return ONLY strict JSON. No prose. No markdown fences.
+Create one English learning path step for a Ukrainian learner moving ${step.level} toward C1.
+Step metadata: ${JSON.stringify({ unit: step.unitTitle, step: step.number, level: step.level, kind: step.kind, skill: step.skill, checkpoint: step.checkpoint })}
+Schema:
+{
+  "title": string,
+  "target": string,
+  "level": "B2"|"C1",
+  "emoji": string,
+  "words": [{"word": string, "definition": string, "example": string, "gloss": string}],
+  "reading": {"title": string, "text": string, "questions": [{"question": string, "answer": string, "options": [string]}]},
+  "exercises": [{"type": "multiple_choice"|"cloze"|"matching"|"reorder"|"translate"|"listening", "prompt": string, "answer": string, "options": [string], "pairs": [{"left": string, "right": string}], "words": [string], "audioText": string, "explanation": string, "word": string}],
+  "test": [{"type": "multiple_choice"|"cloze"|"translate"|"listening", "prompt": string, "answer": string, "options": [string], "audioText": string, "explanation": string, "word": string}]
+}
+Requirements: 6-8 target words/phrases, an 80-150 word reading using them, 2-3 reading questions, 5-7 mixed exercises, 3-4 test questions. Keep answers unambiguous and concise. Include Ukrainian glosses.`;
+}
+
+const LANG_FALLBACK_WORDS = {
+  "Work & Career": [["to delegate", "to give a task or responsibility to another person", "A good manager knows when to delegate.", "делегувати"], ["deadline", "the latest time by which something must be finished", "The deadline was tight but realistic.", "дедлайн"], ["to negotiate", "to discuss something to reach an agreement", "They negotiated a flexible schedule.", "вести переговори"], ["workload", "the amount of work someone has to do", "Her workload increased during the launch.", "навантаження"], ["reliable", "able to be trusted", "He is reliable under pressure.", "надійний"], ["promotion", "a move to a higher position", "She earned a promotion after leading the project.", "підвищення"], ["to streamline", "to make a process simpler and faster", "We streamlined the weekly report.", "оптимізувати"], ["feedback", "comments about how well someone did something", "Specific feedback helps people improve.", "відгук"]],
+  Technology: [["privacy", "control over personal information", "Users care about privacy by default.", "приватність"], ["device", "a piece of electronic equipment", "This device syncs across platforms.", "пристрій"], ["automation", "using technology to do work with little human effort", "Automation reduced repetitive tasks.", "автоматизація"], ["to troubleshoot", "to find and fix a problem", "We troubleshot the login issue.", "усувати проблему"], ["interface", "the part of software a user works with", "The interface is clear and fast.", "інтерфейс"], ["to upgrade", "to improve to a newer version", "They upgraded the system overnight.", "оновити"], ["secure", "protected from danger or attack", "Use a secure connection.", "безпечний"], ["feature", "a useful part of a product", "The new feature saves time.", "функція"]],
+  Environment: [["sustainable", "able to continue without harming the future", "The city chose sustainable transport.", "сталий"], ["emissions", "gases released into the air", "Emissions fell after the policy changed.", "викиди"], ["shortage", "a lack of something needed", "A water shortage affected the region.", "нестача"], ["to conserve", "to protect or save resources", "Households were asked to conserve energy.", "зберігати"], ["impact", "a strong effect", "The impact was visible within months.", "вплив"], ["renewable", "naturally replaced and not used up", "Renewable energy is expanding.", "відновлюваний"], ["waste", "unwanted material", "Food waste is costly.", "відходи"], ["policy", "an official plan or rule", "The policy encouraged recycling.", "політика"]],
+};
+const LANG_GENERIC_WORDS = [["to assess", "to judge the quality or value of something", "We need to assess the evidence carefully.", "оцінювати"], ["nuance", "a small but important difference", "The phrase has a nuance of doubt.", "нюанс"], ["to imply", "to suggest without saying directly", "Her tone implied disagreement.", "натякати"], ["evidence", "facts that support a belief", "The evidence supports the claim.", "докази"], ["approach", "a way of dealing with something", "This approach is practical.", "підхід"], ["assumption", "something accepted as true without proof", "That assumption may be wrong.", "припущення"], ["to clarify", "to make something easier to understand", "Could you clarify your point?", "уточнювати"], ["outcome", "the final result", "The outcome was better than expected.", "результат"]];
+
+function fallbackLanguageStep(step) {
+  const base = LANG_FALLBACK_WORDS[step.unitTitle] || LANG_GENERIC_WORDS;
+  const rotated = base.map((x, i) => base[(i + step.unitStep - 1) % base.length]).slice(0, 8);
+  const words = rotated.map(([word, definition, example, gloss]) => ({ word, definition, example, gloss }));
+  const [w1, w2, w3, w4, w5, w6] = words;
+  const grammar = LANG_UNITS[step.unitId - 1]?.grammar || step.skill;
+  return {
+    title: step.checkpoint ? `Checkpoint: ${step.unitTitle}` : `${step.unitTitle}: ${step.kind}`,
+    target: `${step.level} ${step.skill}`,
+    level: step.level,
+    emoji: step.checkpoint ? "🏆" : "🗣️",
+    words,
+    reading: {
+      title: `${step.unitTitle} in context`,
+      text: `In a ${step.level} conversation about ${step.unitTitle.toLowerCase()}, speakers need more than basic vocabulary. They often have to ${w1.word}, explain a ${w2.word}, and respond to ${w3.word} with tact. This step focuses on ${grammar}, so notice how the examples connect actions, reasons, and results. A confident learner can use words like ${w4.word}, ${w5.word}, and ${w6.word} without sounding mechanical. The aim is not perfection; it is clearer, more flexible English that helps you express a precise idea and keep the conversation moving.`,
+      questions: [
+        { question: `What topic is this step about?`, answer: step.unitTitle, options: [step.unitTitle, "Food and cooking", "Sports results", "Ancient history"] },
+        { question: `Which grammar or language focus is mentioned?`, answer: grammar },
+      ],
+    },
+    exercises: [
+      { type: "multiple_choice", prompt: `What does "${w1.word}" mean?`, answer: w1.definition, options: [w1.definition, w2.definition, "a casual greeting", "a type of place"], explanation: w1.example, word: w1.word },
+      { type: "cloze", prompt: `Fill the gap: ${w2.example.replace(new RegExp(w2.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), "_____")}`, answer: w2.word, explanation: w2.definition, word: w2.word },
+      { type: "matching", prompt: "Match each word to its definition.", pairs: [w3, w4, w5].map((w) => ({ left: w.word, right: w.definition })), answer: "all pairs", explanation: "Each word has one precise definition." },
+      { type: "reorder", prompt: "Put the words in order.", words: ["We", "need", "to", "clarify", "the", "outcome"], answer: "We need to clarify the outcome", explanation: "A clear subject + verb + object pattern." },
+      { type: "translate", prompt: `Translate into Ukrainian: ${w6.example}`, answer: w6.gloss, explanation: `Key word: ${w6.word}`, word: w6.word },
+      { type: "listening", prompt: "Listen and type the phrase.", audioText: w1.word, answer: w1.word, explanation: w1.definition, word: w1.word },
+    ],
+    test: [
+      { type: "multiple_choice", prompt: `Choose the best meaning of "${w4.word}".`, answer: w4.definition, options: [w4.definition, w1.definition, "a number in a chart", "a place to stay"], explanation: w4.example, word: w4.word },
+      { type: "cloze", prompt: `Complete: ${w5.example.replace(new RegExp(w5.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), "_____")}`, answer: w5.word, explanation: w5.definition, word: w5.word },
+      { type: "listening", prompt: "Listen and type the sentence.", audioText: w2.example, answer: w2.example, explanation: `Target phrase: ${w2.word}`, word: w2.word },
+    ],
+  };
+}
+
+async function parseAnthropicJson(res) {
+  const data = await res.json();
+  const text = (data?.content || [])
+    .map((part) => (typeof part === "string" ? part : part?.type === "text" ? part.text : ""))
+    .join("\n")
+    .trim();
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
+    throw e;
+  }
+}
+
+async function generateLanguageStep(step) {
+  const payload = JSON.stringify({
+    model: "claude-sonnet-4-6",
+    max_tokens: 1000,
+    messages: [{ role: "user", content: languagePrompt(step) }],
+  });
+  const attempts = [
+    {
+      url: "/api/anthropic/messages",
+      headers: { "content-type": "application/json" },
+    },
+    {
+      url: "https://api.anthropic.com/v1/messages",
+      headers: {
+        "content-type": "application/json",
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+    },
+  ];
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      const res = await fetch(attempt.url, { method: "POST", headers: attempt.headers, body: payload });
+      if (!res.ok) {
+        let detail = "";
+        try {
+          const err = await res.json();
+          detail = err?.error?.message || err?.message || "";
+        } catch { /* plain error body */ }
+        throw new Error(detail || `Generation failed (${res.status})`);
+      }
+      return sanitizeLanguageStepContent(await parseAnthropicJson(res), step);
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  console.warn("[languages] Anthropic unavailable, using generated fallback:", lastError?.message || lastError);
+  return fallbackLanguageStep(step);
+}
+
+async function getCachedLanguageStep(step) {
+  const cached = await store.get(langStepKey(step.id), null);
+  if (cached) return cached;
+  const generated = await generateLanguageStep(step);
+  await store.set(langStepKey(step.id), generated);
+  const index = await store.get(LKEYS.cacheIndex, []);
+  if (!index.includes(step.id)) await store.set(LKEYS.cacheIndex, [...index, step.id]);
+  return generated;
+}
+
+async function resetCachedLanguageStep(stepId) {
+  await store.remove(langStepKey(stepId));
+  const index = await store.get(LKEYS.cacheIndex, []);
+  await store.set(LKEYS.cacheIndex, index.filter((id) => id !== stepId));
+}
+
+async function collectLanguagesExport() {
+  const [progress, xp, wordStrength, settings, cacheIndex] = await Promise.all([
+    store.get(LKEYS.progress, { completed: [] }),
+    store.get(LKEYS.xp, { total: 0, byDay: {} }),
+    store.get(LKEYS.wordStrength, {}),
+    store.get(LKEYS.settings, { hearts: true }),
+    store.get(LKEYS.cacheIndex, []),
+  ]);
+  const cache = {};
+  for (const id of cacheIndex) {
+    const step = await store.get(langStepKey(id), null);
+    if (step) cache[id] = step;
+  }
+  return { progress, xp, wordStrength, settings, cacheIndex, cache };
+}
+
+async function clearLanguagesData() {
+  const index = await store.get(LKEYS.cacheIndex, []);
+  for (const id of index) await store.remove(langStepKey(id));
+  for (const k of Object.values(LKEYS)) await store.remove(k);
+}
+
+/* ------------------------------------------------------------------ */
+/* Persistence layer (window.storage) with in-memory fallback          */
+/* ------------------------------------------------------------------ */
+const memFallback = new Map();
+// Resolve the backend lazily on every call: in a claude.ai artifact window.storage
+// is present up front, but a local shim may install it after this module loads, so
+// caching the check once would silently strand every write in memory.
+const backend = () =>
+  typeof window !== "undefined" && window.storage && typeof window.storage.getItem === "function"
+    ? window.storage
+    : null;
+
+const store = {
+  async get(key, fallback) {
+    try {
+      const be = backend();
+      const raw = be ? await be.getItem(key) : memFallback.has(key) ? memFallback.get(key) : null;
+      if (raw == null) return fallback;
+      return typeof raw === "string" ? JSON.parse(raw) : raw;
+    } catch (e) {
+      console.error("[storage.get]", key, e);
+      return fallback;
+    }
+  },
+  async set(key, value) {
+    try {
+      const raw = JSON.stringify(value);
+      const be = backend();
+      if (be) await be.setItem(key, raw);
+      else memFallback.set(key, raw);
+      cloudPush(key, value); // mirror to cloud when signed in (no-op otherwise)
+      return true;
+    } catch (e) {
+      console.error("[storage.set]", key, e);
+      return false;
+    }
+  },
+  async remove(key) {
+    try {
+      const be = backend();
+      if (be) await be.removeItem(key);
+      else memFallback.delete(key);
+      cloudRemove(key);
+    } catch (e) {
+      console.error("[storage.remove]", key, e);
+    }
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* Card factory + column auto-detection                                */
+/* ------------------------------------------------------------------ */
+function makeCard(front, back, tags = "", notes = "") {
+  const now = Date.now();
+  return {
+    id: uid("c"),
+    front: String(front ?? "").trim(),
+    back: String(back ?? "").trim(),
+    tags: String(tags ?? "").trim(),
+    notes: String(notes ?? "").trim(),
+    ef: 2.5,
+    interval: 0,
+    reps: 0,
+    lapses: 0,
+    stepIdx: 0,
+    state: "new",
+    due: now,
+    created: now,
+    lastReviewed: null,
+  };
+}
+
+const SYNONYMS = {
+  front: ["front", "question", "q", "term", "word", "prompt", "en", "english", "kanji", "spanish"],
+  back: ["back", "answer", "a", "definition", "meaning", "translation", "uk", "ukrainian", "es", "reverse"],
+  deck: ["deck", "category", "topic", "group", "set", "subject", "chapter"],
+  tags: ["tags", "tag", "labels", "label"],
+  notes: ["notes", "note", "extra", "hint", "example", "context"],
+};
+
+function autoMapColumns(headers) {
+  const map = { front: "", back: "", deck: "", tags: "", notes: "" };
+  const lower = headers.map((h) => ({ h, l: String(h).toLowerCase().trim() }));
+  for (const field of Object.keys(SYNONYMS)) {
+    const found = lower.find(({ l }) => SYNONYMS[field].includes(l));
+    if (found) map[field] = found.h;
+  }
+  // fallback: first two unmapped columns become front/back
+  if (!map.front && headers[0]) map.front = headers[0];
+  if (!map.back) {
+    const back = headers.find((h) => h !== map.front);
+    if (back) map.back = back;
+  }
+  return map;
+}
+
+/* ------------------------------------------------------------------ */
+/* Multi-sheet extraction — for messy real-world workbooks             */
+/* Finds the Front/Back columns per sheet even when there are title    */
+/* rows, __EMPTY headers, or extra columns, and works left-to-right    */
+/* by fullness when no header row is present.                          */
+/* ------------------------------------------------------------------ */
+const FRONT_HEADER = /^(front|question|q|term|word|phrase|english|prompt|фраза|англ)/i;
+const BACK_HEADER = /^(back|answer|a|definition|meaning|translation|reverse|переклад|українськ|ukrainian|значенн)/i;
+
+function cleanDeckName(name) {
+  const n = String(name || "").trim();
+  return n.replace(/\s+v?\d+(\.\d+)?\s*$/i, "").trim() || n;
+}
+
+function headersLookMessy(headers) {
+  return headers.some((h) => /^__EMPTY/.test(String(h))) || !autoMapColumns(headers).front;
+}
+
+// rows = array-of-arrays (XLSX sheet_to_json with header:1)
+function extractSheetCards(rows) {
+  if (!rows || !rows.length) return { cards: [] };
+  const width = rows.reduce((w, r) => Math.max(w, r.length), 0);
+  const cell = (r, c) => String((r && r[c]) ?? "").trim();
+
+  // 1) look for a header row in the first few rows
+  let hRow = -1, fCol = -1, bCol = -1;
+  for (let i = 0; i < Math.min(8, rows.length); i++) {
+    let f = -1, b = -1;
+    for (let c = 0; c < width; c++) {
+      const v = cell(rows[i], c);
+      if (!v || v.length > 40) continue;
+      if (f < 0 && FRONT_HEADER.test(v)) f = c;
+      else if (b < 0 && BACK_HEADER.test(v)) b = c;
+    }
+    if (f >= 0 && b >= 0) { hRow = i; fCol = f; bCol = b; break; }
+  }
+
+  // 2) fallback: the two most-filled columns, left-to-right
+  if (fCol < 0) {
+    const fill = Array(width).fill(0);
+    for (const r of rows) for (let c = 0; c < width; c++) if (cell(r, c)) fill[c] += 1;
+    const order = [...fill.keys()].filter((c) => fill[c] > 0).sort((a, b) => fill[b] - fill[a]);
+    const two = order.slice(0, 2).sort((a, b) => a - b);
+    fCol = two[0] ?? 0;
+    bCol = two[1] ?? 1;
+  }
+
+  const cards = [];
+  for (let i = hRow >= 0 ? hRow + 1 : 0; i < rows.length; i++) {
+    const f = cell(rows[i], fCol);
+    const b = cell(rows[i], bCol);
+    if (!f || !b) continue; // skip blanks, section titles, date-only rows
+    if (FRONT_HEADER.test(f) && BACK_HEADER.test(b)) continue; // stray header row
+    cards.push([f, b]);
+  }
+  return { cards, frontCol: fCol, backCol: bCol };
+}
+
+/* ------------------------------------------------------------------ */
+/* Stats helpers                                                       */
+/* ------------------------------------------------------------------ */
+const emptyDay = () => ({
+  studied: 0, again: 0, hard: 0, good: 0, easy: 0,
+  newIntroduced: 0, matureAns: 0, maturePass: 0,
+});
+
+function bumpStats(stats, { grade, wasNew, mature }) {
+  const key = dateKey(Date.now());
+  const history = { ...(stats.history || {}) };
+  const d = { ...emptyDay(), ...(history[key] || {}) };
+  d.studied += 1;
+  d[grade] += 1;
+  if (wasNew) d.newIntroduced += 1;
+  if (mature) {
+    d.matureAns += 1;
+    if (grade !== "again") d.maturePass += 1;
+  }
+  history[key] = d;
+  return { ...stats, history };
+}
+
+function computeStreak(history) {
+  if (!history) return 0;
+  let streak = 0;
+  const day = new Date();
+  if (!(history[dateKey(day.getTime())]?.studied > 0)) {
+    day.setDate(day.getDate() - 1); // today not done yet — count from yesterday
+  }
+  while (history[dateKey(day.getTime())]?.studied > 0) {
+    streak += 1;
+    day.setDate(day.getDate() - 1);
+  }
+  return streak;
+}
+
+function retention30(history) {
+  if (!history) return null;
+  const now = Date.now();
+  let ans = 0, pass = 0;
+  for (let i = 0; i < 30; i++) {
+    const k = dateKey(now - i * DAY);
+    const d = history[k];
+    if (d) { ans += d.matureAns || 0; pass += d.maturePass || 0; }
+  }
+  if (!ans) return null;
+  return Math.round((pass / ans) * 100);
+}
+
+/* ------------------------------------------------------------------ */
+/* Images — stored one-per-key so the batched cards blob stays small   */
+/* ------------------------------------------------------------------ */
+const imgKey = (cardId, side) => `image:${cardId}:${side}`;
+const loadImage = (cardId, side) => store.get(imgKey(cardId, side), null);
+const saveImage = (cardId, side, dataUrl) => store.set(imgKey(cardId, side), dataUrl);
+const removeImage = (cardId, side) => store.remove(imgKey(cardId, side));
+
+// Downscale + compress to a small JPEG data URL. Accepts a File or a data URL.
+function compressImage(source, maxW = 1000, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxW / img.width);
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#ffffff"; // flatten transparency for JPEG
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = () => reject(new Error("Could not load that image."));
+    if (typeof source === "string") {
+      img.src = source;
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => { img.src = e.target.result; };
+      reader.onerror = () => reject(new Error("Could not read that file."));
+      reader.readAsDataURL(source);
+    }
+  });
+}
+
+// Pull the first image out of a clipboard paste event, if any.
+function imageFromClipboard(e) {
+  const items = e.clipboardData?.items || [];
+  for (const it of items) {
+    if (it.type && it.type.startsWith("image/")) return it.getAsFile();
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Text-to-speech (Web Speech API) — generated on the fly, never stored */
+/* ------------------------------------------------------------------ */
+const LANGUAGES = [
+  { code: "", label: "Deck default" },
+  { code: "en-US", label: "English (US)" },
+  { code: "en-GB", label: "English (UK)" },
+  { code: "uk-UA", label: "Українська" },
+  { code: "de-DE", label: "Deutsch" },
+  { code: "fr-FR", label: "Français" },
+  { code: "es-ES", label: "Español" },
+  { code: "it-IT", label: "Italiano" },
+  { code: "pt-BR", label: "Português (BR)" },
+  { code: "pl-PL", label: "Polski" },
+  { code: "ru-RU", label: "Русский" },
+  { code: "ja-JP", label: "日本語" },
+  { code: "ko-KR", label: "한국어" },
+  { code: "zh-CN", label: "中文" },
+];
+const DECK_LANGUAGES = LANGUAGES.filter((l) => l.code); // deck picker excludes "default"
+
+const ttsSupported = () => typeof window !== "undefined" && "speechSynthesis" in window;
+
+function getVoices() {
+  if (!ttsSupported()) return [];
+  return window.speechSynthesis.getVoices() || [];
+}
+
+// Best voice for a language tag: exact match → same base language → null.
+function pickVoice(lang, voices = getVoices()) {
+  if (!lang || !voices.length) return null;
+  const lower = lang.toLowerCase();
+  const base = lower.split("-")[0];
+  return (
+    voices.find((v) => v.lang && v.lang.toLowerCase() === lower) ||
+    voices.find((v) => v.lang && v.lang.toLowerCase().startsWith(base)) ||
+    null
+  );
+}
+
+// Returns { ok } — ok=false means we fell back to the default voice (no match).
+function speak(text, lang) {
+  if (!ttsSupported() || !text) return { ok: true };
+  try {
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(text));
+    const voice = pickVoice(lang);
+    let ok = true;
+    if (voice) {
+      u.voice = voice;
+      u.lang = voice.lang;
+    } else if (lang) {
+      u.lang = lang;
+      ok = false; // no exact voice — browser default will approximate
+    }
+    window.speechSynthesis.speak(u);
+    return { ok };
+  } catch (e) {
+    console.error("[tts]", e);
+    return { ok: false };
+  }
+}
+
+/* ================================================================== */
+/* MY ROUTINE — Me+ style planner                                     */
+/* Tasks (with subtasks = routine steps), categories, timed goals,    */
+/* daily streak, mood. Stored under routine:* keys, separate from     */
+/* every flashcard key.                                               */
+/* ================================================================== */
+const RKEYS = {
+  tasks: "routine:tasks",
+  categories: "routine:categories",
+  cindex: "routine:completions:index",
+  streak: "routine:streak",
+  mood: "routine:mood",
+  seeded: "routine:seeded",
+  xp: "routine:xp",         // { xp: number }
+  rewards: "routine:rewards", // [{ id, label, cost, unlockedAt }]
+  pomo: "routine:pomo",      // { work, break } Pomodoro settings
+  movement: "routine:movement",      // { [date]: count }
+  movementCfg: "routine:movement:cfg", // { remindersOn, snoozeUntil }
+  meds: "routine:meds",              // [{ id, name, dose, perDay, supply, refillAt, taper:[{date,dose,note}] }]
+  medsLog: "routine:meds:wellbeing", // { [date]: { taken:{medId:bool}, wellbeing, sideEffects, note } }
+  gratitude: "mood:gratitude",       // { [date]: [items] }
+  activation: "mood:activation",     // [{ id, text }]
+  moodNotes: "mood:notes",           // { [date]: { note, factors:[] } }
+};
+const cKey = (date) => `routine:completions:${date}`;
+
+/* ---- ADHD gamification helpers ---- */
+const ENERGY = {
+  low: { label: "Легко", emoji: "🟢", xp: 0 },
+  med: { label: "Середнє", emoji: "🟡", xp: 5 },
+  high: { label: "Складне", emoji: "🔴", xp: 15 },
+};
+const EST_CHIPS = [2, 5, 15, 30, 60];
+// XP earned for finishing a task: base + effort + a little for longer estimates
+function xpForTask(task) {
+  let xp = 10;
+  if (task?.energy && ENERGY[task.energy]) xp += ENERGY[task.energy].xp;
+  if (task?.estMin) xp += Math.min(20, Math.floor(task.estMin / 5) * 2);
+  return xp;
+}
+// Level curve: level N starts at 50*N*(N-1) XP (0,100,300,600,1000,…)
+function levelFromXp(xp) {
+  let lvl = 1;
+  while (50 * (lvl + 1) * lvl <= xp) lvl += 1;
+  return lvl;
+}
+const xpForLevel = (lvl) => 50 * lvl * (lvl - 1);
+function levelProgress(xp) {
+  const lvl = levelFromXp(xp);
+  const cur = xpForLevel(lvl), next = xpForLevel(lvl + 1);
+  return { lvl, cur, next, into: xp - cur, span: next - cur, pct: Math.min(1, (xp - cur) / (next - cur)) };
+}
+const fmtEst = (min) => { min = Math.round(min || 0); if (min < 60) return `${min} хв`; const h = Math.floor(min / 60), m = min % 60; return m ? `${h} год ${m} хв` : `${h} год`; };
+
+// Daily challenges — rotating pool. Each has a check(ctx) -> bool.
+const CHALLENGE_POOL = [
+  { id: "close3", emoji: "✅", label: "Закрий 3 справи сьогодні", xp: 20, check: (c) => c.doneCount >= 3 },
+  { id: "close5", emoji: "🏆", label: "Закрий 5 справ сьогодні", xp: 35, check: (c) => c.doneCount >= 5 },
+  { id: "frog", emoji: "🐸", label: "З'їж жабу: закрий одну «складну» справу", xp: 25, check: (c) => c.tasks.some((t) => t.energy === "high" && c.isDone(t)) },
+  { id: "anytime", emoji: "🎈", label: "Закрий одну справу «будь-коли»", xp: 15, check: (c) => c.tasks.some((t) => !t.time && c.isDone(t)) },
+  { id: "beatEst", emoji: "⏱️", label: "Вклади в свою оцінку часу на одній справі", xp: 25, check: (c) => c.tasks.some((t) => t.estMin && c.actualMin(t) != null && c.actualMin(t) <= t.estMin && c.isDone(t)) },
+  { id: "twoQuick", emoji: "⚡", label: "Закрий 2 швидкі перемоги (≤5 хв)", xp: 20, check: (c) => c.tasks.filter((t) => (t.estMin && t.estMin <= 5) && c.isDone(t)).length >= 2 },
+  { id: "firstThing", emoji: "🌅", label: "Закрий першу справу дня зранку", xp: 15, check: (c) => c.doneCount >= 1 },
+  { id: "half", emoji: "🌤️", label: "Закрий половину сьогоднішніх справ", xp: 30, check: (c) => c.tasks.length > 0 && c.doneCount >= Math.ceil(c.tasks.length / 2) },
+];
+// Deterministic 3 challenges per day
+function pickChallenges(dateStr) {
+  let h = 0; for (let i = 0; i < dateStr.length; i++) h = (h * 31 + dateStr.charCodeAt(i)) >>> 0;
+  const pool = [...CHALLENGE_POOL];
+  const out = [];
+  for (let i = 0; i < 3 && pool.length; i++) { const idx = h % pool.length; out.push(pool.splice(idx, 1)[0]); h = (h * 1103515245 + 12345) >>> 0; }
+  return out;
+}
+const ruid = (p) => uid(p);
+
+// Me+ pastel palette
+const PASTELS = [
+  { id: "pink", card: "#fde7ef", chip: "#fbcfe0", ink: "#be185d", dot: "#ec4899" },
+  { id: "orange", card: "#ffe9d6", chip: "#fed7aa", ink: "#c2410c", dot: "#fb923c" },
+  { id: "yellow", card: "#fef7c8", chip: "#fde68a", ink: "#a16207", dot: "#f5b800" },
+  { id: "green", card: "#d8f6e3", chip: "#bbf7d0", ink: "#15803d", dot: "#34d399" },
+  { id: "teal", card: "#cdf5f6", chip: "#a5f3fc", ink: "#0e7490", dot: "#22d3ee" },
+  { id: "purple", card: "#ece9fe", chip: "#ddd6fe", ink: "#6d28d9", dot: "#a78bfa" },
+];
+const getPastel = (id) => PASTELS.find((p) => p.id === id) || PASTELS[0];
+
+const TASK_EMOJIS = [
+  "☀️", "🌅", "🌙", "😴", "💧", "💊", "🧘", "🏃", "🚿", "🍳", "🍲", "🍽️",
+  "🧹", "🧺", "💻", "📚", "✍️", "🎧", "🎉", "🛒", "🐾", "🌱", "🙏", "🧠",
+  "☕", "🦷", "🚶", "📵", "✋", "❤️", "⭐", "🔥",
+];
+
+const MOODS = [
+  { score: 1, emoji: "😞", label: "Rough", color: "#f472b6" },
+  { score: 2, emoji: "😕", label: "Meh", color: "#fb923c" },
+  { score: 3, emoji: "😐", label: "Okay", color: "#facc15" },
+  { score: 4, emoji: "🙂", label: "Good", color: "#4ade80" },
+  { score: 5, emoji: "😄", label: "Great", color: "#22d3ee" },
+];
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const WEEKDAYS_MON = [1, 2, 3, 4, 5, 6, 0]; // Mon-first order of getDay() values
+const WD_LETTER = { 0: "S", 1: "M", 2: "T", 3: "W", 4: "T", 5: "F", 6: "S" };
+
+/* ---- persistence ---- */
+async function loadRoutineData() {
+  const tasks = await store.get(RKEYS.tasks, null);
+  const categories = await store.get(RKEYS.categories, null);
+  const cindex = await store.get(RKEYS.cindex, []);
+  const streak = await store.get(RKEYS.streak, { best: 0, lastCelebrated: "" });
+  const moods = await store.get(RKEYS.mood, {});
+  const xp = await store.get(RKEYS.xp, { xp: 0 });
+  const rewards = await store.get(RKEYS.rewards, []);
+  const pomo = await store.get(RKEYS.pomo, { work: 25, break: 5 });
+  const completions = {};
+  for (const d of cindex) {
+    const doc = await store.get(cKey(d), null);
+    if (doc) completions[d] = doc;
+  }
+  return { tasks, categories, cindex, completions, streak, moods, xp, rewards, pomo };
+}
+
+async function collectRoutineExport() {
+  const d = await loadRoutineData();
+  const extra = {};
+  for (const k of ["movement", "movementCfg", "meds", "medsLog", "gratitude", "activation", "moodNotes"]) extra[k] = await store.get(RKEYS[k], null);
+  return { tasks: d.tasks || [], categories: d.categories || [], completions: d.completions, streak: d.streak, moods: d.moods, xp: d.xp, rewards: d.rewards, pomo: d.pomo, ...extra };
+}
+
+async function clearRoutineData() {
+  const cindex = await store.get(RKEYS.cindex, []);
+  for (const d of cindex) await store.remove(cKey(d));
+  for (const k of Object.values(RKEYS)) await store.remove(k);
+  await store.remove("routine:mig:shave"); // one-time migration flag
+}
+
+/* ---- scheduling / queries ---- */
+function taskOccursOn(task, ds) {
+  if (ds < task.date) return false;
+  const rep = task.repeat || { type: "off" };
+  if (rep.type === "off") return ds === task.date;
+  if (rep.type === "daily") return true;
+  if (rep.type === "times") return true; // shown daily; weekly target tracked separately
+  if (rep.type === "weekdays") {
+    const wd = new Date(ds + "T00:00:00").getDay();
+    return (rep.days || []).includes(wd);
+  }
+  return ds === task.date;
+}
+
+function repeatWords(task) {
+  const rep = task.repeat || { type: "off" };
+  let base;
+  if (rep.type === "daily") base = "Repeats every day";
+  else if (rep.type === "times") base = `Repeats ${rep.times || 3}× per week`;
+  else if (rep.type === "weekdays") {
+    const ds = (rep.days || []).slice().sort();
+    base = ds.length === 7 ? "Repeats every day" : ds.length === 0 ? "No repeat" : "Repeats every " + ds.map((d) => WEEKDAYS[d]).join(", ");
+  } else base = "Doesn't repeat";
+  const timeStr = task.time ? `. At ${task.time}` : ". Anytime";
+  const rem = task.reminder ? `. Remind me at ${task.reminder}` : "";
+  return base + timeStr + rem + ".";
+}
+
+const dayHasCompletion = (completions, ds) => {
+  const doc = completions[ds];
+  return !!(doc && doc.tasks && Object.values(doc.tasks).some(Boolean));
+};
+
+function computeTaskStreak(completions, today) {
+  let current = 0;
+  const d = new Date(today + "T00:00:00");
+  if (!dayHasCompletion(completions, today)) d.setDate(d.getDate() - 1);
+  for (let i = 0; i < 800; i++) {
+    if (dayHasCompletion(completions, dateKey(d.getTime()))) { current += 1; d.setDate(d.getDate() - 1); }
+    else break;
+  }
+  let best = 0, run = 0;
+  for (let i = 365; i >= 0; i--) {
+    if (dayHasCompletion(completions, dateKey(Date.now() - i * DAY))) { run += 1; best = Math.max(best, run); }
+    else run = 0;
+  }
+  return { current, best: Math.max(best, current) };
+}
+
+function totalTasksCompleted(completions) {
+  let n = 0;
+  for (const doc of Object.values(completions)) if (doc?.tasks) n += Object.values(doc.tasks).filter(Boolean).length;
+  return n;
+}
+
+// how many of a date's occurring tasks are done (for the daily ring / heatmap)
+function dayTaskProgress(tasks, completions, ds) {
+  const doc = completions[ds] || {};
+  const occurring = (tasks || []).filter((t) => taskOccursOn(t, ds));
+  const done = occurring.filter((t) => doc.tasks?.[t.id]).length;
+  return { done, total: occurring.length, pct: occurring.length ? done / occurring.length : 0 };
+}
+
+/* ---- first-run seed: the user's real routine from their plan ---- */
+function seededRoutine() {
+  const cat = (name, color) => ({ id: ruid("cat"), name, color });
+  const morning = cat("Ранок", "pink");
+  const work = cat("Робота", "teal");
+  const evening = cat("Вечір", "purple");
+  const categories = [morning, work, evening];
+
+  const T = (o) => ({
+    id: ruid("t"), note: "", time: null, reminder: null, categoryId: "",
+    repeat: { type: "daily" }, goal: { type: "off" }, subtasks: [], created: Date.now(),
+    date: dateKey(Date.now()), ...o,
+  });
+  const wd = { type: "weekdays", days: [1, 2, 3, 4, 5] };
+
+  const tasks = [
+    T({ emoji: "☀️", image: "/routine/podyom.jpg", title: "Підйом", note: "Тонізуючий напій + вітаміни.", time: "07:00", color: "orange", categoryId: morning.id }),
+    T({ emoji: "💊", image: "/routine/lomeksin-face.jpg", title: "Ломексин на обличчя (1-й раз)", note: "Прив'яжи до ранкового ритуалу — одразу після підйому.", time: "07:10", color: "pink", categoryId: morning.id }),
+    T({ emoji: "🧘", image: "/routine/kalanetyka.jpg", title: "Каланетика", note: "Поки Міша спить, поки тихо. Таймер — і понеслі.", time: "07:15", color: "purple", categoryId: morning.id, goal: { type: "timed", minutes: 30 } }),
+    T({ emoji: "🚿", image: "/routine/dush.jpg", title: "Душ", note: "Кетоконазол шампунь — вт/пт, залишити на 5 хв.", time: "07:45", color: "teal", categoryId: morning.id }),
+    T({ emoji: "🍳", image: "/routine/snidanok.jpg", title: "Сніданок + Силібор + ліки від каменю", note: "Їжа вдома — не доставка. Щось просте і швидке.", time: "08:05", color: "yellow", categoryId: morning.id }),
+    T({ emoji: "🧹", image: "/routine/prybyrannia.jpg", title: "Прибирання — одна зона", note: "Кухня → ванна → коридор → вітальня → спальня. Таймер і стоп.", time: "08:25", color: "green", categoryId: morning.id, goal: { type: "timed", minutes: 20 } }),
+
+    T({ emoji: "💻", image: "/routine/robota.jpg", title: "Початок роботи", note: "Перші 25 хв — найважливіша задача без відволікань. Телефон вбік.", time: "09:00", color: "teal", categoryId: work.id, repeat: wd }),
+    T({ emoji: "🍽️", image: "/routine/lomeksin-lunch.jpg", title: "Обід + Ломексин (2-й раз)", note: "Прив'яжи другий прийом ломексину до обіду — легше пам'ятати.", time: "13:00", color: "orange", categoryId: work.id, repeat: wd }),
+    T({ emoji: "✋", image: "/routine/kinets-roboty.jpg", title: "Кінець роботи — закрити ноут", note: "Не тягнути роботу у вечір. Межа важлива.", time: "18:00", color: "pink", categoryId: work.id, repeat: wd }),
+
+    T({ emoji: "📚", title: "Англійська", note: "Одразу після роботи. Duolingo, відео — регулярне.", time: "18:00", color: "purple", categoryId: evening.id, goal: { type: "timed", minutes: 15 } }),
+    T({ emoji: "🍲", image: "/routine/vecheria.jpg", title: "Приготування вечері + вечеря", note: "Готуємо вдома. Смачно і без доставки.", time: "18:30", color: "green", categoryId: evening.id }),
+    T({ emoji: "🎉", image: "/routine/vilnyi-chas.jpg", title: "Вільний час", note: "Без почуття провини. Ти вже зробила все головне за день.", time: "19:30", color: "pink", categoryId: evening.id }),
+    T({ emoji: "💊", title: "Ліки від пролактину", note: "Тільки в понеділок.", time: null, color: "yellow", categoryId: evening.id, repeat: { type: "weekdays", days: [1] } }),
+    T({ emoji: "😴", title: "Сон", note: "Телефон геть. Книга або щось легке. До 00:00 вже спати.", time: "23:00", reminder: "23:00", color: "purple", categoryId: evening.id }),
+
+    T({ emoji: "💧", title: "Вода 1.5–2 л", note: "Протягом усього дня, не залпом.", time: null, color: "teal", categoryId: morning.id }),
+    T({ emoji: "💊", title: "Золофт", note: "На тумбочці з вечора — щоб не пропустити.", time: "21:00", reminder: "21:00", color: "pink", categoryId: evening.id }),
+  ];
+  return { categories, tasks };
+}
+
+/* ================================================================== */
+/* CALM — anti-anxiety practices. Stored under calm:* keys.           */
+/* ================================================================== */
+const CKEYS = {
+  fears: "calm:fears",
+  thoughts: "calm:thoughtRecords",
+  decat: "calm:decatJournal", // decatastrophizing worksheet entries
+  rules: "calm:innerRules",   // inner-rules journal entries
+  wdep: "calm:wdep",          // WDEP (want/doing/evaluate/plan) journal entries
+  dibs: "calm:dibs",          // disputing-irrational-beliefs journal entries
+  dtr: "calm:dtr",            // dysfunctional thought record entries
+  darrow: "calm:darrow",      // downward-arrow core belief entries
+  activity: "calm:activitySchedule", // weekly activity grid { "d-h": {t,d} }
+  rumination: "calm:rumination",     // rumination-recognition entries
+  abcde: "calm:abcde",               // ABCDE thought-challenge entries
+  ifthen: "calm:ifthen",             // if-then planning entries
+  probsolve: "calm:probsolve",       // problem-solving self-monitoring entries
+  facts: "calm:facts",               // getting-the-facts entries
+  imagexp: "calm:imagexp",           // imagery-based exposure entries
+  intero: "calm:intero",             // interoceptive exposure entries
+  eventvis: "calm:eventvis",         // event visualization entries
+  pleasant: "calm:pleasantWeek",     // pleasant-activity week { dayIdx: {act, type, time, rating} }
+  eval9: "calm:eval9",               // 9-column thought evaluation entries
+  trigrec: "calm:trigrec",           // trigger-based thought record entries
+  behexp: "calm:behexp",             // behavioral experiment entries
+  reframe: "calm:reframe",           // event reframing entries
+  socratic: "calm:socratic",         // socratic questioning entries
+  abc: "calm:abcFunc",               // ABC functional analysis entries
+  whatif: "calm:whatif",             // replacing what-if statements entries
+  coping: "calm:coping",             // coping-with-stress entries
+  rabbit: "calm:rabbitHole",         // reverse-the-rabbit-hole entries
+  solvefull: "calm:solveFull",       // full problem-solving cycle entries
+  sessions: "calm:sessions",
+  settings: "calm:settings",
+  plan: "calm:planDone", // { [date]: { [itemId]: true } } — supportive-plan daily check-off
+};
+
+const BREATH_PATTERNS = [
+  { id: "box", name: "Квадратне дихання", desc: "Вдих 4 · Затримка 4 · Видих 4 · Затримка 4", phases: [["in", 4], ["hold", 4], ["out", 4], ["hold", 4]] },
+  { id: "478", name: "4-7-8", desc: "Вдих 4 · Затримка 7 · Видих 8", phases: [["in", 4], ["hold", 7], ["out", 8]] },
+  { id: "relax", name: "Розслаблення", desc: "Вдих 4 · Видих 6", phases: [["in", 4], ["out", 6]] },
+];
+const PHASE_TEXT = { in: "Вдих", hold: "Затримай", out: "Видих" };
+
+const MUSCLE_GROUPS = [
+  "Кисті", "Передпліччя", "Плечі (руки)", "Плечі", "Обличчя", "Шия",
+  "Груди й спина", "Живіт", "Сідниці", "Стегна", "Литки", "Стопи",
+];
+const PMR_TENSE = 10, PMR_RELEASE = 15;
+
+const CALM_TECHNIQUES = {
+  breath: { label: "Дихання", icon: Wind },
+  pmr: { label: "Розслаблення м'язів", icon: HeartPulse },
+  ground: { label: "Заземлення 5-4-3-2-1", icon: Anchor },
+  thought: { label: "Журнал думок", icon: NotebookPen },
+  decat: { label: "Декатастрофізація", icon: Scale },
+  rules: { label: "Внутрішні правила", icon: ListTree },
+  wdep: { label: "WDEP", icon: Compass },
+  dibs: { label: "Спростування переконань", icon: Lightbulb },
+  dtr: { label: "Протокол думок", icon: FileSpreadsheet },
+  darrow: { label: "Стрілка вниз", icon: TrendingDown },
+  activity: { label: "Розклад активності", icon: CalendarDays },
+  rumination: { label: "Румінації", icon: RefreshCw },
+  abcde: { label: "ABCDE", icon: ArrowLeftRight },
+  ifthen: { label: "Якщо–то", icon: ListChecks },
+  probsolve: { label: "Розбір проблеми", icon: Wrench },
+  facts: { label: "Лише факти", icon: Search },
+  imagexp: { label: "Експозиція в уяві", icon: Waves },
+  intero: { label: "Тілесна експозиція", icon: HeartPulse },
+  eventvis: { label: "Візуалізація події", icon: Sparkles },
+  pleasant: { label: "Приємні активності", icon: Smile },
+  eval9: { label: "Оцінка думок", icon: Layers3 },
+  trigrec: { label: "Запис тригера", icon: Zap },
+  behexp: { label: "Поведінковий експеримент", icon: TestTube2 },
+  reframe: { label: "Рефреймінг події", icon: Shuffle },
+  socratic: { label: "Сократівські питання", icon: HelpCircle },
+  abc: { label: "ABC-аналіз", icon: GripVertical },
+  whatif: { label: "Заміна «а що як»", icon: Repeat },
+  coping: { label: "Стрес і копінг", icon: ShieldAlert },
+  rabbit: { label: "Реверс кролячої нори", icon: ArrowLeftRight },
+  solvefull: { label: "Розв'язання проблеми", icon: ListChecks },
+  fear: { label: "Сходинки страху", icon: TrendingUp },
+  focus: { label: "Таймер фокусу", icon: Timer },
+  worry: { label: "Час для тривоги", icon: Hourglass },
+  beforework: { label: "Перед роботою", icon: Sparkle },
+};
+
+async function loadCalmData() {
+  const fears = await store.get(CKEYS.fears, []);
+  const thoughts = await store.get(CKEYS.thoughts, []);
+  const decat = await store.get(CKEYS.decat, []);
+  const rules = await store.get(CKEYS.rules, []);
+  const wdep = await store.get(CKEYS.wdep, []);
+  const dibs = await store.get(CKEYS.dibs, []);
+  const dtr = await store.get(CKEYS.dtr, []);
+  const darrow = await store.get(CKEYS.darrow, []);
+  const activity = await store.get(CKEYS.activity, {});
+  const rumination = await store.get(CKEYS.rumination, []);
+  const abcde = await store.get(CKEYS.abcde, []);
+  const ifthen = await store.get(CKEYS.ifthen, []);
+  const probsolve = await store.get(CKEYS.probsolve, []);
+  const facts = await store.get(CKEYS.facts, []);
+  const imagexp = await store.get(CKEYS.imagexp, []);
+  const intero = await store.get(CKEYS.intero, []);
+  const eventvis = await store.get(CKEYS.eventvis, []);
+  const pleasant = await store.get(CKEYS.pleasant, {});
+  const eval9 = await store.get(CKEYS.eval9, []);
+  const trigrec = await store.get(CKEYS.trigrec, []);
+  const behexp = await store.get(CKEYS.behexp, []);
+  const reframe = await store.get(CKEYS.reframe, []);
+  const socratic = await store.get(CKEYS.socratic, []);
+  const abc = await store.get(CKEYS.abc, []);
+  const whatif = await store.get(CKEYS.whatif, []);
+  const coping = await store.get(CKEYS.coping, []);
+  const rabbit = await store.get(CKEYS.rabbit, []);
+  const solvefull = await store.get(CKEYS.solvefull, []);
+  const sessions = await store.get(CKEYS.sessions, []);
+  const settings = await store.get(CKEYS.settings, { name: "Спокій" });
+  return { fears, thoughts, decat, rules, wdep, dibs, dtr, darrow, activity, rumination, abcde, ifthen, probsolve, facts, imagexp, intero, eventvis, pleasant, eval9, trigrec, behexp, reframe, socratic, abc, whatif, coping, rabbit, solvefull, sessions, settings };
+}
+// Recovery lives inside the Calm tab; its data rides along in Calm's export/reset.
+const RECKEYS = { alcohol: "recovery:alcohol", smoke: "recovery:smoke", triggers: "recovery:triggers", reason: "recovery:reason", noteSeen: "recovery:noteSeen" };
+async function collectCalmExport() {
+  const d = await loadCalmData();
+  const recovery = {};
+  for (const [k, key] of Object.entries(RECKEYS)) recovery[k] = await store.get(key, null);
+  return { fears: d.fears, thoughts: d.thoughts, sessions: d.sessions, settings: d.settings, recovery, plan: await store.get(CKEYS.plan, {}) };
+}
+async function clearCalmData() {
+  for (const k of Object.values(CKEYS)) await store.remove(k);
+  for (const k of Object.values(RECKEYS)) await store.remove(k);
+  await store.remove("calm:trGuideOpen"); // "how it works" toggle
+}
+
+// soft optional tick using Web Audio (no asset, no storage)
+let _actx = null;
+function calmTick(freq = 440, dur = 0.09) {
+  try {
+    _actx = _actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = _actx.createOscillator(), g = _actx.createGain();
+    o.type = "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, _actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.06, _actx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, _actx.currentTime + dur);
+    o.connect(g); g.connect(_actx.destination);
+    o.start(); o.stop(_actx.currentTime + dur);
+  } catch (e) { /* ignore */ }
+}
+
+function calmStreak(sessions, today = dateKey(Date.now())) {
+  const days = new Set(sessions.map((s) => s.date));
+  let cur = 0;
+  const d = new Date(today + "T00:00:00");
+  if (!days.has(today)) d.setDate(d.getDate() - 1);
+  for (let i = 0; i < 800; i++) {
+    if (days.has(dateKey(d.getTime()))) { cur += 1; d.setDate(d.getDate() - 1); } else break;
+  }
+  return cur;
+}
+const calmMinutes = (sessions) => Math.round(sessions.reduce((s, x) => s + (x.durationSec || 0), 0) / 60);
+const fmtClock = (sec) => `${Math.floor(sec / 60)}:${String(Math.max(0, Math.round(sec % 60))).padStart(2, "0")}`;
+
+/* ================================================================== */
+/* FASTING — Dr. Fung intermittent-fasting tracker (calm:*→fasting:*) */
+/* ================================================================== */
+const FKEYS = {
+  goals: "fasting:goals",
+  diary: "fasting:diary",
+  current: "fasting:currentFast",
+  eating: "fasting:eatingWindow",
+  settings: "fasting:settings",
+};
+
+// Protocol ladder, gentlest → hardest (level drives intensity color)
+const PROTOCOLS = [
+  { id: "16:8", label: "16:8", hrs: 16, window: 8, freq: "Щодня", level: 1, note: "Старт для початківців. Пропускаєш сніданок, їси з 12:00 до 20:00. М'яко і стало." },
+  { id: "18:6", label: "18:6", hrs: 18, window: 6, freq: "Щодня", level: 2, note: "Наступний крок після 16:8. Вужче вікно їжі, сильніший ефект." },
+  { id: "20:4", label: "20:4", hrs: 20, window: 4, freq: "Щодня", level: 3, note: "«Дієта воїна». Один-два прийоми їжі у 4-годинному вікні." },
+  { id: "OMAD", label: "OMAD (23:1)", hrs: 23, window: 1, freq: "Щодня / кілька разів на тиждень", level: 4, note: "Один прийом їжі на день. Простий графік, вимагає повноцінного прийому." },
+  { id: "24h", label: "24 год", hrs: 24, window: 0, freq: "2–3 рази/тиждень", level: 5, note: "Від вечері до вечері. Один день без їжі, наступний — звичайно." },
+  { id: "36h", label: "36 год", hrs: 36, window: 0, freq: "Через день", level: 6, note: "Сильніший вплив на інсулін і вагу. Часто в програмах Фанга при діабеті 2 типу." },
+  { id: "42h", label: "42 год", hrs: 42, window: 0, freq: "2–3 рази/тиждень", level: 7, note: "Пропускаєш вечерю, весь наступний день і снідаєш через день." },
+  { id: "48h+", label: "Тривале (>48 год)", hrs: 48, window: 0, freq: "Рідко / під наглядом", level: 8, note: "3–7+ днів. Лише з електролітами й бажано під наглядом лікаря." },
+];
+const getProtocol = (id) => PROTOCOLS.find((p) => p.id === id) || PROTOCOLS[0];
+const protocolColor = (level) => (level <= 1 ? "#22c55e" : level <= 2 ? "#84cc16" : level <= 3 ? "#eab308" : level <= 4 ? "#f59e0b" : level <= 5 ? "#f97316" : level <= 6 ? "#ef4444" : "#dc2626");
+
+// Gentle, educational stage timeline (not medical claims)
+const FAST_STAGES = [
+  { from: 0, to: 4, title: "Ситість", desc: "Тіло перетравлює їжу, цукор у крові зростає.", color: "#f59e0b" },
+  { from: 4, to: 12, title: "Цукор спадає", desc: "Рівень цукру стабілізується, витрачається запас глікогену.", color: "#f97316" },
+  { from: 12, to: 16, title: "Перехід на жир", desc: "Глікоген вичерпується — тіло починає брати енергію з жиру.", color: "#14b8a6" },
+  { from: 16, to: 24, title: "Спалювання жиру", desc: "Кетоз зростає, запускається рання автофагія — м'яке очищення клітин.", color: "#0ea5e9" },
+  { from: 24, to: 999, title: "Глибша автофагія", desc: "Довше голодування — глибші відновні процеси в клітинах.", color: "#6366f1" },
+];
+const stageForHours = (h) => FAST_STAGES.find((s) => h >= s.from && h < s.to) || FAST_STAGES[FAST_STAGES.length - 1];
+
+const WD_UA = ["Нд", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+
+async function loadFastingData() {
+  const goals = await store.get(FKEYS.goals, { startWeight: null, targetWeight: null, protocol: "16:8", startDate: dateKey(Date.now()) });
+  const diary = await store.get(FKEYS.diary, []);
+  const current = await store.get(FKEYS.current, null);
+  const eating = await store.get(FKEYS.eating, null);
+  const settings = await store.get(FKEYS.settings, { name: "Fasting" });
+  return { goals, diary, current, eating, settings };
+}
+async function collectFastingExport() {
+  const d = await loadFastingData();
+  return { goals: d.goals, diary: d.diary, current: d.current, eating: d.eating, settings: d.settings };
+}
+async function clearFastingData() {
+  for (const k of Object.values(FKEYS)) await store.remove(k);
+}
+
+// diary sorted by date asc, with auto weightChange vs previous weighed entry
+function diarySorted(diary) {
+  const rows = [...diary].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.ts || 0) - (b.ts || 0)));
+  let prevW = null;
+  return rows.map((r) => {
+    const change = r.weight != null && prevW != null ? Math.round((r.weight - prevW) * 10) / 10 : null;
+    if (r.weight != null) prevW = r.weight;
+    return { ...r, weightChange: change };
+  });
+}
+function fastingMetrics(goals, diary) {
+  const rows = diarySorted(diary);
+  const weighed = rows.filter((r) => r.weight != null);
+  const currentWeight = weighed.length ? weighed[weighed.length - 1].weight : (goals.startWeight ?? null);
+  const start = goals.startWeight ?? currentWeight;
+  const withHrs = diary.filter((r) => r.actualHrs != null && r.actualHrs > 0);
+  const totalHrs = withHrs.reduce((s, r) => s + r.actualHrs, 0);
+  return {
+    currentWeight,
+    weightChange: start != null && currentWeight != null ? Math.round((currentWeight - start) * 10) / 10 : null,
+    remaining: currentWeight != null && goals.targetWeight != null ? Math.round((currentWeight - goals.targetWeight) * 10) / 10 : null,
+    totalFasts: withHrs.length,
+    avgHrs: withHrs.length ? Math.round((totalHrs / withHrs.length) * 10) / 10 : 0,
+    longestHrs: withHrs.length ? Math.max(...withHrs.map((r) => r.actualHrs)) : 0,
+    totalHrs: Math.round(totalHrs),
+  };
+}
+function fastingStreak(diary, today = dateKey(Date.now())) {
+  const met = new Set(diary.filter((r) => r.goalMet).map((r) => r.date));
+  let cur = 0; const d = new Date(today + "T00:00:00");
+  if (!met.has(today)) d.setDate(d.getDate() - 1);
+  for (let i = 0; i < 800; i++) { if (met.has(dateKey(d.getTime()))) { cur += 1; d.setDate(d.getDate() - 1); } else break; }
+  return cur;
+}
+const fmtHM = (ms) => { const m = Math.max(0, Math.floor(ms / 60000)); return `${Math.floor(m / 60)}г ${m % 60}хв`; };
+const fmtHMS = (ms) => { const t = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60; return `${h}г ${m}хв ${s}с`; };
+
+/* ================================================================== */
+/* TOOLKIT — Anxiety toolkit library + Chore Splitter wizard          */
+/* ================================================================== */
+const TKEYS = {
+  settings: "toolkit:settings",
+  anxFav: "toolkit:anxiety:favorites",
+  anxTried: "toolkit:anxiety:tried",
+  anxWeek: "toolkit:anxiety:weekFocus",
+  members: "toolkit:chores:members",
+  list: "toolkit:chores:list",
+  ratings: "toolkit:chores:ratings",
+  assignments: "toolkit:chores:assignments",
+  meta: "toolkit:chores:meta",
+};
+
+// Anxiety toolkit — a calm library of techniques (interactive versions live in Calm)
+const ANX_TECHNIQUES = [
+  { id: "breath", emoji: "🌬️", name: "Дихання (box / 4-7-8)", what: "Повільний ритм вдих-затримка-видих.", why: "Активує парасимпатику — тіло розуміє, що можна розслабитись." },
+  { id: "ground", emoji: "⚓", name: "Заземлення 5-4-3-2-1", what: "Назви 5 що бачиш, 4 чуєш, 3 торкаєшся, 2 нюхаєш, 1 смакуєш.", why: "Повертає з тривожних думок у теперішній момент." },
+  { id: "pmr", emoji: "💪", name: "Розслаблення м'язів", what: "Напруж і відпусти групи м'язів по черзі.", why: "Знімає фізичну напругу, яку тримає тіло під час тривоги." },
+  { id: "thought", emoji: "📝", name: "Запис думки (CBT)", what: "Ситуація → думка → докази за/проти → збалансована думка.", why: "Розплутує автоматичну тривожну думку й повертає перспективу." },
+  { id: "fear", emoji: "🪜", name: "Сходинки страху", what: "Список страхів від легкого до важкого, крок за кроком.", why: "Поступова експозиція м'яко зменшує уникання й тривогу." },
+  { id: "worry", emoji: "⏳", name: "Час для тривоги", what: "Виділи 10 хв, щоб хвилюватись навмисно — потім стоп.", why: "Контейнує хвилювання, замість того щоб воно розтікалось на весь день." },
+  { id: "focus", emoji: "⏱️", name: "Фокус-таймер", what: "Спокійний вдих, потім блок роботи й коротка перерва.", why: "Знижує тривогу «нічого не встигаю» через маленькі кроки." },
+  { id: "self", emoji: "💛", name: "Самоспівчуття", what: "Скажи собі те, що сказала б другові в такій ситуації.", why: "Пом'якшує внутрішнього критика, який підживлює тривогу." },
+];
+
+const CHORE_ROOMS = [
+  { room: "Спальня", items: ["Застелити ліжко", "Змінити білизну", "Пропилососити", "Розкласти одяг", "Витерти пил"] },
+  { room: "Ванна", items: ["Помити раковину", "Помити унітаз", "Помити душ/ванну", "Дзеркало", "Поміняти рушники", "Помити підлогу"] },
+  { room: "Вітальня/їдальня", items: ["Пропилососити", "Витерти пил", "Прибрати зі столу", "Помити підлогу", "Скласти речі"] },
+  { room: "Кухня", items: ["Помити посуд", "Витерти столи", "Помити плиту", "Розібрати продукти", "Помити підлогу"] },
+  { room: "Інше", items: ["Винести сміття", "Посуд у машину", "Коридор", "Полити рослини", "Погодувати тварин", "Прання: завантажити", "Прання: розвісити", "Прання: скласти", "Прасування"] },
+];
+
+const ATT = { like: { label: "Подобається", emoji: "🙂", weight: 2, color: "#22c55e" }, tolerable: { label: "Терпимо", emoji: "😐", weight: 5, color: "#eab308" }, hate: { label: "Ненавиджу", emoji: "😖", weight: 9, color: "#ef4444" } };
+const ATT_ORDER = ["like", "tolerable", "hate"];
+
+async function loadToolkitData() {
+  const settings = await store.get(TKEYS.settings, { name: "Toolkit" });
+  const favorites = await store.get(TKEYS.anxFav, []);
+  const tried = await store.get(TKEYS.anxTried, []);
+  const weekFocus = await store.get(TKEYS.anxWeek, null);
+  const members = await store.get(TKEYS.members, null);
+  const list = await store.get(TKEYS.list, []);
+  const ratings = await store.get(TKEYS.ratings, {});
+  const assignments = await store.get(TKEYS.assignments, {});
+  const meta = await store.get(TKEYS.meta, { step: 1, useScores: false, finished: false });
+  return { settings, favorites, tried, weekFocus, members, list, ratings, assignments, meta };
+}
+async function collectToolkitExport() {
+  const d = await loadToolkitData();
+  return { settings: d.settings, anxiety: { favorites: d.favorites, tried: d.tried, weekFocus: d.weekFocus }, chores: { members: d.members, list: d.list, ratings: d.ratings, assignments: d.assignments, meta: d.meta } };
+}
+async function clearToolkitData() {
+  for (const k of Object.values(TKEYS)) await store.remove(k);
+}
+
+/* ------------------------------------------------------------------ */
+/* Analyses — annual medical checklist                                 */
+/* ------------------------------------------------------------------ */
+const AKEYS = {
+  plans: "analyses:plans", // { [year]: { [itemId]: { target, done, price } } }
+  year: "analyses:year",
+};
+const analysesFmt = (value) => `${Math.round(Number(value) || 0).toLocaleString("uk-UA")} ₴`;
+const ANALYSES_GROUPS = [
+  { id: "pituitary", name: "Гіпофіз і щитоподібна" },
+  { id: "metabolic", name: "Метаболічний блок" },
+  { id: "baseline", name: "Базові аналізи" },
+  { id: "kidneys", name: "Нирки та сеча" },
+  { id: "gyn", name: "Гінекологія" },
+  { id: "imaging", name: "Візуалізація та процедури" },
+  { id: "consultations", name: "Консультації" },
+];
+const ANALYSES_ITEMS = [
+  { id: "prolactin", group: "pituitary", name: "Пролактин + макропролактин", note: "контроль 1–2 рази на рік", target: 2, price: 700 },
+  { id: "thyroid-hormones", group: "pituitary", name: "ТТГ + вільні Т3 і Т4", target: 1, price: 1000 },
+  { id: "thyroid-antibodies", group: "pituitary", name: "Анти-ТПО + анти-ТГ", target: 1, price: 900 },
+  { id: "cortisol-acth", group: "pituitary", name: "Кортизол + АКТГ", target: 1, price: 1100 },
+  { id: "igf-1", group: "pituitary", name: "ІФР-1", target: 1, price: 900 },
+  { id: "reproductive-hormones", group: "pituitary", name: "ЛГ + ФСГ + естрадіол", target: 1, price: 1300 },
+
+  { id: "glucose-hba1c", group: "metabolic", name: "Глюкоза + HbA1c", target: 1, price: 550 },
+  { id: "insulin-homa", group: "metabolic", name: "Інсулін + HOMA-IR", target: 1, price: 650 },
+  { id: "androgens", group: "metabolic", name: "Тестостерон + ДГЕА-С", target: 1, price: 900 },
+
+  { id: "cbc", group: "baseline", name: "Загальний аналіз крові", target: 1, price: 350 },
+  { id: "ferritin-iron", group: "baseline", name: "Феритин + залізо", target: 1, price: 550 },
+  { id: "vitamin-d", group: "baseline", name: "Вітамін D", target: 1, price: 700 },
+  { id: "liver", group: "baseline", name: "Печінкові проби", target: 1, price: 650 },
+  { id: "lipids", group: "baseline", name: "Ліпідограма", target: 1, price: 600 },
+
+  { id: "urinalysis", group: "kidneys", name: "Загальний аналіз сечі", target: 1, price: 250 },
+  { id: "kidney-panel", group: "kidneys", name: "Креатинін + сечовина + ШКФ", target: 1, price: 500 },
+  { id: "electrolytes", group: "kidneys", name: "Електроліти", target: 1, price: 350 },
+  { id: "urine-culture", group: "kidneys", name: "Бакпосів сечі + антибіотикограма", target: 1, price: 550 },
+  { id: "urine-protein", group: "kidneys", name: "Білок / мікроальбумін сечі", target: 1, price: 400 },
+
+  { id: "pap", group: "gyn", name: "ПАП-тест", target: 1, price: 900 },
+  { id: "hpv", group: "gyn", name: "ВПЛ (HPV)", target: 1, price: 1200 },
+  { id: "sti", group: "gyn", name: "Панель ІПСШ", note: "за потреби", target: 0, price: 1600 },
+
+  { id: "pituitary-mri", group: "imaging", name: "МРТ гіпофіза з контрастом", note: "за планом, іноді раз на 2 роки", target: 1, price: 5200 },
+  { id: "thyroid-us", group: "imaging", name: "УЗД щитоподібної", target: 1, price: 700 },
+  { id: "kidney-us", group: "imaging", name: "УЗД нирок і сечового міхура", target: 1, price: 800 },
+  { id: "pelvic-us", group: "imaging", name: "УЗД малого таза", target: 1, price: 900 },
+  { id: "lithotripsy", group: "imaging", name: "Літотрипсія", note: "за потреби", target: 0, price: 8000 },
+  { id: "chest-xray", group: "imaging", name: "Рентген легень", note: "за потреби", target: 0, price: 500 },
+  { id: "heart-us", group: "imaging", name: "УЗД серця", note: "за потреби", target: 0, price: 850 },
+
+  { id: "endocrinologist", group: "consultations", name: "Ендокринолог", target: 2, price: 600 },
+  { id: "nephrologist", group: "consultations", name: "Нефролог / уролог", target: 1, price: 500 },
+  { id: "gynecologist", group: "consultations", name: "Гінеколог", target: 1, price: 500 },
+  { id: "ophthalmologist", group: "consultations", name: "Офтальмолог", note: "периметрія + очне дно", target: 1, price: 700 },
+  { id: "dentist", group: "consultations", name: "Стоматолог", note: "орієнтовно 5 000 ₴ на рік", target: 1, price: 5000 },
+];
+async function loadAnalysesData() {
+  const currentYear = new Date().getFullYear();
+  const [plans, year] = await Promise.all([
+    store.get(AKEYS.plans, {}),
+    store.get(AKEYS.year, currentYear),
+  ]);
+  return { plans: plans || {}, year: Number(year) || currentYear };
+}
+async function collectAnalysesExport() { return loadAnalysesData(); }
+async function clearAnalysesData() { for (const key of Object.values(AKEYS)) await store.remove(key); }
+
+/* ================================================================== */
+/* BOOKS — reading tracker                                             */
+/* ================================================================== */
+const BOKEYS = {
+  list: "books:list",         // [{id, title, author, status, totalPages, currentPage, rating, notes, added, finished}]
+  settings: "books:settings", // {name}
+};
+const BOOK_STATUSES = [
+  { id: "reading", label: "Читаю", color: "bg-violet-100 text-violet-700" },
+  { id: "want", label: "Хочу прочитати", color: "bg-sky-100 text-sky-700" },
+  { id: "done", label: "Прочитано", color: "bg-green-100 text-green-700" },
+];
+const bookStatus = (id) => BOOK_STATUSES.find((s) => s.id === id) || BOOK_STATUSES[1];
+async function collectBooksExport() {
+  const list = await store.get(BOKEYS.list, []);
+  const settings = await store.get(BOKEYS.settings, { name: "Книги" });
+  return { list, settings };
+}
+async function clearBooksData() { for (const key of Object.values(BOKEYS)) await store.remove(key); }
+// Book roadmap courses: JSON in /public, progress under its own store key
+const BOOK_COURSES = [
+  { id: "ct", emoji: "🧠", label: "Мистецтво мислити", file: "/ct-path.json", progressKey: "books:ctPath", heading: "Книга: «Мистецтво мислити» — Стелла Коттрелл" },
+  { id: "fear", emoji: "💊", label: "Таблетка від страху", file: "/fear-path.json", progressKey: "books:fearPath", heading: "Книга: «Таблетка від страху» — Андрій Курпатов" },
+];
+// effective difficulty score for member on chore (score if using 1-10, else attitude weight)
+function choreScore(ratings, choreId, memberId, useScores) {
+  const r = ratings[choreId]?.[memberId];
+  if (!r) return null;
+  if (useScores && r.score != null) return r.score;
+  return ATT[r.attitude]?.weight ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Small presentational pieces                                         */
+/* ------------------------------------------------------------------ */
+function StatTile({ icon: Icon, label, value, sub, tint = "text-slate-700" }) {
+  return (
+    <div className="flex-1 min-w-[140px] rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-slate-400">
+        <Icon className="h-4 w-4" />
+        <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
+      </div>
+      <div className={`mt-2 text-3xl font-bold tabular-nums ${tint}`}>{value}</div>
+      {sub && <div className="mt-0.5 text-xs text-slate-400">{sub}</div>}
+    </div>
+  );
+}
+
+function CountPill({ n, cls }) {
+  if (!n) return null;
+  return (
+    <span className={`inline-flex min-w-[20px] justify-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${cls}`}>
+      {n}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Main component                                                      */
+/* ------------------------------------------------------------------ */
+export default function FlashcardsApp() {
+  const [loading, setLoading] = useState(true);
+  const [loadMsg, setLoadMsg] = useState("Opening your library…");
+  const [decks, setDecks] = useState([]); // [{id,name,created,groupId,language,goal,deadline,autoPlay,...}]
+  const [groups, setGroups] = useState([]); // [{id,name,emoji,color,collapsed}]
+  const [cardsByDeck, setCardsByDeck] = useState({}); // {deckId: [cards]}
+  const [stats, setStats] = useState({ history: {}, settings: { newPerDay: DEFAULT_NEW_PER_DAY } });
+  const [view, setView] = useState("home"); // home | deck | study | setup | import | stats
+  const [section, setSection] = useState("studying"); // studying | routine | calm | fasting
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [calmName, setCalmName] = useState("Спокій");
+  const [fastingName, setFastingName] = useState("Fasting");
+  const [mgmtName, setMgmtName] = useState("Менеджмент");
+  const [toolkitName, setToolkitName] = useState("Toolkit");
+  const [budgetName, setBudgetName] = useState("Budget");
+  const [inventoryName, setInventoryName] = useState("Inventory");
+  const [financeName, setFinanceName] = useState("Finance");
+  const [booksName, setBooksName] = useState("Книги");
+  const [cloudState, setCloudState] = useState({ signedIn: false, email: null, syncing: false });
+  const [toast, setToast] = useState(null);
+  const [deckEditor, setDeckEditor] = useState(null); // null | { deck } (deck=null → create)
+  const [groupEditor, setGroupEditor] = useState(null); // null | { group } (group=null → create)
+  const [cardEditor, setCardEditor] = useState(null); // null | { deckId, card } (card=null → new)
+  const [deckDetailId, setDeckDetailId] = useState(null); // deck being browsed
+
+  const newPerDay = stats.settings?.newPerDay ?? DEFAULT_NEW_PER_DAY;
+
+  /* ---------- initial progressive load ---------- */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const idx = await store.get("decks:index", { decks: [] });
+      const gi = await store.get("groups:index", { groups: [] });
+      // one-time: seed FR/PL/ES starter decks under a "Мови" group
+      if (!(await store.get("langs:seeded", false))) {
+        try {
+          const seed = await (await fetch("/lang-starters.json")).json();
+          const gid = uid("g");
+          const newDecks = [];
+          for (const d of seed.decks) {
+            const did = uid("d");
+            newDecks.push({ id: did, name: d.name, created: Date.now(), topic: "", description: "", emoji: d.emoji, color: d.color || "blue", groupId: gid, language: d.language, autoPlay: false, goal: "longterm", deadline: null });
+            await store.set(`cards:${did}`, d.cards.map(([f, b]) => makeCard(f, b)));
+          }
+          gi.groups = [...(gi.groups || []), { id: gid, name: "Мови", emoji: "🌍", color: "blue", collapsed: false }];
+          idx.decks = [...(idx.decks || []), ...newDecks];
+          await store.set("groups:index", { groups: gi.groups });
+          await store.set("decks:index", { decks: idx.decks });
+          await store.set("langs:seeded", true);
+        } catch (e) { /* offline: skip seeding */ }
+      }
+      const ui = await store.get("ui:prefs", { section: "review", sidebarCollapsed: false });
+      const calmSettings = await store.get(CKEYS.settings, { name: "Спокій" });
+      const fastingSettings = await store.get(FKEYS.settings, { name: "Fasting" });
+      const mgmtSettings = await store.get("mgmt:settings", { name: "Менеджмент" });
+      const toolkitSettings = await store.get(TKEYS.settings, { name: "Toolkit" });
+      const budgetSettings = await store.get(BKEYS.settings, { name: "Budget" });
+      const inventorySettings = await store.get(IKEYS.settings, { name: "Inventory" });
+      const financeSettings = await store.get(FNKEYS.settings, { name: "Finance" });
+      const booksSettings = await store.get(BOKEYS.settings, { name: "Книги" });
+      const st = await store.get("stats", {
+        history: {},
+        settings: { newPerDay: DEFAULT_NEW_PER_DAY },
+      });
+      if (!alive) return;
+      setSection(["review", "studying", "languages", "routine", "calm", "fasting", "management", "inventory", "money", "analyses", "books"].includes(ui.section) ? ui.section : "studying");
+      setSidebarCollapsed(!!ui.sidebarCollapsed);
+      setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
+      setFastingName(fastingSettings?.name || "Fasting");
+      setMgmtName(mgmtSettings?.name || "Менеджмент");
+      setToolkitName(toolkitSettings?.name || "Toolkit");
+      setBudgetName(budgetSettings?.name || "Budget");
+      setInventoryName(inventorySettings?.name || "Inventory");
+      setFinanceName(financeSettings?.name || "Finance");
+      setBooksName(booksSettings?.name || "Книги");
+      setStats(st);
+      setGroups(gi.groups || []);
+      setDecks(idx.decks || []);
+      const map = {};
+      for (const d of idx.decks || []) {
+        setLoadMsg(`Loading “${d.name}”…`);
+        map[d.id] = await store.get(`cards:${d.id}`, []);
+        if (!alive) return;
+        setCardsByDeck({ ...map });
+      }
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const flash = useCallback((msg) => {
+    setToast(msg);
+    window.clearTimeout(flash._t);
+    flash._t = window.setTimeout(() => setToast(null), 2200);
+  }, []);
+
+  /* ---------- persistence helpers ---------- */
+  const persistIndex = useCallback(async (nextDecks) => {
+    await store.set("decks:index", { decks: nextDecks });
+  }, []);
+  const persistDeckCards = useCallback(async (deckId, cards) => {
+    await store.set(`cards:${deckId}`, cards);
+  }, []);
+  const persistStats = useCallback(async (nextStats) => {
+    await store.set("stats", nextStats);
+  }, []);
+
+  const changeSection = useCallback((next) => {
+    setSection(next);
+    store.set("ui:prefs", { section: next, sidebarCollapsed });
+  }, [sidebarCollapsed]);
+
+  const toggleSidebar = useCallback(() => {
+    setSidebarCollapsed((c) => {
+      const next = !c;
+      store.set("ui:prefs", { section, sidebarCollapsed: next });
+      return next;
+    });
+  }, [section]);
+
+  // cloud sync status for the sidebar indicator
+  useEffect(() => {
+    (async () => { await refreshSession(); setCloudState((s) => ({ ...s, signedIn: cloudSignedIn(), email: currentEmail() })); })();
+  }, []);
+
+  const doSyncNow = useCallback(async () => {
+    if (!cloudSignedIn()) { changeSection("studying"); setView("stats"); return; }
+    setCloudState((s) => ({ ...s, syncing: true }));
+    try { await syncNow(); location.reload(); }
+    catch (e) { setCloudState((s) => ({ ...s, syncing: false })); flash("Помилка синхронізації"); }
+  }, [changeSection, flash]);
+
+  const renameCalm = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Спокій";
+    setCalmName(clean);
+    const prev = await store.get(CKEYS.settings, { name: "Спокій" });
+    await store.set(CKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameFasting = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Fasting";
+    setFastingName(clean);
+    const prev = await store.get(FKEYS.settings, { name: "Fasting" });
+    await store.set(FKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameMgmt = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Менеджмент";
+    setMgmtName(clean);
+    const prev = await store.get("mgmt:settings", { name: "Менеджмент" });
+    await store.set("mgmt:settings", { ...prev, name: clean });
+  }, []);
+
+  const renameToolkit = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Toolkit";
+    setToolkitName(clean);
+    const prev = await store.get(TKEYS.settings, { name: "Toolkit" });
+    await store.set(TKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameBudget = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Budget";
+    setBudgetName(clean);
+    const prev = await store.get(BKEYS.settings, { name: "Budget" });
+    await store.set(BKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameInventory = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Inventory";
+    setInventoryName(clean);
+    const prev = await store.get(IKEYS.settings, { name: "Inventory" });
+    await store.set(IKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameFinance = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Finance";
+    setFinanceName(clean);
+    const prev = await store.get(FNKEYS.settings, { name: "Finance" });
+    await store.set(FNKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameBooks = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Книги";
+    setBooksName(clean);
+    const prev = await store.get(BOKEYS.settings, { name: "Книги" });
+    await store.set(BOKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  /* ---------- derived: per-deck due summary ---------- */
+  // New cards left in today's allowance (newPerDay minus ones already introduced today).
+  const newRemainingToday = useMemo(() => {
+    const introducedToday = stats.history?.[dateKey(Date.now())]?.newIntroduced || 0;
+    return Math.max(0, newPerDay - introducedToday);
+  }, [stats, newPerDay]);
+
+  const deckSummary = useMemo(() => {
+    const now = Date.now();
+    const endToday = new Date(now); endToday.setHours(23, 59, 59, 999);
+    const endTs = endToday.getTime();
+    const out = {};
+    for (const d of decks) {
+      const cards = cardsByDeck[d.id] || [];
+      let learn = 0, review = 0, newTotal = 0, learned = 0;
+      const stages = {}; // stageId -> count, across ALL cards (interval breakdown)
+      for (const c of cards) {
+        if (c.state === "new") newTotal += 1;
+        else if (c.state === "learning" && c.due <= endTs) learn += 1;
+        else if (c.state === "review" && c.due <= endTs) review += 1;
+        // "learned" = mature card: reviewed and on a long (≥21d) interval
+        if (c.state === "review" && (c.interval || 0) >= 21) learned += 1;
+        const sid = stageForCard(c).id;
+        stages[sid] = (stages[sid] || 0) + 1;
+      }
+      // "Due today" = scheduled cards (today or earlier) + new cards up to the
+      // daily allowance. Per-deck newDue answers "what would studying THIS deck
+      // now introduce?", so each deck caps against the full remaining allowance.
+      const newDue = Math.min(newTotal, newRemainingToday);
+      out[d.id] = { learn, review, newTotal, newDue, learned, total: cards.length, due: learn + review + newDue, stages };
+    }
+    return out;
+  }, [decks, cardsByDeck, stats, newRemainingToday]);
+
+  // roll up due counts + card totals per group (news capped at the group scope)
+  const groupSummary = useMemo(() => {
+    const out = {};
+    for (const g of groups) out[g.id] = { due: 0, total: 0, deckCount: 0, lr: 0, newTotal: 0 };
+    for (const d of decks) {
+      const gid = d.groupId || "";
+      if (!out[gid]) continue;
+      const s = deckSummary[d.id] || { learn: 0, review: 0, newTotal: 0, total: 0 };
+      out[gid].lr += (s.learn || 0) + (s.review || 0);
+      out[gid].newTotal += s.newTotal || 0;
+      out[gid].total += s.total;
+      out[gid].deckCount += 1;
+    }
+    for (const g of groups) {
+      const s = out[g.id];
+      s.due = s.lr + Math.min(s.newTotal, newRemainingToday);
+    }
+    return out;
+  }, [groups, decks, deckSummary, newRemainingToday]);
+
+  const totalDue = useMemo(() => {
+    let lr = 0, news = 0;
+    for (const x of Object.values(deckSummary)) { lr += x.learn + x.review; news += x.newTotal; }
+    return lr + Math.min(news, newRemainingToday);
+  }, [deckSummary, newRemainingToday]);
+
+  /* ---------- build a study queue across decks for a given mode ---------- */
+  // Returns an array of { deckId, id } refs so a session can span many decks.
+  const buildSessionQueue = useCallback(
+    (deckIds, mode, count) => {
+      const now = Date.now();
+      const todayKey = dateKey(now);
+      const introducedToday = stats.history?.[todayKey]?.newIntroduced || 0;
+      const newRemaining = Math.max(0, newPerDay - introducedToday);
+
+      const all = [];
+      for (const did of deckIds)
+        for (const c of cardsByDeck[did] || []) all.push({ deckId: did, card: c });
+
+      const isNew = (x) => x.card.state === "new";
+      const isLearn = (x) => x.card.state === "learning";
+      const isReview = (x) => x.card.state === "review";
+      const dueNow = (x) => x.card.due <= now;
+      const toRef = (x) => ({ deckId: x.deckId, id: x.card.id });
+
+      let out = [];
+      if (mode === "new") {
+        out = all.filter(isNew);
+      } else if (mode === "review") {
+        out = all.filter((x) => isReview(x) || isLearn(x)); // already-started cards, drilled ahead
+      } else if (mode === "all" || mode === "cram") {
+        const due = all.filter((x) => (isReview(x) || isLearn(x)) && dueNow(x));
+        const news = all.filter(isNew);
+        const rest = all.filter((x) => !due.includes(x) && !news.includes(x));
+        out = [...due, ...news, ...rest]; // everything, due-first
+      } else if (mode === "custom") {
+        const review = all.filter((x) => isReview(x) && dueNow(x));
+        const learn = all.filter((x) => isLearn(x) && dueNow(x));
+        const news = all.filter(isNew);
+        const future = all.filter((x) => isReview(x) && !dueNow(x));
+        out = [...review, ...learn, ...news, ...future].slice(0, Math.max(1, count || 20));
+      } else {
+        // "due" — the scheduled queue (cards due today or earlier, however many,
+        // no cap) plus new cards up to the daily allowance (newPerDay minus ones
+        // already introduced today), so there's always fresh material once
+        // reviews run dry.
+        const endToday = new Date(now); endToday.setHours(23, 59, 59, 999);
+        const endTs = endToday.getTime();
+        const dueToday = (x) => x.card.due <= endTs;
+        const review = all.filter((x) => isReview(x) && dueToday(x));
+        const learn = all.filter((x) => isLearn(x) && dueToday(x));
+        const news = all.filter(isNew).slice(0, newRemaining);
+        out = [...review, ...learn, ...news];
+      }
+      return out.map(toRef);
+    },
+    [cardsByDeck, stats, newPerDay]
+  );
+
+  // How many cards a given mode would queue right now (for the setup screen)
+  const countForMode = useCallback(
+    (deckIds, mode, count) => buildSessionQueue(deckIds, mode, count).length,
+    [buildSessionQueue]
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Deck / card mutations                                              */
+  /* ------------------------------------------------------------------ */
+  const newDeck = (name, meta = {}) => ({
+    id: uid("d"),
+    name: (name || "Untitled deck").trim() || "Untitled deck",
+    created: Date.now(),
+    topic: (meta.topic || "").trim(),
+    description: (meta.description || "").trim(),
+    emoji: meta.emoji || "",
+    color: meta.color || "indigo",
+    groupId: meta.groupId || "",
+    language: meta.language || "en-US",
+    autoPlay: !!meta.autoPlay,
+    goal: meta.goal || "longterm",
+    deadline: meta.deadline || null,
+  });
+
+  const findOrCreateDeck = useCallback((name, workingDecks, meta) => {
+    const trimmed = (name || "Untitled deck").trim() || "Untitled deck";
+    const existing = workingDecks.find((d) => d.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) return { deck: existing, decks: workingDecks, created: false };
+    const deck = newDeck(trimmed, meta);
+    return { deck, decks: [...workingDecks, deck], created: true };
+  }, []);
+
+  const createDeck = useCallback(
+    async (meta) => {
+      const deck = newDeck(meta.name, meta);
+      const next = [...decks, deck];
+      setDecks(next);
+      setCardsByDeck((m) => ({ ...m, [deck.id]: [] }));
+      await persistIndex(next);
+      await persistDeckCards(deck.id, []);
+      flash(`Deck “${deck.name}” created`);
+      return deck;
+    },
+    [decks, persistIndex, persistDeckCards, flash]
+  );
+
+  const updateDeck = useCallback(
+    async (deckId, patch) => {
+      const next = decks.map((d) => (d.id === deckId ? { ...d, ...patch } : d));
+      setDecks(next);
+      await persistIndex(next);
+      flash("Deck updated");
+    },
+    [decks, persistIndex, flash]
+  );
+
+  // groups: { deckName: [cardObjects] }.  opts.targetDeckId forces every card
+  // into one existing deck (append). Importing NEVER replaces existing cards.
+  const importCards = useCallback(
+    async (groups, opts = {}) => {
+      let workingDecks = [...decks];
+      const nextByDeck = { ...cardsByDeck };
+      let added = 0;
+      for (const [deckName, cards] of Object.entries(groups)) {
+        if (!cards.length) continue;
+        let deck = opts.targetDeckId ? workingDecks.find((d) => d.id === opts.targetDeckId) : null;
+        if (!deck) {
+          const res = findOrCreateDeck(deckName, workingDecks, opts.newDeckMeta);
+          workingDecks = res.decks;
+          deck = res.deck;
+        }
+        const merged = [...(nextByDeck[deck.id] || []), ...cards];
+        nextByDeck[deck.id] = merged;
+        await persistDeckCards(deck.id, merged);
+        added += cards.length;
+      }
+      setDecks(workingDecks);
+      setCardsByDeck(nextByDeck);
+      await persistIndex(workingDecks);
+      flash(`Imported ${added.toLocaleString()} card${added === 1 ? "" : "s"}`);
+      setView("home");
+    },
+    [decks, cardsByDeck, findOrCreateDeck, persistDeckCards, persistIndex, flash]
+  );
+
+  const deleteDeck = useCallback(
+    async (deckId) => {
+      const next = decks.filter((d) => d.id !== deckId);
+      const nextByDeck = { ...cardsByDeck };
+      // clean up any per-card images
+      for (const c of cardsByDeck[deckId] || []) {
+        if (c.imgFront) await removeImage(c.id, "front");
+        if (c.imgBack) await removeImage(c.id, "back");
+      }
+      delete nextByDeck[deckId];
+      setDecks(next);
+      setCardsByDeck(nextByDeck);
+      await persistIndex(next);
+      await store.remove(`cards:${deckId}`);
+      if (deckDetailId === deckId) { setDeckDetailId(null); setView("home"); }
+      flash("Deck deleted");
+    },
+    [decks, cardsByDeck, persistIndex, flash, deckDetailId]
+  );
+
+  /* ---------- groups (folders) ---------- */
+  const persistGroups = useCallback(async (g) => {
+    await store.set("groups:index", { groups: g });
+  }, []);
+
+  const createGroup = useCallback(
+    async (meta) => {
+      const g = { id: uid("g"), name: (meta.name || "New group").trim() || "New group", emoji: meta.emoji || "", color: meta.color || "slate", collapsed: false };
+      const next = [...groups, g];
+      setGroups(next);
+      await persistGroups(next);
+      flash(`Group “${g.name}” created`);
+      return g;
+    },
+    [groups, persistGroups, flash]
+  );
+
+  const updateGroup = useCallback(
+    async (id, patch) => {
+      const next = groups.map((g) => (g.id === id ? { ...g, ...patch } : g));
+      setGroups(next);
+      await persistGroups(next);
+    },
+    [groups, persistGroups]
+  );
+
+  const deleteGroup = useCallback(
+    async (id) => {
+      const nextDecks = decks.map((d) => (d.groupId === id ? { ...d, groupId: "" } : d));
+      setDecks(nextDecks);
+      await persistIndex(nextDecks);
+      const next = groups.filter((g) => g.id !== id);
+      setGroups(next);
+      await persistGroups(next);
+      flash("Group deleted — its decks were kept");
+    },
+    [decks, groups, persistIndex, persistGroups, flash]
+  );
+
+  const toggleGroup = useCallback((id) => {
+    setGroups((gs) => {
+      const next = gs.map((g) => (g.id === id ? { ...g, collapsed: !g.collapsed } : g));
+      store.set("groups:index", { groups: next });
+      return next;
+    });
+  }, []);
+
+  /* ---------- individual cards (create / edit / delete, with images) ---------- */
+  const saveCard = useCallback(
+    async (deckId, cardId, fields, images) => {
+      let deckCards = [...(cardsByDeck[deckId] || [])];
+      let id = cardId;
+      const isNew = !id;
+      if (isNew) {
+        const c = makeCard(fields.front, fields.back);
+        id = c.id;
+        deckCards = [...deckCards, c];
+      }
+      const patch = { front: (fields.front || "").trim(), back: (fields.back || "").trim(), lang: fields.lang || "" };
+      // images: {front|back: dataUrl(new) | null(remove) | undefined(unchanged)}
+      for (const side of ["front", "back"]) {
+        const img = images?.[side];
+        if (img === undefined) continue;
+        const flag = side === "front" ? "imgFront" : "imgBack";
+        if (img === null) { await removeImage(id, side); patch[flag] = false; }
+        else { await saveImage(id, side, img); patch[flag] = true; }
+      }
+      deckCards = deckCards.map((c) => (c.id === id ? { ...c, ...patch } : c));
+      const nextByDeck = { ...cardsByDeck, [deckId]: deckCards };
+      setCardsByDeck(nextByDeck);
+      await persistDeckCards(deckId, deckCards);
+      flash(isNew ? "Card added" : "Card saved");
+    },
+    [cardsByDeck, persistDeckCards, flash]
+  );
+
+  const deleteCard = useCallback(
+    async (deckId, cardId) => {
+      const card = (cardsByDeck[deckId] || []).find((c) => c.id === cardId);
+      if (card?.imgFront) await removeImage(cardId, "front");
+      if (card?.imgBack) await removeImage(cardId, "back");
+      const deckCards = (cardsByDeck[deckId] || []).filter((c) => c.id !== cardId);
+      setCardsByDeck((m) => ({ ...m, [deckId]: deckCards }));
+      await persistDeckCards(deckId, deckCards);
+      flash("Card deleted");
+    },
+    [cardsByDeck, persistDeckCards, flash]
+  );
+
+  const addLanguageWeakWords = useCallback(
+    async (words, reason = "missed") => {
+      const cleanWords = (Array.isArray(words) ? words : [words]).filter((w) => w?.word);
+      if (!cleanWords.length) return;
+      let deck = decks.find((d) => d.name === "Languages review");
+      let nextDecks = decks;
+      if (!deck) {
+        deck = newDeck("Languages review", {
+          topic: "Languages",
+          description: "Weak words from the Languages path.",
+          emoji: "🗣️",
+          color: "green",
+          language: "en-US",
+          autoPlay: true,
+        });
+        nextDecks = [...decks, deck];
+        setDecks(nextDecks);
+        await persistIndex(nextDecks);
+      }
+
+      const now = Date.now();
+      const existing = cardsByDeck[deck.id] || [];
+      const byFront = new Map(existing.map((c) => [normalizeText(c.front), c]));
+      let changed = false;
+      const nextCards = [...existing];
+      for (const w of cleanWords) {
+        const key = normalizeText(w.word);
+        if (!key) continue;
+        const body = [
+          w.definition,
+          w.gloss ? `UA: ${w.gloss}` : "",
+          w.example ? `Example: ${w.example}` : "",
+          `Source: Languages path (${reason})`,
+        ].filter(Boolean).join("\n");
+        const current = byFront.get(key);
+        if (current) {
+          const updated = schedule({ ...current, due: Math.min(current.due || now, now) }, reason === "hard" ? "hard" : "again", now, { goal: "longterm" });
+          const i = nextCards.findIndex((c) => c.id === current.id);
+          if (i >= 0) nextCards[i] = { ...updated, back: current.back || body, lang: "en-US" };
+        } else {
+          nextCards.push({ ...makeCard(w.word, body), tags: "languages weak", lang: "en-US" });
+        }
+        changed = true;
+      }
+      if (!changed) return;
+      const strength = await store.get(LKEYS.wordStrength, {});
+      const nextStrength = { ...strength };
+      for (const w of cleanWords) {
+        const key = normalizeText(w.word);
+        if (!key) continue;
+        const prev = nextStrength[key] || { word: w.word, wrong: 0, hard: 0 };
+        nextStrength[key] = {
+          ...prev,
+          word: w.word,
+          definition: w.definition || prev.definition || "",
+          gloss: w.gloss || prev.gloss || "",
+          wrong: prev.wrong + (reason === "hard" ? 0 : 1),
+          hard: prev.hard + (reason === "hard" ? 1 : 0),
+          lastSeen: now,
+        };
+      }
+      setCardsByDeck((m) => ({ ...m, [deck.id]: nextCards }));
+      await persistDeckCards(deck.id, nextCards);
+      await store.set(LKEYS.wordStrength, nextStrength);
+      flash(reason === "hard" ? "Added to Languages review" : "Weak words scheduled for review");
+    },
+    [decks, cardsByDeck, persistIndex, persistDeckCards, flash]
+  );
+
+  const recordLanguageCompletion = useCallback(
+    async (grade = "good") => {
+      const next = bumpStats(stats, { grade, wasNew: false, mature: false });
+      setStats(next);
+      await persistStats(next);
+    },
+    [stats, persistStats]
+  );
+
+  /* ---------- study scope resolution (all / group / single deck) ---------- */
+  const scopeToDeckIds = useCallback(
+    (scope) => {
+      if (scope === "all") return decks.map((d) => d.id);
+      if (typeof scope === "string" && scope.startsWith("group:")) {
+        const gid = scope.slice(6);
+        return decks.filter((d) => (d.groupId || "") === gid).map((d) => d.id);
+      }
+      return [scope];
+    },
+    [decks]
+  );
+
+  const scopeName = useCallback(
+    (scope) => {
+      if (scope === "all") return "All decks";
+      if (typeof scope === "string" && scope.startsWith("group:")) {
+        return groups.find((g) => g.id === scope.slice(6))?.name || "Group";
+      }
+      return decks.find((d) => d.id === scope)?.name || "Deck";
+    },
+    [decks, groups]
+  );
+
+  const deckOptsFor = useCallback(
+    (deckId) => {
+      const d = decks.find((x) => x.id === deckId);
+      return d ? { goal: d.goal || "longterm", deadline: d.deadline || null } : null;
+    },
+    [decks]
+  );
+
+  const resetAll = useCallback(async () => {
+    for (const d of decks) {
+      await store.remove(`cards:${d.id}`);
+      for (const c of cardsByDeck[d.id] || []) {
+        if (c.imgFront) await removeImage(c.id, "front");
+        if (c.imgBack) await removeImage(c.id, "back");
+      }
+    }
+    await store.remove("decks:index");
+    await store.remove("groups:index");
+    await store.remove("langs:seeded");
+    await store.remove("ui:prefs");
+    await store.remove("stats");
+    await clearRoutineData();
+    await clearCalmData();
+    await clearFastingData();
+    await store.remove("mgmt:settings");
+    await clearCareerData();
+    await clearToolkitData();
+    await clearBudgetData();
+    await clearInventoryData();
+    await clearReviewData();
+    await clearFinanceData();
+    await clearLanguagesData();
+    await clearAnalysesData();
+    await clearBooksData();
+    setDecks([]);
+    setGroups([]);
+    setCardsByDeck({});
+    setStats({ history: {}, settings: { newPerDay: DEFAULT_NEW_PER_DAY } });
+    setView("home");
+    setCalmName("Спокій");
+    setFastingName("Fasting");
+    setMgmtName("Менеджмент");
+    setToolkitName("Toolkit");
+    setBudgetName("Budget");
+    setInventoryName("Inventory");
+    setFinanceName("Finance");
+    setBooksName("Книги");
+    flash("All data reset");
+    window.dispatchEvent(new CustomEvent("routine-reset"));
+    window.dispatchEvent(new CustomEvent("calm-reset"));
+    window.dispatchEvent(new CustomEvent("fasting-reset"));
+    window.dispatchEvent(new CustomEvent("toolkit-reset"));
+    window.dispatchEvent(new CustomEvent("budget-reset"));
+    window.dispatchEvent(new CustomEvent("inventory-reset"));
+    window.dispatchEvent(new CustomEvent("review-reset"));
+    window.dispatchEvent(new CustomEvent("finance-reset"));
+    window.dispatchEvent(new CustomEvent("languages-reset"));
+    window.dispatchEvent(new CustomEvent("analyses-reset"));
+    window.dispatchEvent(new CustomEvent("books-reset"));
+  }, [decks, cardsByDeck, flash]);
+
+  const exportAll = useCallback(async () => {
+    const routine = await collectRoutineExport();
+    const calm = await collectCalmExport();
+    const fasting = await collectFastingExport();
+    const mgmt = await store.get("mgmt:settings", { name: "Менеджмент" });
+    const career = await collectCareerExport();
+    const toolkit = await collectToolkitExport();
+    const budget = await collectBudgetExport();
+    const inventory = await collectInventoryExport();
+    const review = await collectReviewExport();
+    const finance = await collectFinanceExport();
+    const languages = await collectLanguagesExport();
+    const analyses = await collectAnalysesExport();
+    const books = await collectBooksExport();
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      version: 13,
+      decks,
+      groups,
+      cards: cardsByDeck,
+      stats,
+      routine,
+      calm,
+      fasting,
+      mgmt,
+      career,
+      toolkit,
+      budget,
+      inventory,
+      review,
+      finance,
+      languages,
+      analyses,
+      books,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `flashcards-backup-${dateKey(Date.now())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    flash("Backup downloaded");
+  }, [decks, groups, cardsByDeck, stats, flash]);
+
+  const loadSample = useCallback(async () => {
+    const groups = {
+      "World Capitals": [
+        makeCard("Capital of Japan", "Tokyo", "geography"),
+        makeCard("Capital of Australia", "Canberra", "geography"),
+        makeCard("Capital of Canada", "Ottawa", "geography"),
+        makeCard("Capital of Brazil", "Brasília", "geography"),
+        makeCard("Capital of Egypt", "Cairo", "geography"),
+      ],
+      "Spanish Basics": [
+        makeCard("hello", "hola", "greetings"),
+        makeCard("thank you", "gracias", "greetings"),
+        makeCard("water", "agua", "nouns"),
+        makeCard("to eat", "comer", "verbs"),
+        makeCard("beautiful", "hermoso / hermosa", "adjectives"),
+      ],
+    };
+    await importCards(groups);
+  }, [importCards]);
+
+  const [loadingEnglish, setLoadingEnglish] = useState(false);
+  const importEnglishDecks = useCallback(async () => {
+    setLoadingEnglish(true);
+    try {
+      const res = await fetch("/english-decks.json");
+      if (!res.ok) throw new Error("not found");
+      const data = await res.json();
+      const g = await createGroup({ name: "English", emoji: "🇬🇧", color: "blue" });
+      const groups = {};
+      for (const [name, cards] of Object.entries(data)) groups[name] = cards.map(([f, b]) => makeCard(f, b));
+      await importCards(groups, { newDeckMeta: { groupId: g.id } });
+    } catch (e) {
+      flash("Не вдалося завантажити колоди");
+    } finally {
+      setLoadingEnglish(false);
+    }
+  }, [createGroup, importCards, flash]);
+
+  /* ------------------------------------------------------------------ */
+  /* Study session                                                      */
+  /* ------------------------------------------------------------------ */
+  const [session, setSession] = useState(null);
+  // session = { title, mode, cram, queue:[{deckId,id}], total, flipped, done, again, correct }
+  const [setup, setSetup] = useState(null); // { deckScope:'all'|deckId, mode, count }
+
+  const openSetup = useCallback((deckScope) => {
+    setSetup({ deckScope: deckScope || "all", mode: "due", count: 50 });
+    setView("setup");
+  }, []);
+
+  const practiceLanguageReview = useCallback(async () => {
+    const deck = decks.find((d) => d.name === "Languages review");
+    if (!deck || !(cardsByDeck[deck.id] || []).length) {
+      flash("No weak language words yet");
+      return;
+    }
+    changeSection("studying");
+    openSetup(deck.id);
+  }, [decks, cardsByDeck, changeSection, openSetup, flash]);
+
+  const startSession = useCallback(
+    (config) => {
+      const deckIds = scopeToDeckIds(config.deckScope);
+      const queue = buildSessionQueue(deckIds, config.mode, config.count);
+      if (!queue.length) {
+        flash("No cards match that mode right now");
+        return;
+      }
+      const modeLabel = STUDY_MODES.find((m) => m.id === config.mode)?.label || "Study";
+      setSession({
+        title: scopeName(config.deckScope),
+        subtitle: modeLabel,
+        mode: config.mode,
+        cram: config.mode === "cram",
+        reverse: !!config.reverse,
+        queue,
+        total: queue.length,
+        flipped: false,
+        done: 0,
+        again: 0,
+        correct: 0,
+      });
+      setView("study");
+    },
+    [scopeToDeckIds, scopeName, buildSessionQueue, flash]
+  );
+
+  const currentRef = session && session.queue.length ? session.queue[0] : null;
+
+  const currentCard = useMemo(() => {
+    if (!currentRef) return null;
+    return (cardsByDeck[currentRef.deckId] || []).find((c) => c.id === currentRef.id) || null;
+  }, [currentRef, cardsByDeck]);
+
+  const gradePreviews = useMemo(() => {
+    if (!currentCard || session?.cram) return {};
+    const now = Date.now();
+    const opts = currentRef ? deckOptsFor(currentRef.deckId) : null;
+    const out = {};
+    for (const g of GRADES) {
+      const r = schedule(currentCard, g.key, now, opts);
+      out[g.key] = formatDelta(r.due - now);
+    }
+    return out;
+  }, [currentCard, session, currentRef, deckOptsFor]);
+
+  const answer = useCallback(
+    async (grade) => {
+      if (!session || !currentCard) return;
+      const now = Date.now();
+      const ref = session.queue[0];
+
+      const advance = (rest) =>
+        setSession((s) => ({
+          ...s,
+          queue: rest,
+          flipped: false,
+          done: s.done + 1,
+          again: s.again + (grade === "again" ? 1 : 0),
+          correct: s.correct + (grade !== "again" ? 1 : 0),
+        }));
+
+      // Cram: drill only — never touches SM-2 state, due dates, or stats.
+      if (session.cram) {
+        const rest = session.queue.slice(1);
+        if (grade === "again" || grade === "hard") rest.push(ref);
+        advance(rest);
+        return;
+      }
+
+      // Normal grading — SM-2 updates even when reviewed ahead of schedule.
+      const wasNew = currentCard.state === "new";
+      const mature = currentCard.state === "review";
+      const updated = schedule(currentCard, grade, now, deckOptsFor(ref.deckId));
+      const deckCards = cardsByDeck[ref.deckId] || [];
+      const nextCards = deckCards.map((c) => (c.id === updated.id ? updated : c));
+      const nextByDeck = { ...cardsByDeck, [ref.deckId]: nextCards };
+      setCardsByDeck(nextByDeck);
+
+      const nextStats = bumpStats(stats, { grade, wasNew, mature });
+      setStats(nextStats);
+
+      const rest = session.queue.slice(1);
+      if (updated.due - now <= SESSION_REQUEUE_WINDOW) rest.push(ref);
+      advance(rest);
+
+      await persistDeckCards(ref.deckId, nextCards);
+      await persistStats(nextStats);
+    },
+    [session, currentCard, cardsByDeck, stats, persistDeckCards, persistStats, deckOptsFor]
+  );
+
+  /* ---------- keyboard shortcuts during study ---------- */
+  useEffect(() => {
+    if (view !== "study" || !session) return;
+    const onKey = (e) => {
+      if (e.repeat) return;
+      const flippedNow = session.flipped;
+      if (e.code === "Space" || e.key === "Enter") {
+        e.preventDefault();
+        if (!flippedNow) setSession((s) => ({ ...s, flipped: true }));
+        return;
+      }
+      if (flippedNow && ["1", "2", "3", "4"].includes(e.key)) {
+        e.preventDefault();
+        answer(GRADES[Number(e.key) - 1].key);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [view, session, answer]);
+
+  const currentDeck = useMemo(
+    () => (currentRef ? decks.find((d) => d.id === currentRef.deckId) || null : null),
+    [decks, currentRef]
+  );
+
+  /* end session when the queue drains */
+  const sessionFinished = session && session.queue.length === 0;
+
+  const detailDeck = deckDetailId ? decks.find((d) => d.id === deckDetailId) : null;
+
+  /* ------------------------------------------------------------------ */
+  /* Render: loading                                                    */
+  /* ------------------------------------------------------------------ */
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-500">
+        <div className="flex flex-col items-center gap-3">
+          <Brain className="h-8 w-8 animate-pulse text-rose-500" />
+          <div className="text-sm">{loadMsg}</div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Render                                                             */
+  /* ------------------------------------------------------------------ */
+  return (
+    <div className="flex min-h-screen bg-slate-50 font-sans text-slate-800 antialiased">
+      <Sidebar
+        section={section}
+        collapsed={sidebarCollapsed}
+        onSection={changeSection}
+        onToggle={toggleSidebar}
+        studyingDue={totalDue}
+        calmName={calmName}
+        fastingName={fastingName}
+        mgmtName={mgmtName}
+        toolkitName={toolkitName}
+        budgetName={budgetName}
+        inventoryName={inventoryName}
+        financeName={financeName}
+        booksName={booksName}
+        cloud={cloudState}
+        onSyncNow={doSyncNow}
+      />
+
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col pb-16 lg:pb-0">
+        {section === "review" ? (
+          <ReviewSection onGo={changeSection} />
+        ) : section === "languages" ? (
+          <LanguagesSection
+            onAddWeakWords={addLanguageWeakWords}
+            onPracticeReview={practiceLanguageReview}
+            onStepComplete={recordLanguageCompletion}
+          />
+        ) : section === "routine" ? (
+          <RoutineSection />
+        ) : section === "calm" ? (
+          <CalmSection name={calmName} onRename={renameCalm} />
+        ) : section === "fasting" ? (
+          <FastingSection name={fastingName} onRename={renameFasting} />
+        ) : section === "management" ? (
+          <ManagementSection name={mgmtName} onRename={renameMgmt} />
+        ) : section === "money" ? (
+          <MoneySection budgetName={budgetName} renameBudget={renameBudget} financeName={financeName} renameFinance={renameFinance} onGo={changeSection} />
+        ) : section === "inventory" ? (
+          <InventorySection name={inventoryName} onRename={renameInventory} />
+        ) : section === "analyses" ? (
+          <AnalysesSection />
+        ) : section === "books" ? (
+          <BooksSection name={booksName} onRename={renameBooks} />
+        ) : (
+        <>
+      {/* studying top bar */}
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4">
+          <button
+            onClick={() => { setView("home"); setSession(null); }}
+            className="mr-auto flex items-center gap-2 font-semibold tracking-tight text-slate-900"
+          >
+            <span className="text-base">Studying</span>
+            {totalDue > 0 && view === "home" && (
+              <CountPill n={totalDue} cls="bg-rose-100 text-rose-700 ml-1" />
+            )}
+          </button>
+
+          <NavButton active={view === "home"} onClick={() => { setView("home"); setSession(null); }} icon={Layers}>
+            Decks
+          </NavButton>
+          <NavButton active={view === "stats"} onClick={() => setView("stats")} icon={BarChart3}>
+            Stats
+          </NavButton>
+          <NavButton active={view === "import"} onClick={() => setView("import")} icon={Upload}>
+            Import
+          </NavButton>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-5xl px-4 py-6">
+        {view === "home" && (
+          <HomeView
+            decks={decks}
+            groups={groups}
+            summary={deckSummary}
+            groupSummary={groupSummary}
+            totalDue={totalDue}
+            stats={stats}
+            onStudy={openSetup}
+            onStudyAll={() => openSetup("all")}
+            onStudyGroup={(gid) => openSetup(`group:${gid}`)}
+            onOpenDeck={(id) => { setDeckDetailId(id); setView("deck"); }}
+            onDelete={deleteDeck}
+            onEdit={(deck) => setDeckEditor({ deck })}
+            onNewDeck={() => setDeckEditor({ deck: null })}
+            onNewGroup={() => setGroupEditor({ group: null })}
+            onEditGroup={(group) => setGroupEditor({ group })}
+            onDeleteGroup={deleteGroup}
+            onToggleGroup={toggleGroup}
+            onMoveDeck={(deckId, groupId) => updateDeck(deckId, { groupId })}
+            onImport={() => setView("import")}
+            onSample={loadSample}
+            onLoadEnglish={importEnglishDecks}
+            loadingEnglish={loadingEnglish}
+          />
+        )}
+        {view === "deck" && detailDeck && (
+          <DeckDetailView
+            deck={detailDeck}
+            cards={cardsByDeck[detailDeck.id] || []}
+            summary={deckSummary[detailDeck.id]}
+            onBack={() => { setView("home"); setDeckDetailId(null); }}
+            onStudy={() => openSetup(detailDeck.id)}
+            onEditDeck={() => setDeckEditor({ deck: detailDeck })}
+            onAddCard={() => setCardEditor({ deckId: detailDeck.id, card: null })}
+            onEditCard={(card) => setCardEditor({ deckId: detailDeck.id, card })}
+            onDeleteCard={(cardId) => deleteCard(detailDeck.id, cardId)}
+          />
+        )}
+        {view === "setup" && setup && (
+          <SetupView
+            decks={decks}
+            groups={groups}
+            summary={deckSummary}
+            setup={setup}
+            countForMode={countForMode}
+            scopeToDeckIds={scopeToDeckIds}
+            onChange={(patch) => setSetup((s) => ({ ...s, ...patch }))}
+            onStart={startSession}
+            onCancel={() => { setView("home"); setSetup(null); }}
+          />
+        )}
+        {view === "import" && (
+          <ImportView decks={decks} onImport={importCards} onCancel={() => setView("home")} onLoadEnglish={importEnglishDecks} loadingEnglish={loadingEnglish} />
+        )}
+        {view === "stats" && (
+          <StatsView
+            stats={stats}
+            decks={decks}
+            cardsByDeck={cardsByDeck}
+            totalDue={totalDue}
+            onExport={exportAll}
+            onReset={resetAll}
+            onChangeNewPerDay={async (n) => {
+              const next = { ...stats, settings: { ...stats.settings, newPerDay: n } };
+              setStats(next);
+              await persistStats(next);
+            }}
+          />
+        )}
+        {view === "study" && session && (
+          <StudyView
+            session={session}
+            card={currentCard}
+            deck={currentDeck}
+            finished={sessionFinished}
+            previews={gradePreviews}
+            onFlip={() => setSession((s) => ({ ...s, flipped: true }))}
+            onAnswer={answer}
+            onExit={() => { setView("home"); setSession(null); }}
+          />
+        )}
+      </main>
+        </>
+        )}
+      </div>
+
+      <MobileNav
+        section={section}
+        onSection={changeSection}
+        studyingDue={totalDue}
+        calmName={calmName}
+        fastingName={fastingName}
+        mgmtName={mgmtName}
+        toolkitName={toolkitName}
+        budgetName={budgetName}
+        inventoryName={inventoryName}
+        financeName={financeName}
+        booksName={booksName}
+        cloud={cloudState}
+        onSyncNow={doSyncNow}
+      />
+
+      {deckEditor && (
+        <DeckEditor
+          deck={deckEditor.deck}
+          groups={groups}
+          topics={[...new Set(decks.map((d) => d.topic).filter(Boolean))]}
+          onClose={() => setDeckEditor(null)}
+          onSave={async (meta) => {
+            if (deckEditor.deck) await updateDeck(deckEditor.deck.id, meta);
+            else await createDeck(meta);
+            setDeckEditor(null);
+          }}
+        />
+      )}
+
+      {groupEditor && (
+        <GroupEditor
+          group={groupEditor.group}
+          onClose={() => setGroupEditor(null)}
+          onSave={async (meta) => {
+            if (groupEditor.group) await updateGroup(groupEditor.group.id, meta);
+            else await createGroup(meta);
+            setGroupEditor(null);
+          }}
+        />
+      )}
+
+      {cardEditor && (
+        <CardEditor
+          deck={decks.find((d) => d.id === cardEditor.deckId)}
+          card={cardEditor.card}
+          onClose={() => setCardEditor(null)}
+          onSave={async (fields, images) => {
+            await saveCard(cardEditor.deckId, cardEditor.card?.id || null, fields, images);
+            setCardEditor(null);
+          }}
+        />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Nav button                                                          */
+/* ------------------------------------------------------------------ */
+/* Mobile bottom tab bar — shown below lg, replaces the left rail on phones */
+function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, financeName, booksName, cloud, onSyncNow }) {
+  const items = [
+    { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
+    { id: "studying", label: "Навчання", icon: GraduationCap, badge: studyingDue },
+    { id: "languages", label: "Languages", icon: Compass, badge: 0 },
+    { id: "routine", label: "Рутина", icon: Sun, badge: 0 },
+    { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
+    { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
+    { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
+    { id: "money", label: "Гроші", icon: Wallet, badge: 0 },
+    { id: "analyses", label: "Аналізи", icon: Stethoscope, badge: 0 },
+    { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
+    { id: "books", label: booksName || "Книги", icon: BookMarked, badge: 0 },
+  ];
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      {cloud && (
+        <button onClick={onSyncNow} disabled={cloud.syncing}
+          className={`flex w-full items-center justify-center gap-1.5 border-b border-slate-100 py-1 text-[11px] font-medium ${cloud.signedIn ? "text-green-600" : "text-slate-400"}`}>
+          {cloud.syncing ? <RefreshCw className="h-3 w-3 animate-spin" /> : cloud.signedIn ? <Cloud className="h-3 w-3" /> : <CloudOff className="h-3 w-3" />}
+          <span>{cloud.syncing ? "Синхронізація…" : cloud.signedIn ? "Синхронізовано" : "Офлайн"}</span>
+        </button>
+      )}
+      <div className="flex overflow-x-auto px-1">
+        {items.map((it) => {
+          const active = section === it.id;
+          return (
+            <button key={it.id} onClick={() => onSection(it.id)} title={it.label}
+              className={`relative flex min-w-[64px] flex-col items-center gap-0.5 px-1 py-1.5 text-[10px] font-medium transition ${active ? "text-rose-600" : "text-slate-400"}`}>
+              <span className="relative">
+                <it.icon className="h-5 w-5" />
+                {it.badge > 0 && <span className="absolute -right-1.5 -top-1 min-w-[14px] rounded-full bg-rose-500 px-1 text-center text-[9px] font-bold leading-[14px] text-white">{it.badge > 99 ? "99+" : it.badge}</span>}
+              </span>
+              <span className="max-w-full truncate px-0.5">{it.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function NavButton({ active, onClick, icon: Icon, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+        active ? "bg-rose-50 text-rose-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+      <span className="hidden sm:inline">{children}</span>
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sidebar — top-level section navigation                              */
+/* ------------------------------------------------------------------ */
+function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, financeName, booksName, cloud, onSyncNow }) {
+  const items = [
+    { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
+    { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
+    { id: "languages", label: "Languages", icon: Compass, badge: 0 },
+    { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
+    { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
+    { id: "fasting", label: fastingName || "Fasting", icon: Hourglass, badge: 0 },
+    { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
+    { id: "money", label: "Гроші", icon: Wallet, badge: 0 },
+    { id: "analyses", label: "Аналізи", icon: Stethoscope, badge: 0 },
+    { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
+    { id: "books", label: booksName || "Книги", icon: BookMarked, badge: 0 },
+  ];
+  const wide = !collapsed;
+  return (
+    <aside className={`sticky top-0 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-white transition-all lg:flex ${collapsed ? "lg:w-16" : "lg:w-60"}`}>
+      <div className="flex h-14 items-center gap-2 px-4">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-rose-600 text-white">
+          <Brain className="h-4 w-4" />
+        </span>
+        {wide && <span className="hidden text-lg font-bold tracking-tight text-slate-900 lg:inline">Recall</span>}
+      </div>
+
+      <nav className="flex flex-1 flex-col gap-1 p-2">
+        {items.map((it) => {
+          const active = section === it.id;
+          return (
+            <button
+              key={it.id}
+              onClick={() => onSection(it.id)}
+              title={it.label}
+              className={`flex items-center gap-3 rounded-lg px-2.5 py-2.5 text-sm font-medium transition ${
+                active ? "bg-rose-50 text-rose-700" : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              }`}
+            >
+              <span className="relative shrink-0">
+                <it.icon className="h-5 w-5" />
+                {it.badge > 0 && collapsed && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-rose-500" />}
+              </span>
+              {wide && <span className="hidden flex-1 text-left lg:inline">{it.label}</span>}
+              {wide && it.badge > 0 && <span className="hidden lg:inline"><CountPill n={it.badge} cls="bg-rose-100 text-rose-700" /></span>}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* cloud sync status */}
+      {cloud && (
+        <button
+          onClick={onSyncNow}
+          disabled={cloud.syncing}
+          title={cloud.signedIn ? `Синхронізовано: ${cloud.email} — натисни, щоб синхронізувати зараз` : "Офлайн — увімкни хмарну синхронізацію"}
+          className={`mx-2 flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium transition ${cloud.signedIn ? "text-green-600 hover:bg-green-50" : "text-slate-400 hover:bg-slate-100"}`}
+        >
+          <span className="relative shrink-0">
+            {cloud.syncing ? <RefreshCw className="h-4 w-4 animate-spin" /> : cloud.signedIn ? <Cloud className="h-4 w-4" /> : <CloudOff className="h-4 w-4" />}
+            {collapsed && cloud.signedIn && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-green-500 ring-2 ring-white" />}
+          </span>
+          {wide && (
+            <span className="hidden flex-1 items-center justify-between gap-1 lg:flex">
+              <span className="truncate">{cloud.syncing ? "Синхронізація…" : cloud.signedIn ? "Синхронізовано" : "Офлайн"}</span>
+              {cloud.signedIn && !cloud.syncing && <RefreshCw className="h-3.5 w-3.5 shrink-0 opacity-60" />}
+            </span>
+          )}
+        </button>
+      )}
+
+      <button
+        onClick={onToggle}
+        className="m-2 mt-0 hidden items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 lg:flex"
+        title={collapsed ? "Expand" : "Collapse"}
+      >
+        {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        {wide && <span className="hidden lg:inline">Collapse</span>}
+      </button>
+    </aside>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Analyses — annual checklist                                         */
+/* ------------------------------------------------------------------ */
+function AnalysesStepper({ label, value, onChange }) {
+  const clean = Math.max(0, Math.min(99, Number(value) || 0));
+  return (
+    <div className="min-w-0">
+      <div className="mb-1 text-center text-[10px] font-semibold uppercase text-slate-400">{label}</div>
+      <div className="grid grid-cols-[32px_40px_32px] overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <button onClick={() => onChange(Math.max(0, clean - 1))} aria-label={`Зменшити: ${label}`} title="Зменшити" className="grid h-8 place-items-center text-slate-400 hover:bg-slate-50 hover:text-slate-700"><Minus className="h-3.5 w-3.5" /></button>
+        <input type="number" min={0} max={99} value={clean} onChange={(e) => onChange(Math.max(0, Math.min(99, Number(e.target.value) || 0)))} aria-label={label} className="h-8 w-10 border-x border-slate-200 text-center text-sm font-bold tabular-nums text-slate-700 outline-none focus:bg-sky-50" />
+        <button onClick={() => onChange(Math.min(99, clean + 1))} aria-label={`Збільшити: ${label}`} title="Збільшити" className="grid h-8 place-items-center text-slate-400 hover:bg-slate-50 hover:text-slate-700"><Plus className="h-3.5 w-3.5" /></button>
+      </div>
+    </div>
+  );
+}
+
+function AnalysesPriceInput({ value, onChange }) {
+  return (
+    <label className="col-span-2 w-[216px] min-w-0 sm:col-span-1 sm:w-[132px]">
+      <span className="mb-1 block text-center text-[10px] font-semibold uppercase text-slate-400">Ціна / раз</span>
+      <span className="relative block">
+        <input type="number" min={0} step={50} value={Math.max(0, Number(value) || 0)} onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))} aria-label="Ціна за одне обстеження" className="h-8 w-full rounded-lg border border-slate-200 bg-white py-1 pl-2 pr-6 text-right text-sm font-bold tabular-nums text-slate-700 outline-none focus:border-sky-400 focus:bg-sky-50" />
+        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">₴</span>
+      </span>
+    </label>
+  );
+}
+
+function AnalysesSection() {
+  const currentYear = new Date().getFullYear();
+  const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState(currentYear);
+  const [plans, setPlans] = useState({});
+  const [filter, setFilter] = useState("all");
+
+  const reload = useCallback(async () => {
+    const data = await loadAnalysesData();
+    setYear(data.year); setPlans(data.plans); setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("analyses-reset", onReset);
+    return () => window.removeEventListener("analyses-reset", onReset);
+  }, [reload]);
+
+  const entryFor = useCallback((item) => {
+    const saved = plans[year]?.[item.id];
+    return {
+      target: Math.max(0, Number(saved?.target ?? item.target) || 0),
+      done: Math.max(0, Number(saved?.done) || 0),
+      price: Math.max(0, Number(saved?.price ?? item.price) || 0),
+    };
+  }, [plans, year]);
+
+  const saveEntry = useCallback((item, patch) => {
+    setPlans((prev) => {
+      const saved = prev[year]?.[item.id];
+      const current = { target: Math.max(0, Number(saved?.target ?? item.target) || 0), done: Math.max(0, Number(saved?.done) || 0), price: Math.max(0, Number(saved?.price ?? item.price) || 0) };
+      const merged = { ...current, ...patch };
+      const nextEntry = {
+        target: Math.max(0, Math.min(99, Number(merged.target) || 0)),
+        done: Math.max(0, Math.min(99, Number(merged.done) || 0)),
+        price: Math.max(0, Number(merged.price) || 0),
+      };
+      const next = { ...prev, [year]: { ...(prev[year] || {}), [item.id]: nextEntry } };
+      store.set(AKEYS.plans, next);
+      return next;
+    });
+  }, [year]);
+
+  const setTarget = (item, value) => {
+    const current = entryFor(item);
+    const target = Math.max(0, Math.min(99, Number(value) || 0));
+    saveEntry(item, { target, done: Math.min(current.done, target) });
+  };
+  const setDone = (item, value) => {
+    const current = entryFor(item);
+    const done = Math.max(0, Math.min(99, Number(value) || 0));
+    saveEntry(item, { target: Math.max(current.target, done), done });
+  };
+  const setPrice = (item, value) => saveEntry(item, { price: Math.max(0, Number(value) || 0) });
+  const toggleDone = (item) => {
+    const current = entryFor(item);
+    if (current.target > 0 && current.done >= current.target) saveEntry(item, { done: 0 });
+    else saveEntry(item, { target: Math.max(1, current.target), done: Math.max(1, current.target) });
+  };
+  const selectYear = (nextYear) => { setYear(nextYear); store.set(AKEYS.year, nextYear); };
+
+  const rows = ANALYSES_ITEMS.map((item) => ({ ...item, ...entryFor(item) }));
+  const plannedRows = rows.filter((item) => item.target > 0);
+  const totalTarget = plannedRows.reduce((sum, item) => sum + item.target, 0);
+  const totalDone = plannedRows.reduce((sum, item) => sum + Math.min(item.done, item.target), 0);
+  const completedItems = plannedRows.filter((item) => item.done >= item.target).length;
+  const progress = totalTarget > 0 ? Math.round((totalDone / totalTarget) * 100) : 0;
+  const plannedCost = plannedRows.reduce((sum, item) => sum + item.target * item.price, 0);
+  const spentCost = plannedRows.reduce((sum, item) => sum + Math.min(item.done, item.target) * item.price, 0);
+  const remainingCost = Math.max(0, plannedCost - spentCost);
+  const matchesFilter = (item) => filter === "all" || (filter === "todo" ? item.target > 0 && item.done < item.target : item.target > 0 && item.done >= item.target);
+
+  if (loading) return <div className="flex min-h-screen flex-1 items-center justify-center text-sky-500"><TestTube2 className="h-8 w-8 animate-pulse" /></div>;
+  return (
+    <div className="min-h-screen min-w-0 flex-1 bg-slate-50">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex min-h-14 w-full max-w-4xl items-center gap-3 px-3 py-2 sm:px-4">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-sky-50 text-sky-600"><Stethoscope className="h-5 w-5" /></span>
+          <div className="mr-auto min-w-0"><h1 className="font-bold text-slate-900">Аналізи</h1><p className="hidden text-xs text-slate-400 sm:block">Річний чекліст обстежень</p></div>
+          <div className="flex items-center gap-1">
+            <button onClick={() => selectYear(year - 1)} aria-label="Попередній рік" title="Попередній рік" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><ChevronLeft className="h-4 w-4" /></button>
+            <div className="min-w-16 text-center"><div className="text-sm font-black tabular-nums text-slate-800">{year}</div>{year === currentYear && <div className="text-[9px] font-bold uppercase text-emerald-500">цей рік</div>}</div>
+            <button onClick={() => selectYear(year + 1)} aria-label="Наступний рік" title="Наступний рік" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><ChevronRight className="h-4 w-4" /></button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-4xl space-y-4 px-3 py-4 pb-24 sm:px-4 sm:py-5 lg:pb-8">
+        <section className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+          <div className="grid gap-px bg-slate-100 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_1fr]">
+            <div className="bg-white p-4">
+              <div className="flex items-end justify-between gap-3"><div><div className="text-xs font-semibold uppercase text-slate-400">Прогрес року</div><div className="mt-1 text-3xl font-black tabular-nums text-slate-900">{progress}%</div></div><Trophy className={`h-8 w-8 ${progress === 100 ? "text-amber-400" : "text-slate-200"}`} /></div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} /></div>
+            </div>
+            <div className="bg-white p-4"><div className="text-xs font-semibold uppercase text-slate-400">Пункти</div><div className="mt-2 text-2xl font-black tabular-nums text-slate-800">{completedItems}<span className="text-base text-slate-300">/{plannedRows.length}</span></div><div className="text-xs text-slate-400">{totalDone}/{totalTarget} виконань</div></div>
+            <div className="bg-white p-4"><div className="text-xs font-semibold uppercase text-slate-400">План на рік</div><div className="mt-2 text-xl font-black tabular-nums text-slate-800">{analysesFmt(plannedCost)}</div><div className="text-xs text-slate-400">за поточними цінами</div></div>
+            <div className="bg-white p-4"><div className="text-xs font-semibold uppercase text-slate-400">Залишилось</div><div className="mt-2 text-xl font-black tabular-nums text-rose-600">{analysesFmt(remainingCost)}</div><div className="text-xs text-slate-400">виконано на {analysesFmt(spentCost)}</div></div>
+          </div>
+          <div className="flex items-start gap-2 border-t border-slate-100 bg-sky-50/60 px-4 py-2.5 text-xs leading-5 text-sky-800"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0" /><span>Стартові кількості перенесені з твого списку. Змінюй їх відповідно до плану лікаря на цей рік.</span></div>
+        </section>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex rounded-lg bg-slate-200/70 p-0.5" aria-label="Фільтр чекліста">
+            {[["all", "Усі"], ["todo", "Залишилось"], ["done", "Готові"]].map(([key, label]) => <button key={key} onClick={() => setFilter(key)} className={`rounded-md px-3 py-1.5 text-xs font-bold ${filter === key ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{label}</button>)}
+          </div>
+          {year !== currentYear && <button onClick={() => selectYear(currentYear)} className="text-xs font-bold text-sky-600 hover:text-sky-700">Повернутися до {currentYear}</button>}
+        </div>
+
+        <div className="space-y-4">
+          {ANALYSES_GROUPS.map((group) => {
+            const groupRows = rows.filter((item) => item.group === group.id);
+            const visibleRows = groupRows.filter(matchesFilter);
+            if (visibleRows.length === 0) return null;
+            const groupPlanned = groupRows.filter((item) => item.target > 0);
+            const groupDone = groupPlanned.filter((item) => item.done >= item.target).length;
+            const groupCost = groupPlanned.reduce((sum, item) => sum + item.target * item.price, 0);
+            return (
+              <section key={group.id} className="overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/60 px-4 py-3"><h2 className="font-bold text-slate-800">{group.name}</h2><span className="shrink-0 text-right text-xs font-bold tabular-nums text-slate-400"><span className="block">{groupDone}/{groupPlanned.length}</span><span className="font-semibold text-slate-300">{analysesFmt(groupCost)}</span></span></div>
+                <div className="divide-y divide-slate-100">
+                  {visibleRows.map((item) => {
+                    const complete = item.target > 0 && item.done >= item.target;
+                    return (
+                      <div key={item.id} className={`grid gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-4 ${complete ? "bg-emerald-50/35" : "bg-white"}`}>
+                        <div className="flex min-w-0 items-start gap-3">
+                          <button onClick={() => toggleDone(item)} aria-label={complete ? `Позначити незавершеним: ${item.name}` : `Позначити виконаним: ${item.name}`} title={complete ? "Позначити незавершеним" : "Позначити виконаним"} className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border transition ${complete ? "border-emerald-500 bg-emerald-500 text-white" : "border-slate-300 bg-white text-slate-300 hover:border-emerald-400 hover:text-emerald-500"}`}>{complete ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}</button>
+                          <div className="min-w-0"><div className={`text-sm font-semibold ${complete ? "text-emerald-800" : "text-slate-700"}`}>{item.name}</div>{item.note && <div className="mt-0.5 text-xs leading-4 text-slate-400">{item.note}</div>}{item.target === 0 && <div className="mt-1 text-[10px] font-bold uppercase text-amber-500">Не заплановано</div>}</div>
+                        </div>
+                        <div className="grid grid-cols-[104px_104px] justify-start gap-2 pl-11 sm:grid-cols-[104px_104px_132px] sm:justify-end sm:pl-0">
+                          <AnalysesStepper label="Треба" value={item.target} onChange={(value) => setTarget(item, value)} />
+                          <AnalysesStepper label="Зроблено" value={item.done} onChange={(value) => setDone(item, value)} />
+                          <AnalysesPriceInput value={item.price} onChange={(value) => setPrice(item, value)} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+          {rows.filter(matchesFilter).length === 0 && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center"><CheckCircle2 className="mx-auto h-8 w-8 text-emerald-400" /><div className="mt-2 text-sm font-bold text-slate-700">Усе готово</div><div className="text-xs text-slate-400">Для цього фільтра пунктів немає.</div></div>}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Home view                                                           */
+/* ------------------------------------------------------------------ */
+function HomeView({
+  decks, groups, summary, groupSummary, totalDue, stats,
+  onStudy, onStudyAll, onStudyGroup, onOpenDeck, onDelete, onEdit, onMoveDeck,
+  onNewDeck, onNewGroup, onEditGroup, onDeleteGroup, onToggleGroup, onImport, onSample,
+  onLoadEnglish, loadingEnglish,
+}) {
+  const streak = computeStreak(stats.history);
+  const studiedToday = stats.history?.[dateKey(Date.now())]?.studied || 0;
+  const [dragId, setDragId] = useState(null);
+  const [overTarget, setOverTarget] = useState(null); // group id | "ungrouped"
+
+  // learned (mature) vs remaining across all decks
+  const mastery = useMemo(() => {
+    let total = 0, learned = 0, fresh = 0;
+    for (const d of decks) { const s = summary[d.id]; if (!s) continue; total += s.total || 0; learned += s.learned || 0; fresh += s.newTotal || 0; }
+    return { total, learned, fresh, young: Math.max(0, total - learned - fresh), remaining: total - learned };
+  }, [decks, summary]);
+
+  const dropProps = (target) => ({
+    onDragOver: (e) => { if (dragId) { e.preventDefault(); setOverTarget(target); } },
+    onDragLeave: () => setOverTarget((t) => (t === target ? null : t)),
+    onDrop: (e) => {
+      e.preventDefault();
+      if (dragId) onMoveDeck(dragId, target === "ungrouped" ? "" : target);
+      setDragId(null); setOverTarget(null);
+    },
+  });
+
+  if (!decks.length && !groups.length) {
+    return (
+      <div className="mx-auto max-w-md py-16 text-center">
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-rose-600 text-white">
+          <Brain className="h-8 w-8" />
+        </div>
+        <h1 className="mt-5 text-2xl font-bold text-slate-900">Study anything, remembered.</h1>
+        <p className="mt-2 text-slate-500">
+          Build a deck, import a spreadsheet, or paste your cards. Recall schedules each one with
+          spaced repetition so reviews land right before you'd forget.
+        </p>
+        <div className="mt-6 flex flex-col items-center gap-3">
+          {onLoadEnglish && (
+            <button onClick={onLoadEnglish} disabled={loadingEnglish} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-base font-bold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-60">
+              {loadingEnglish ? <><RefreshCw className="h-5 w-5 animate-spin" /> Завантажую…</> : <>🇬🇧 Мої англійські колоди</>}
+            </button>
+          )}
+          <div className="flex gap-3">
+            <button onClick={onNewDeck} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700">
+              <Plus className="h-4 w-4" /> New deck
+            </button>
+            <button onClick={onImport} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
+              <Upload className="h-4 w-4" /> Import
+            </button>
+          </div>
+          <button onClick={onSample} className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-rose-600">
+            <Sparkles className="h-4 w-4" /> or load a sample deck
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const ungrouped = decks.filter((d) => !d.groupId || !groups.some((g) => g.id === d.groupId));
+  const deckCard = (d) => (
+    <DeckCard
+      key={d.id} deck={d} s={summary[d.id]} groups={groups}
+      onOpen={onOpenDeck} onStudy={onStudy} onEdit={onEdit} onDelete={onDelete} onMove={onMoveDeck}
+      dragging={dragId === d.id}
+      onDragStart={() => setDragId(d.id)} onDragEnd={() => { setDragId(null); setOverTarget(null); }}
+    />
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* summary strip */}
+      <div className="flex flex-wrap gap-3">
+        <StatTile icon={Target} label="Due today" value={totalDue} tint={totalDue ? "text-rose-600" : "text-slate-400"} sub={totalDue ? "cards waiting" : "all caught up"} />
+        <StatTile icon={Check} label="Studied today" value={studiedToday} tint="text-slate-700" sub="reviews done" />
+        <StatTile icon={Flame} label="Streak" value={streak} tint={streak ? "text-orange-500" : "text-slate-400"} sub={streak === 1 ? "day" : "days"} />
+        <StatTile icon={Layers} label="Decks" value={decks.length} tint="text-slate-700" />
+      </div>
+
+      {/* learned vs remaining */}
+      {mastery.total > 0 && (
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-semibold text-slate-700">Вивчено {mastery.learned.toLocaleString()} з {mastery.total.toLocaleString()} карток</span>
+            <span className="font-bold text-green-600 tabular-nums">{Math.round((mastery.learned / mastery.total) * 100)}%</span>
+          </div>
+          <div className="mt-2 flex h-3 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full bg-green-500 transition-all" style={{ width: `${(mastery.learned / mastery.total) * 100}%` }} />
+            <div className="h-full bg-amber-400 transition-all" style={{ width: `${(mastery.young / mastery.total) * 100}%` }} />
+            <div className="h-full bg-slate-300 transition-all" style={{ width: `${(mastery.fresh / mastery.total) * 100}%` }} />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> вивчено {mastery.learned.toLocaleString()}</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> вчу {mastery.young.toLocaleString()}</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-300" /> ще не починала {mastery.fresh.toLocaleString()}</span>
+            <span className="ml-auto font-semibold text-slate-600">залишилось {mastery.remaining.toLocaleString()}</span>
+          </div>
+        </div>
+      )}
+
+      {/* actions */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={onStudyAll} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700">
+          <Play className="h-4 w-4" /> Study
+        </button>
+        <button onClick={onNewDeck} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+          <Plus className="h-4 w-4" /> New deck
+        </button>
+        <button onClick={onNewGroup} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+          <FolderPlus className="h-4 w-4" /> New group
+        </button>
+        <button onClick={onImport} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+          <Upload className="h-4 w-4" /> Import
+        </button>
+      </div>
+
+      {groups.length > 0 && (
+        <p className="flex items-center gap-1.5 text-xs text-slate-400">
+          <GripVertical className="h-3.5 w-3.5" /> Tip: drag a deck onto a group to move it — or use the folder button on a deck.
+        </p>
+      )}
+
+      {/* group folders */}
+      <div className="space-y-3">
+        {groups.map((g) => (
+          <GroupFolder
+            key={g.id}
+            group={g}
+            rollup={groupSummary[g.id]}
+            decks={decks.filter((d) => d.groupId === g.id)}
+            renderDeck={deckCard}
+            onStudyGroup={onStudyGroup}
+            onEditGroup={onEditGroup}
+            onDeleteGroup={onDeleteGroup}
+            onToggle={onToggleGroup}
+            dropProps={dropProps(g.id)}
+            highlight={overTarget === g.id}
+          />
+        ))}
+      </div>
+
+      {/* ungrouped decks */}
+      {(ungrouped.length > 0 || (dragId && groups.length > 0)) && (
+        <div {...dropProps("ungrouped")} className={`rounded-xl transition ${overTarget === "ungrouped" ? "ring-2 ring-rose-300 ring-offset-2" : ""}`}>
+          {groups.length > 0 && (
+            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <Layers className="h-3.5 w-3.5" /> Ungrouped <span className="text-slate-300">· {ungrouped.length}</span>
+            </h3>
+          )}
+          {ungrouped.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2">{ungrouped.map(deckCard)}</div>
+          ) : (
+            <p className="rounded-xl border border-dashed border-slate-300 py-4 text-center text-sm text-slate-400">Drop here to remove from a group</p>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center gap-4 pt-2 text-xs text-slate-400">
+        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-400" /> new</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> learning</span>
+        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-400" /> review</span>
+      </div>
+    </div>
+  );
+}
+
+function GroupFolder({ group, rollup, decks, renderDeck, onStudyGroup, onEditGroup, onDeleteGroup, onToggle, dropProps = {}, highlight = false }) {
+  const color = getColor(group.color);
+  const r = rollup || { due: 0, total: 0, deckCount: decks.length };
+  const open = !group.collapsed;
+  return (
+    <div {...dropProps} className={`overflow-hidden rounded-xl border bg-white shadow-sm transition ${highlight ? "border-rose-400 ring-2 ring-rose-200" : "border-slate-200"}`}>
+      <div className="group flex items-center gap-2 px-3 py-2.5">
+        <button onClick={() => onToggle(group.id)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+          <ChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
+          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-base ${color.bg} ${color.text}`}>
+            {group.emoji ? <span>{group.emoji}</span> : (open ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />)}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate font-semibold text-slate-800">{group.name}</span>
+            <span className="block text-xs text-slate-400">{r.deckCount} deck{r.deckCount === 1 ? "" : "s"} · {r.total} cards</span>
+          </span>
+        </button>
+        {r.due > 0 && (
+          <button onClick={() => onStudyGroup(group.id)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-rose-700">
+            <Play className="h-3.5 w-3.5" /> {r.due}
+          </button>
+        )}
+        <button onClick={() => onEditGroup(group)} className="rounded-md p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600" title="Edit group">
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => { if (confirm(`Delete group “${group.name}”? Its decks are kept and moved to Ungrouped.`)) onDeleteGroup(group.id); }}
+          className="rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="Delete group"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+      {open && (
+        <div className="border-t border-slate-100 bg-slate-50/60 p-3">
+          {decks.length ? (
+            <div className="grid gap-3 sm:grid-cols-2">{decks.map(renderDeck)}</div>
+          ) : (
+            <p className="px-1 py-4 text-center text-sm text-slate-400">Empty — drag a deck here, or use a deck's folder button to move it in.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeckCard({ deck, s, groups = [], onOpen, onStudy, onEdit, onDelete, onMove, dragging = false, onDragStart, onDragEnd }) {
+  const sum = s || { due: 0, newDue: 0, learn: 0, review: 0, total: 0 };
+  const color = getColor(deck.color);
+  const isDeadline = deck.goal === "deadline" && deck.deadline;
+  const dleft = isDeadline ? daysUntil(deck.deadline) : null;
+  const [menu, setMenu] = useState(false);
+  return (
+    <div
+      draggable
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", deck.id); onDragStart?.(); }}
+      onDragEnd={() => onDragEnd?.()}
+      className={`group relative flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-rose-200 hover:shadow ${dragging ? "opacity-40" : ""}`}
+    >
+      <button onClick={() => onOpen(deck.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg ${color.bg} ${color.text}`}>
+          {deck.emoji ? <span>{deck.emoji}</span> : <GraduationCap className="h-5 w-5" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate font-semibold text-slate-800">{deck.name}</span>
+            {isDeadline && (
+              <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">
+                <CalendarClock className="h-3 w-3" />{dleft <= 0 ? "due" : `${dleft}d`}
+              </span>
+            )}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+            <CountPill n={sum.newDue} cls="bg-blue-100 text-blue-700" />
+            <CountPill n={sum.learn} cls="bg-red-100 text-red-700" />
+            <CountPill n={sum.review} cls="bg-green-100 text-green-700" />
+            <span className="text-slate-400">{sum.total} card{sum.total === 1 ? "" : "s"}</span>
+          </div>
+          {sum.total > 0 && (
+            <div className="mt-1.5 flex items-center gap-2">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-green-500" style={{ width: `${((sum.learned || 0) / sum.total) * 100}%` }} /></div>
+              <span className="shrink-0 text-[10px] font-medium tabular-nums text-slate-400">вивчено {sum.learned || 0}/{sum.total}</span>
+            </div>
+          )}
+        </div>
+      </button>
+      <div className="flex shrink-0 items-center gap-1">
+        {sum.due > 0 ? (
+          <button onClick={() => onStudy(deck.id)} className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-rose-700" title="Study">
+            <Play className="h-3.5 w-3.5" /> {sum.due}
+          </button>
+        ) : (
+          <button onClick={() => onStudy(deck.id)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-200" title="Study">study</button>
+        )}
+        {onMove && groups.length > 0 && (
+          <button onClick={() => setMenu((v) => !v)} className="rounded-md p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 sm:opacity-0 sm:group-hover:opacity-100" title="Move to group">
+            <Folder className="h-4 w-4" />
+          </button>
+        )}
+        <button onClick={() => onEdit(deck)} className="rounded-md p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 sm:opacity-0 sm:group-hover:opacity-100" title="Edit deck">
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => { if (confirm(`Delete deck “${deck.name}” and its ${sum.total} cards?`)) onDelete(deck.id); }}
+          className="rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100" title="Delete deck"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      {menu && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setMenu(false)} />
+          <div className="absolute right-2 top-14 z-20 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+            <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Move to group</div>
+            {deck.groupId && (
+              <button onClick={() => { onMove(deck.id, ""); setMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50">
+                <X className="h-4 w-4 text-slate-400" /> Remove from group
+              </button>
+            )}
+            {groups.map((g) => (
+              <button key={g.id} onClick={() => { onMove(deck.id, g.id); setMenu(false); }}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 ${deck.groupId === g.id ? "font-semibold text-rose-600" : "text-slate-700"}`}>
+                <span className="text-base">{g.emoji || "📁"}</span> <span className="truncate">{g.name}</span>
+                {deck.groupId === g.id && <Check className="ml-auto h-4 w-4" />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Interval / scheduling visual pieces                                 */
+/* ------------------------------------------------------------------ */
+function StageBadge({ card, showDue = true }) {
+  const stage = stageForCard(card);
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${stage.bg} ${stage.text}`}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: stage.dot }} />
+      {intervalLabel(card)}
+      {showDue && card.state !== "new" && <span className="font-normal opacity-70">· {dueLabel(card)}</span>}
+    </span>
+  );
+}
+
+// The Learning → 1d → 3d → 1w → 2w → 1mo → 3mo+ scale, active stage highlighted.
+function IntervalTimeline({ activeStageId, className = "" }) {
+  return (
+    <div className={`flex items-center gap-1 overflow-x-auto ${className}`}>
+      {INTERVAL_STAGES.map((s, i) => {
+        const active = s.id === activeStageId;
+        return (
+          <div key={s.id} className="flex items-center gap-1">
+            {i > 0 && <span className="h-px w-2 bg-slate-200" />}
+            <span
+              className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${active ? "text-white" : "text-slate-400"}`}
+              style={active ? { backgroundColor: s.dot } : { backgroundColor: "#f1f5f9" }}
+            >
+              {s.id === "learning" ? "Learn" : s.id === "long" ? "3mo+" : s.label.replace(" day", "d").replace(" days", "d").replace(" week", "w").replace(" weeks", "w").replace(" month", "mo").replace(" months", "mo")}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Horizontal stacked breakdown of how many cards sit at each interval stage.
+function StageBreakdown({ stages, total }) {
+  const order = [{ id: "new", label: "New", dot: "#94a3b8" }, ...INTERVAL_STAGES];
+  const present = order.filter((s) => (stages[s.id] || 0) > 0);
+  if (!total) return null;
+  return (
+    <div>
+      <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-100">
+        {present.map((s) => (
+          <div key={s.id} style={{ width: `${((stages[s.id] || 0) / total) * 100}%`, backgroundColor: s.dot }} title={`${s.label}: ${stages[s.id]}`} />
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+        {present.map((s) => (
+          <span key={s.id} className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.dot }} />
+            {s.id === "learning" ? "Learning" : s.label} <span className="font-semibold tabular-nums text-slate-700">{stages[s.id]}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SpeakerButton({ text, lang, size = "sm", onFallback }) {
+  if (!text || !ttsSupported()) return null;
+  const dim = size === "lg" ? "h-9 w-9" : "h-7 w-7";
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); const r = speak(text, lang); if (!r.ok && onFallback) onFallback(); }}
+      className={`grid ${dim} shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-rose-100 hover:text-rose-600`}
+      title="Read aloud (R)"
+    >
+      <Volume2 className={size === "lg" ? "h-4.5 w-4.5" : "h-4 w-4"} style={{ width: size === "lg" ? 18 : 15, height: size === "lg" ? 18 : 15 }} />
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Study view                                                          */
+/* ------------------------------------------------------------------ */
+function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, onExit }) {
+  const progress = session.total ? Math.round(((session.total - session.queue.length) / session.total) * 100) : 100;
+  const lang = card?.lang || deck?.language || "";
+  const [imgs, setImgs] = useState({ front: null, back: null });
+  const [lightbox, setLightbox] = useState(null);
+  const [voiceHint, setVoiceHint] = useState(false);
+  const [drag, setDrag] = useState(0); // touch-swipe horizontal offset
+  const dragRef = useRef(null);
+  const dragging = !!dragRef.current;
+
+  const say = useCallback((text) => {
+    if (!text) return;
+    const r = speak(text, lang);
+    setVoiceHint(!r.ok);
+  }, [lang]);
+
+  // Lazily load this card's images from their own storage keys.
+  useEffect(() => {
+    let alive = true;
+    setImgs({ front: null, back: null });
+    setLightbox(null);
+    if (!card) return;
+    (async () => {
+      const f = card.imgFront ? await loadImage(card.id, "front") : null;
+      const b = card.imgBack ? await loadImage(card.id, "back") : null;
+      if (alive) setImgs({ front: f, back: b });
+    })();
+    return () => { alive = false; };
+  }, [card?.id]);
+
+  // Auto-play: front when the card appears, back when it flips.
+  useEffect(() => {
+    if (card && deck?.autoPlay && !session.flipped) say(session.reverse ? card.back : card.front);
+  }, [card?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (card && deck?.autoPlay && session.flipped) say(session.reverse ? card.front : card.back);
+  }, [session.flipped, card?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "R" / "P" replays the currently visible side.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.repeat) return;
+      if (["r", "R", "p", "P"].includes(e.key)) {
+        e.preventDefault();
+        say(session.flipped ? card?.back || card?.front : card?.front);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [session.flipped, card, say]);
+
+  // reset any swipe offset when the card changes
+  useEffect(() => { setDrag(0); dragRef.current = null; }, [card?.id, session.flipped]);
+  const onTouchStart = (e) => { const t = e.touches[0]; dragRef.current = { x0: t.clientX, y0: t.clientY, dx: 0, dy: 0 }; };
+  const onTouchMove = (e) => {
+    if (!dragRef.current) return;
+    const t = e.touches[0];
+    const dx = t.clientX - dragRef.current.x0, dy = t.clientY - dragRef.current.y0;
+    dragRef.current.dx = dx; dragRef.current.dy = dy;
+    // follow the finger as soon as the gesture is mostly horizontal — before OR after flip,
+    // so the card visibly moves on the first swipe (no tap needed first).
+    if (Math.abs(dx) > Math.abs(dy)) setDrag(dx);
+  };
+  const onTouchEnd = () => {
+    const st = dragRef.current; dragRef.current = null;
+    if (!st) return;
+    if (!session.flipped) { if (Math.abs(st.dx) > 40 || Math.abs(st.dy) > 40) onFlip(); setDrag(0); return; }
+    if (st.dx > 80) onAnswer("good");
+    else if (st.dx < -80) onAnswer("again");
+    else setDrag(0);
+  };
+
+  if (finished || !card) {
+    const acc = session.done ? Math.round((session.correct / session.done) * 100) : 0;
+    return (
+      <div className="mx-auto max-w-md py-16 text-center">
+        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-green-100 text-green-600">
+          <Check className="h-8 w-8" />
+        </div>
+        <h2 className="mt-5 text-2xl font-bold text-slate-900">Session complete</h2>
+        <p className="mt-1 text-slate-500">Nice work on {session.title}{session.cram ? " — no due dates changed." : "."}</p>
+        <div className="mt-6 flex justify-center gap-3">
+          <StatTile icon={Check} label="Reviewed" value={session.done} />
+          <StatTile icon={Target} label="Recalled" value={`${acc}%`} tint="text-green-600" />
+        </div>
+        <button onClick={onExit} className="mt-8 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white transition hover:bg-rose-700">
+          <ArrowLeft className="h-4 w-4" /> Back to decks
+        </button>
+      </div>
+    );
+  }
+
+  // Reverse mode: show the back (translation) as the prompt, recall the front.
+  const rev = !!session.reverse;
+  const frontText = rev ? card.back : card.front;
+  const backText = rev ? card.front : card.back;
+  const frontImg = rev ? imgs.back : imgs.front;
+  const backImg = rev ? imgs.front : imgs.back;
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      {/* header row */}
+      <div className="mb-4 flex items-center gap-3">
+        <button onClick={onExit} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="End session">
+          <X className="h-5 w-5" />
+        </button>
+        <div className="flex-1">
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span className="flex items-center gap-2 font-medium">
+              {session.title}
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${session.cram ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}>
+                {session.cram ? "Cram" : session.subtitle}
+              </span>
+            </span>
+            <span className="tabular-nums">{session.total - session.queue.length} / {session.total}</span>
+          </div>
+          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200">
+            <div className="h-full rounded-full bg-rose-600 transition-all duration-300" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* card (div, not button — it contains speaker buttons) */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={session.flipped ? undefined : onFlip}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{ transform: drag ? `translateX(${drag}px) rotate(${drag / 22}deg)` : undefined, transition: dragging ? "none" : "transform .25s ease", touchAction: "pan-y" }}
+        className={`relative flex min-h-[300px] w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm ${session.flipped ? "" : "cursor-pointer"}`}
+      >
+        {/* swipe hint overlay (mobile) */}
+        {session.flipped && drag !== 0 && (
+          <div className={`pointer-events-none absolute inset-0 flex items-center justify-center ${drag > 0 ? "bg-green-500/10" : "bg-red-500/10"}`} style={{ opacity: Math.min(1, Math.abs(drag) / 85) }}>
+            <span className={`rounded-full px-4 py-2 text-lg font-extrabold text-white shadow ${drag > 0 ? "bg-green-500" : "bg-red-500"}`}>{drag > 0 ? "Знаю ✓" : "Ще раз"}</span>
+          </div>
+        )}
+        {card.tags && (
+          <span className="mb-3 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500">{card.tags}</span>
+        )}
+        {frontImg && (
+          <img
+            src={frontImg}
+            alt=""
+            onClick={(e) => { e.stopPropagation(); setLightbox(frontImg); }}
+            className="mb-4 max-h-56 w-auto cursor-zoom-in rounded-lg border border-slate-200 object-contain"
+          />
+        )}
+        <div className="flex items-center gap-2">
+          <div className="text-2xl font-semibold leading-snug text-slate-900" style={{ textWrap: "balance" }}>
+            {frontText}
+          </div>
+          <SpeakerButton text={frontText} lang={lang} onFallback={() => setVoiceHint(true)} />
+        </div>
+
+        {session.flipped ? (
+          <>
+            <div className="my-6 h-px w-24 bg-slate-200" />
+            {backImg && (
+              <img
+                src={backImg}
+                alt=""
+                onClick={(e) => { e.stopPropagation(); setLightbox(backImg); }}
+                className="mb-4 max-h-56 w-auto cursor-zoom-in rounded-lg border border-slate-200 object-contain"
+              />
+            )}
+            <div className="flex items-center gap-2">
+              <div className="text-2xl font-medium text-rose-700" style={{ textWrap: "balance" }}>{backText}</div>
+              <SpeakerButton text={backText} lang={lang} onFallback={() => setVoiceHint(true)} />
+            </div>
+            {card.notes && <div className="mt-4 max-w-md text-sm text-slate-500">{card.notes}</div>}
+          </>
+        ) : (
+          <div className="mt-8 inline-flex items-center gap-2 text-sm text-slate-400">
+            <Keyboard className="h-4 w-4" /> tap or press <kbd className="rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-xs">Space</kbd> to flip
+          </div>
+        )}
+      </div>
+
+      {/* current interval + fallback voice hint */}
+      <div className="mt-3 flex items-center justify-between gap-2">
+        {session.flipped && !session.cram ? <StageBadge card={card} /> : <span />}
+        {voiceHint && ttsSupported() && (
+          <span className="text-[11px] text-slate-400">No {lang || "matching"} voice installed — using the default.</span>
+        )}
+      </div>
+
+      {/* mobile swipe hint */}
+      {session.flipped && (
+        <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 sm:hidden">← свайп «Ще раз» · «Знаю» свайп →</div>
+      )}
+
+      {/* rating buttons */}
+      {session.flipped && (
+        <div className="mt-2 grid grid-cols-4 gap-2">
+          {GRADES.map((g) => (
+            <button
+              key={g.key}
+              onClick={() => onAnswer(g.key)}
+              className={`flex flex-col items-center gap-1 rounded-xl px-2 py-3 font-semibold text-white shadow-sm transition ${g.cls}`}
+            >
+              <span>{g.label}</span>
+              <span className="text-[11px] font-normal text-white/80 tabular-nums">
+                {session.cram ? (g.key === "again" || g.key === "hard" ? "again" : "done") : previews[g.key]}
+              </span>
+              <span className="mt-0.5 rounded bg-white/20 px-1.5 text-[10px]">{g.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center justify-center gap-4 text-xs text-slate-400">
+        <span>Space = flip</span><span>1–4 = rate</span>
+        {ttsSupported() && <span>R = replay audio</span>}
+      </div>
+
+      {/* image lightbox */}
+      {lightbox && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4" onClick={() => setLightbox(null)}>
+          <img src={lightbox} alt="" className="max-h-[90vh] max-w-full rounded-lg object-contain" />
+          <button className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20" onClick={() => setLightbox(null)}>
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Study setup — pick deck scope + mode before a session               */
+/* ------------------------------------------------------------------ */
+function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds, onChange, onStart, onCancel }) {
+  const deckIds = scopeToDeckIds(setup.deckScope);
+  const scopeKey = deckIds.join(",");
+  const cardsIn = (ids) => ids.reduce((n, id) => n + (summary[id]?.total || 0), 0);
+
+  const counts = useMemo(() => {
+    const c = {};
+    for (const m of STUDY_MODES) c[m.id] = countForMode(deckIds, m.id, setup.count);
+    return c;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeKey, setup.count, countForMode]);
+
+  const startCount = counts[setup.mode] || 0;
+  const totalInScope = deckIds.reduce((n, id) => n + (summary[id]?.total || 0), 0);
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-6">
+      <div className="flex items-center gap-3">
+        <button onClick={onCancel} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h1 className="text-xl font-bold text-slate-900">Study setup</h1>
+      </div>
+
+      {/* deck scope */}
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Study from</label>
+        <div className="relative">
+          <select
+            value={setup.deckScope}
+            onChange={(e) => onChange({ deckScope: e.target.value })}
+            className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-9 text-sm font-medium focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+          >
+            <option value="all">All decks — {cardsIn(decks.map((d) => d.id)).toLocaleString()} cards</option>
+            {groups.length > 0 && (
+              <optgroup label="Groups">
+                {groups.map((g) => (
+                  <option key={g.id} value={`group:${g.id}`}>
+                    {g.emoji ? `${g.emoji} ` : "📁 "}{g.name} — {cardsIn(decks.filter((d) => d.groupId === g.id).map((d) => d.id)).toLocaleString()} cards
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="Decks">
+              {decks.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.emoji ? `${d.emoji} ` : ""}{d.name} — {(summary[d.id]?.total || 0).toLocaleString()} cards
+                </option>
+              ))}
+            </optgroup>
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        </div>
+      </div>
+
+      {/* mode */}
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">How much do you want to study?</label>
+        <div className="grid gap-2.5 sm:grid-cols-2">
+          {STUDY_MODES.map((m) => {
+            const Icon = m.icon;
+            const active = setup.mode === m.id;
+            const n = counts[m.id];
+            return (
+              <button
+                key={m.id}
+                onClick={() => onChange({ mode: m.id })}
+                className={`flex items-start gap-3 rounded-xl border p-3 text-left transition ${
+                  active ? "border-rose-500 bg-rose-50 ring-2 ring-rose-100" : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${active ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-500"}`}>
+                  <Icon className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-slate-800">{m.label}</span>
+                    <span className={`shrink-0 text-xs font-semibold tabular-nums ${n ? "text-rose-600" : "text-slate-300"}`}>{n.toLocaleString()}</span>
+                  </div>
+                  <p className="mt-0.5 text-xs leading-snug text-slate-500">{m.desc}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* custom count */}
+      {setup.mode === "custom" && (
+        <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
+          <label className="text-sm font-medium text-slate-700">How many cards?</label>
+          <input
+            type="number"
+            min={1}
+            max={9999}
+            value={setup.count}
+            onChange={(e) => onChange({ count: Math.max(1, Math.min(9999, Number(e.target.value) || 1)) })}
+            className="w-24 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm tabular-nums focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+          />
+          <span className="text-xs text-slate-400">due cards come first</span>
+        </div>
+      )}
+
+      {/* reverse mode */}
+      <button
+        onClick={() => onChange({ reverse: !setup.reverse })}
+        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition ${setup.reverse ? "border-rose-500 bg-rose-50 ring-2 ring-rose-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
+      >
+        <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${setup.reverse ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-500"}`}><RefreshCw className="h-4 w-4" /></div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-slate-800">Реверс (показувати переклад)</div>
+          <div className="text-xs text-slate-400">Спершу бачиш зворот картки й пригадуєш оригінал — тренує в інший бік.</div>
+        </div>
+        <div className={`h-6 w-11 shrink-0 rounded-full p-0.5 transition ${setup.reverse ? "bg-rose-500" : "bg-slate-200"}`}><div className={`h-5 w-5 rounded-full bg-white shadow transition ${setup.reverse ? "translate-x-5" : ""}`} /></div>
+      </button>
+
+      <div className="flex items-center gap-3 border-t border-slate-100 pt-4">
+        <button
+          onClick={() => onStart(setup)}
+          disabled={!startCount}
+          className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-6 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          <Play className="h-4 w-4" /> Start · {startCount.toLocaleString()} card{startCount === 1 ? "" : "s"}
+        </button>
+        {!startCount && (
+          <span className="text-sm text-slate-400">
+            {totalInScope ? "No cards match this mode right now." : "This deck has no cards yet."}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Deck editor modal — create or edit a deck's identity                */
+/* ------------------------------------------------------------------ */
+function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
+  const [name, setName] = useState(deck?.name || "");
+  const [topic, setTopic] = useState(deck?.topic || "");
+  const [description, setDescription] = useState(deck?.description || "");
+  const [emoji, setEmoji] = useState(deck?.emoji || "");
+  const [color, setColor] = useState(deck?.color || "indigo");
+  const [groupId, setGroupId] = useState(deck?.groupId || "");
+  const [language, setLanguage] = useState(deck?.language || "en-US");
+  const [autoPlay, setAutoPlay] = useState(!!deck?.autoPlay);
+  const [goal, setGoal] = useState(deck?.goal || "longterm");
+  const [deadline, setDeadline] = useState(
+    deck?.deadline ? new Date(deck.deadline).toISOString().slice(0, 10) : ""
+  );
+
+  const topicOptions = useMemo(
+    () => [...new Set([...topics, ...TOPIC_PRESETS])],
+    [topics]
+  );
+
+  const save = () => {
+    if (!name.trim()) return;
+    let deadlineMs = null;
+    if (goal === "deadline" && deadline) {
+      const d = new Date(deadline + "T23:59:59");
+      if (!isNaN(d.getTime())) deadlineMs = d.getTime();
+    }
+    onSave({
+      name: name.trim(), topic: topic.trim(), description: description.trim(), emoji, color,
+      groupId, language, autoPlay, goal, deadline: deadlineMs,
+    });
+  };
+
+  const dleft = deadline ? daysUntil(new Date(deadline + "T23:59:59").getTime()) : null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div
+        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">{deck ? "Edit deck" : "New deck"}</h2>
+          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* preview */}
+        <div className="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg ${getColor(color).bg} ${getColor(color).text}`}>
+            {emoji ? <span>{emoji}</span> : <GraduationCap className="h-5 w-5" />}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate font-semibold text-slate-800">{name.trim() || "Untitled deck"}</div>
+            <div className="truncate text-xs text-slate-400">{topic.trim() || "No topic"}{description.trim() ? ` · ${description.trim()}` : ""}</div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Name <span className="text-red-500">*</span></span>
+            <input
+              autoFocus
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Spanish verbs"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Topic / category</span>
+            <input
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              list="topic-options"
+              placeholder="Type or pick — e.g. Languages"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+            />
+            <datalist id="topic-options">
+              {topicOptions.map((t) => <option key={t} value={t} />)}
+            </datalist>
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Description (optional)</span>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              placeholder="What's in this deck?"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+            />
+          </label>
+
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-slate-500">Color</span>
+            <div className="flex flex-wrap gap-2">
+              {DECK_COLORS.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setColor(c.id)}
+                  className={`h-7 w-7 rounded-full transition ${color === c.id ? "ring-2 ring-slate-900 ring-offset-2" : ""}`}
+                  style={{ backgroundColor: c.dot }}
+                  title={c.id}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-slate-500">Icon (optional)</span>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setEmoji("")}
+                className={`grid h-9 w-9 place-items-center rounded-lg border text-slate-400 transition ${emoji === "" ? "border-rose-500 bg-rose-50" : "border-slate-200 hover:bg-slate-50"}`}
+                title="No icon"
+              >
+                <GraduationCap className="h-4 w-4" />
+              </button>
+              {DECK_EMOJIS.map((e) => (
+                <button
+                  key={e}
+                  onClick={() => setEmoji(e)}
+                  className={`grid h-9 w-9 place-items-center rounded-lg border text-lg transition ${emoji === e ? "border-rose-500 bg-rose-50" : "border-slate-200 hover:bg-slate-50"}`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* group + audio language */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Group</span>
+              <div className="relative">
+                <select value={groupId} onChange={(e) => setGroupId(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100">
+                  <option value="">No group (ungrouped)</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>{g.emoji ? `${g.emoji} ` : ""}{g.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Audio language (TTS)</span>
+              <div className="relative">
+                <select value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100">
+                  {DECK_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              </div>
+            </label>
+          </div>
+
+          <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+            <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <Volume2 className="h-4 w-4 text-slate-400" /> Auto-play audio when a card is shown
+            </span>
+            <input type="checkbox" checked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} className="h-4 w-4 accent-rose-600" />
+          </label>
+
+          {/* scheduling goal */}
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-slate-500">Scheduling goal</span>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {Object.values(SCHED_GOALS).map((g) => {
+                const Icon = g.icon;
+                const active = goal === g.id;
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => setGoal(g.id)}
+                    className={`flex items-start gap-2.5 rounded-xl border p-3 text-left transition ${active ? "border-rose-500 bg-rose-50 ring-2 ring-rose-100" : "border-slate-200 bg-white hover:border-slate-300"}`}
+                  >
+                    <div className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${active ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-500"}`}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">{g.short}</div>
+                      <p className="mt-0.5 text-[11px] leading-snug text-slate-500">{g.desc}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {goal === "deadline" && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2.5">
+                <label className="text-sm font-medium text-orange-800">Target date</label>
+                <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="rounded-lg border border-orange-200 bg-white px-3 py-1.5 text-sm focus:border-orange-400 focus:outline-none" />
+                {dleft != null && (
+                  <span className="text-xs font-semibold text-orange-700">
+                    {dleft <= 0 ? "date has passed" : `${dleft} day${dleft === 1 ? "" : "s"} left`}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={!name.trim()}
+            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <Check className="h-4 w-4" /> {deck ? "Save changes" : "Create deck"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Group editor modal                                                  */
+/* ------------------------------------------------------------------ */
+function GroupEditor({ group, onClose, onSave }) {
+  const [name, setName] = useState(group?.name || "");
+  const [emoji, setEmoji] = useState(group?.emoji || "");
+  const [color, setColor] = useState(group?.color || "slate");
+  const save = () => { if (name.trim()) onSave({ name: name.trim(), emoji, color }); };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">{group ? "Edit group" : "New group"}</h2>
+          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
+        </div>
+
+        <div className="mb-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg ${getColor(color).bg} ${getColor(color).text}`}>
+            {emoji ? <span>{emoji}</span> : <Folder className="h-5 w-5" />}
+          </div>
+          <div className="truncate font-semibold text-slate-800">{name.trim() || "Untitled group"}</div>
+        </div>
+
+        <div className="space-y-4">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Name <span className="text-red-500">*</span></span>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Languages" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
+          </label>
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-slate-500">Color</span>
+            <div className="flex flex-wrap gap-2">
+              {DECK_COLORS.map((c) => (
+                <button key={c.id} onClick={() => setColor(c.id)} className={`h-7 w-7 rounded-full transition ${color === c.id ? "ring-2 ring-slate-900 ring-offset-2" : ""}`} style={{ backgroundColor: c.dot }} title={c.id} />
+              ))}
+            </div>
+          </div>
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-slate-500">Icon (optional)</span>
+            <div className="flex flex-wrap gap-1.5">
+              <button onClick={() => setEmoji("")} className={`grid h-9 w-9 place-items-center rounded-lg border text-slate-400 transition ${emoji === "" ? "border-rose-500 bg-rose-50" : "border-slate-200 hover:bg-slate-50"}`}><Folder className="h-4 w-4" /></button>
+              {DECK_EMOJIS.map((e) => (
+                <button key={e} onClick={() => setEmoji(e)} className={`grid h-9 w-9 place-items-center rounded-lg border text-lg transition ${emoji === e ? "border-rose-500 bg-rose-50" : "border-slate-200 hover:bg-slate-50"}`}>{e}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Cancel</button>
+          <button onClick={save} disabled={!name.trim()} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+            <Check className="h-4 w-4" /> {group ? "Save changes" : "Create group"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Deck detail — browse/edit cards, see intervals + scheduling goal    */
+/* ------------------------------------------------------------------ */
+// Plain-words spaced-repetition schedule shown under each card.
+function CardScheduleLine({ card }) {
+  if (card.state === "new") return <div className="mt-0.5 text-[11px] italic text-slate-300">Нова — ще не в графіку повторень</div>;
+  const s = cardScheduleText(card);
+  return (
+    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-slate-400">
+      {s.prog && <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-500" title="Як росли інтервали повторень">{s.prog}</span>}
+      <span>інтервал {s.cur}</span>
+      <span className="text-slate-300">·</span>
+      <span>наступний повтор {s.next}</span>
+    </div>
+  );
+}
+
+function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onAddCard, onEditCard, onDeleteCard }) {
+  const [q, setQ] = useState("");
+  const color = getColor(deck.color);
+  const s = summary || { total: cards.length, due: 0, stages: {} };
+  const goal = SCHED_GOALS[deck.goal] || SCHED_GOALS.longterm;
+  const isDeadline = deck.goal === "deadline" && deck.deadline;
+  const dleft = isDeadline ? daysUntil(deck.deadline) : null;
+  const lang = deck.language || "";
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const list = needle
+      ? cards.filter((c) => (c.front + " " + c.back).toLowerCase().includes(needle))
+      : cards;
+    return list;
+  }, [cards, q]);
+  const shown = filtered.slice(0, 300);
+
+  return (
+    <div className="space-y-6">
+      {/* header */}
+      <div className="flex items-start gap-3">
+        <button onClick={onBack} className="mt-1 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl text-xl ${color.bg} ${color.text}`}>
+          {deck.emoji ? <span>{deck.emoji}</span> : <GraduationCap className="h-6 w-6" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900">
+            <span className="truncate">{deck.name}</span>
+          </h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <span>{cards.length} cards</span>
+            {deck.topic && <span className="inline-flex items-center gap-1"><Tag className="h-3 w-3" />{deck.topic}</span>}
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${isDeadline ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>
+              <goal.icon className="h-3 w-3" /> {goal.short}
+              {isDeadline && (dleft <= 0 ? " · date passed" : ` · ${dleft}d left`)}
+            </span>
+            {ttsSupported() && lang && <span className="inline-flex items-center gap-1"><Volume2 className="h-3 w-3" />{DECK_LANGUAGES.find((l) => l.code === lang)?.label || lang}</span>}
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button onClick={onEditDeck} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+            <Settings className="h-4 w-4" /> <span className="hidden sm:inline">Settings</span>
+          </button>
+          <button onClick={onStudy} disabled={!cards.length} className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:bg-slate-300">
+            <Play className="h-4 w-4" /> Study
+          </button>
+        </div>
+      </div>
+
+      {/* interval breakdown */}
+      {cards.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <Timer className="h-4 w-4 text-slate-400" />
+            <h2 className="text-sm font-semibold text-slate-700">Where your cards sit</h2>
+          </div>
+          <StageBreakdown stages={s.stages || {}} total={cards.length} />
+          <div className="mt-4">
+            <IntervalTimeline activeStageId={null} />
+            <p className="mt-1.5 text-[11px] text-slate-400">
+              {isDeadline
+                ? `Deadline mode: intervals are capped to fit before your target date${dleft > 0 ? `, ${dleft} days away` : ""}.`
+                : "Long-term mode: intervals keep growing — short (red) to long (blue)."}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* card list */}
+      <div>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <h2 className="mr-auto text-sm font-semibold uppercase tracking-wide text-slate-400">Cards</h2>
+          <div className="relative">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search…"
+              className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-56"
+            />
+          </div>
+          <button onClick={onAddCard} className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-rose-700">
+            <Plus className="h-4 w-4" /> Add card
+          </button>
+        </div>
+
+        {cards.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white py-12 text-center text-slate-500">
+            <p className="font-medium">No cards yet</p>
+            <button onClick={onAddCard} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700">
+              <Plus className="h-4 w-4" /> Add your first card
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            {shown.map((c) => (
+              <div key={c.id} className="group flex items-center gap-3 px-4 py-2.5">
+                {(c.imgFront || c.imgBack) && <ImageIcon className="h-4 w-4 shrink-0 text-slate-300" />}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-slate-800">{c.front || <span className="italic text-slate-400">(image)</span>}</div>
+                  <div className="truncate text-xs text-slate-400">{c.back}</div>
+                  <CardScheduleLine card={c} />
+                </div>
+                <StageBadge card={c} />
+                <SpeakerButton text={c.front} lang={c.lang || lang} />
+                <button onClick={() => onEditCard(c)} className="rounded-md p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 sm:opacity-0 sm:group-hover:opacity-100" title="Edit card">
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button onClick={() => { if (confirm("Delete this card?")) onDeleteCard(c.id); }} className="rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100" title="Delete card">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+            {filtered.length > shown.length && (
+              <div className="px-4 py-2.5 text-center text-xs text-slate-400">
+                Showing first {shown.length.toLocaleString()} of {filtered.length.toLocaleString()} — search to narrow down.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Card editor modal — text + images (upload / paste) + audio           */
+/* ------------------------------------------------------------------ */
+function CardEditor({ deck, card, onClose, onSave }) {
+  const [front, setFront] = useState(card?.front || "");
+  const [back, setBack] = useState(card?.back || "");
+  const [lang, setLang] = useState(card?.lang || "");
+  const [img, setImg] = useState({ front: null, back: null }); // current dataUrl or null
+  const [dirty, setDirty] = useState({ front: false, back: false });
+  const [pasteTarget, setPasteTarget] = useState("front");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const frontFile = useRef(null);
+  const backFile = useRef(null);
+
+  const effLang = lang || deck?.language || "";
+
+  // load existing images for preview
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const f = card?.imgFront ? await loadImage(card.id, "front") : null;
+      const b = card?.imgBack ? await loadImage(card.id, "back") : null;
+      if (alive) setImg({ front: f, back: b });
+    })();
+    return () => { alive = false; };
+  }, [card?.id]);
+
+  const setSideImage = async (side, fileOrDataUrl) => {
+    setErr("");
+    setBusy(true);
+    try {
+      const dataUrl = await compressImage(fileOrDataUrl);
+      setImg((m) => ({ ...m, [side]: dataUrl }));
+      setDirty((d) => ({ ...d, [side]: true }));
+    } catch (e) {
+      setErr(e.message || "Couldn't process that image.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeSide = (side) => {
+    setImg((m) => ({ ...m, [side]: null }));
+    setDirty((d) => ({ ...d, [side]: true }));
+  };
+
+  const onPaste = (e) => {
+    const file = imageFromClipboard(e);
+    if (file) { e.preventDefault(); setSideImage(pasteTarget, file); }
+  };
+
+  const save = () => {
+    if (!front.trim() && !img.front && !back.trim() && !img.back) {
+      setErr("Add some text or an image first.");
+      return;
+    }
+    const images = {
+      front: dirty.front ? img.front : undefined,
+      back: dirty.back ? img.back : undefined,
+    };
+    onSave({ front, back, lang }, images);
+  };
+
+  const ImageSlot = ({ side }) => (
+    <div
+      tabIndex={0}
+      onClick={() => setPasteTarget(side)}
+      onFocus={() => setPasteTarget(side)}
+      className={`rounded-lg border-2 border-dashed p-2 transition ${pasteTarget === side ? "border-rose-400 bg-rose-50/40" : "border-slate-200"}`}
+    >
+      {img[side] ? (
+        <div className="relative">
+          <img src={img[side]} alt="" className="mx-auto max-h-40 w-auto rounded object-contain" />
+          <button onClick={() => removeSide(side)} className="absolute right-1 top-1 rounded-full bg-slate-900/70 p-1 text-white hover:bg-slate-900" title="Remove image">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-1.5 py-3 text-center">
+          <ImagePlus className="h-5 w-5 text-slate-400" />
+          <div className="flex items-center gap-2 text-xs">
+            <button
+              onClick={() => (side === "front" ? frontFile : backFile).current?.click()}
+              className="font-medium text-rose-600 hover:text-rose-700"
+            >
+              Upload
+            </button>
+            <span className="text-slate-300">·</span>
+            <span className="text-slate-400">click, then paste (⌘/Ctrl+V)</span>
+          </div>
+        </div>
+      )}
+      <input ref={side === "front" ? frontFile : backFile} type="file" accept="image/*" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) setSideImage(side, f); e.target.value = ""; }} />
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()} onPaste={onPaste}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">{card ? "Edit card" : "New card"}</h2>
+          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
+        </div>
+
+        {err && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          {["front", "back"].map((side) => (
+            <div key={side} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{side}</span>
+                <SpeakerButton text={side === "front" ? front : back} lang={effLang} />
+              </div>
+              <textarea
+                value={side === "front" ? front : back}
+                onChange={(e) => (side === "front" ? setFront : setBack)(e.target.value)}
+                rows={3}
+                placeholder={side === "front" ? "Question / prompt" : "Answer"}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+              />
+              <ImageSlot side={side} />
+            </div>
+          ))}
+        </div>
+
+        <label className="mt-4 block">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Audio language override (optional)</span>
+          <div className="relative sm:w-64">
+            <select value={lang} onChange={(e) => setLang(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100">
+              {LANGUAGES.map((l) => <option key={l.code || "default"} value={l.code}>{l.code ? l.label : `Deck default (${DECK_LANGUAGES.find((x) => x.code === deck?.language)?.label || deck?.language || "—"})`}</option>)}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          </div>
+        </label>
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          {busy && <span className="mr-auto text-xs text-slate-400">Processing image…</span>}
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Cancel</button>
+          <button onClick={save} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:bg-slate-300">
+            <Check className="h-4 w-4" /> {card ? "Save card" : "Add card"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Import view                                                         */
+/* ------------------------------------------------------------------ */
+function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }) {
+  const [mode, setMode] = useState("file"); // file | paste
+  const [parsed, setParsed] = useState(null); // { headers, rows, source }
+  const [sheets, setSheets] = useState(null); // [{name, deckName, cards:[[f,b]], include}] for multi-sheet workbooks
+  const [sourceName, setSourceName] = useState("");
+  const [mapping, setMapping] = useState({ front: "", back: "", deck: "", tags: "", notes: "" });
+  // where imported cards land: deckId "" means "create a new deck named `name`"
+  const [target, setTarget] = useState({ deckId: "", name: "" });
+  const [error, setError] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const fileRef = useRef(null);
+
+  const resetFile = () => { setParsed(null); setSheets(null); setError(""); };
+
+  const handleFile = (e) => {
+    setError("");
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const base = file.name.replace(/\.[^.]+$/, "");
+    setTarget((t) => ({ ...t, name: base }));
+    const lower = file.name.toLowerCase();
+    if (lower.endsWith(".csv")) {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (res) => {
+          const headers = (res.meta.fields || []).filter(Boolean);
+          if (!headers.length) return setError("Couldn't find any columns in that CSV.");
+          setParsed({ headers, rows: res.data, source: file.name });
+          setMapping(autoMapColumns(headers));
+        },
+        error: (err) => setError(`CSV error: ${err.message}`),
+      });
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = new Uint8Array(ev.target.result);
+          const wb = XLSX.read(data, { type: "array" });
+          setSourceName(file.name);
+
+          // scan every sheet for Front/Back data
+          const found = [];
+          for (const sn of wb.SheetNames) {
+            const rowsAoA = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: "" });
+            const { cards } = extractSheetCards(rowsAoA);
+            if (cards.length) found.push({ name: sn, deckName: cleanDeckName(sn), cards, include: true });
+          }
+          if (!found.length) return setError("Couldn't find any Front/Back data in that file.");
+
+          // more than one usable sheet -> per-sheet import picker
+          if (found.length > 1) {
+            setSheets(found);
+            return;
+          }
+
+          // single sheet: use column-mapping unless the headers are messy,
+          // in which case fall back to the smart extractor as a 1-sheet import
+          const only = found[0];
+          const ws = wb.Sheets[only.name];
+          const json = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          const headers = json.length ? Object.keys(json[0]) : [];
+          if (!headers.length || headersLookMessy(headers)) {
+            setSheets(found);
+          } else {
+            setParsed({ headers, rows: json, source: file.name });
+            setTarget((t) => ({ ...t, name: base }));
+            setMapping(autoMapColumns(headers));
+          }
+        } catch (err) {
+          setError(`Couldn't read that file: ${err.message}`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+    e.target.value = ""; // allow re-selecting the same file
+  };
+
+  const previewCards = useMemo(() => {
+    if (!parsed || !mapping.front) return [];
+    return parsed.rows.slice(0, 6).map((r) => ({
+      front: r[mapping.front],
+      back: mapping.back ? r[mapping.back] : "",
+      deck: mapping.deck ? r[mapping.deck] : "",
+      tags: mapping.tags ? r[mapping.tags] : "",
+    }));
+  }, [parsed, mapping]);
+
+  const validCount = useMemo(() => {
+    if (!parsed || !mapping.front) return 0;
+    return parsed.rows.filter((r) => String(r[mapping.front] ?? "").trim()).length;
+  }, [parsed, mapping]);
+
+  const targetDeck = decks.find((d) => d.id === target.deckId);
+  const targetLabel = target.deckId ? targetDeck?.name : (target.name.trim() || "New deck");
+
+  const commitFile = () => {
+    if (!parsed || !mapping.front) return;
+
+    // A "Deck" column splits rows across many decks (target picker ignored).
+    if (mapping.deck) {
+      const groups = {};
+      for (const r of parsed.rows) {
+        const front = String(r[mapping.front] ?? "").trim();
+        if (!front) continue;
+        const dn = String(r[mapping.deck] ?? "").trim() || target.name.trim() || "Imported";
+        (groups[dn] ||= []).push(
+          makeCard(front, mapping.back ? r[mapping.back] : "", mapping.tags ? r[mapping.tags] : "", mapping.notes ? r[mapping.notes] : "")
+        );
+      }
+      if (!Object.keys(groups).length) return setError("No rows had a Front value.");
+      return onImport(groups);
+    }
+
+    // Otherwise everything goes into the chosen target deck.
+    const cards = [];
+    for (const r of parsed.rows) {
+      const front = String(r[mapping.front] ?? "").trim();
+      if (!front) continue;
+      cards.push(makeCard(front, mapping.back ? r[mapping.back] : "", mapping.tags ? r[mapping.tags] : "", mapping.notes ? r[mapping.notes] : ""));
+    }
+    if (!cards.length) return setError("No rows had a Front value.");
+    if (target.deckId) onImport({ [targetDeck.name]: cards }, { targetDeckId: target.deckId });
+    else onImport({ [target.name.trim() || "Imported"]: cards });
+  };
+
+  const includedSheets = sheets ? sheets.filter((s) => s.include) : [];
+  const includedCount = includedSheets.reduce((n, s) => n + s.cards.length, 0);
+
+  const setSheet = (i, patch) =>
+    setSheets((arr) => arr.map((s, idx) => (idx === i ? { ...s, ...patch } : s)));
+  const setAllSheets = (include) => setSheets((arr) => arr.map((s) => ({ ...s, include })));
+
+  const commitSheets = () => {
+    const groups = {};
+    for (const s of includedSheets) {
+      const dn = (s.deckName || "").trim() || s.name;
+      (groups[dn] ||= []).push(...s.cards.map(([f, b]) => makeCard(f, b)));
+    }
+    if (!Object.keys(groups).length) return setError("Select at least one sheet to import.");
+    onImport(groups);
+  };
+
+  const commitPaste = () => {
+    const lines = pasteText.split("\n").map((l) => l.trim()).filter(Boolean);
+    const cards = [];
+    for (const line of lines) {
+      let parts;
+      if (line.includes("\t")) parts = line.split("\t");
+      else if (line.includes("|")) parts = line.split("|");
+      else parts = line.split(/,(.+)/); // split on first comma only
+      const front = (parts[0] || "").trim();
+      const back = (parts[1] || "").trim();
+      if (front) cards.push(makeCard(front, back));
+    }
+    if (!cards.length) return setError("Type at least one line as  Front | Back");
+    if (target.deckId) onImport({ [targetDeck.name]: cards }, { targetDeckId: target.deckId });
+    else onImport({ [target.name.trim() || "Pasted cards"]: cards });
+  };
+
+  return (
+    <div className="mx-auto max-w-2xl space-y-5">
+      <div className="flex items-center gap-3">
+        <button onClick={onCancel} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h1 className="text-xl font-bold text-slate-900">Import cards</h1>
+      </div>
+
+      {onLoadEnglish && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <span className="text-2xl">🇬🇧</span>
+          <div className="min-w-0 flex-1">
+            <div className="font-bold text-slate-800">Мої англійські колоди</div>
+            <div className="text-xs text-slate-500">15 готових колод · ~9 500 карток. Один тап — і вони у тебе.</div>
+          </div>
+          <button onClick={onLoadEnglish} disabled={loadingEnglish} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-bold text-white transition hover:bg-blue-700 disabled:opacity-60">
+            {loadingEnglish ? <><RefreshCw className="h-4 w-4 animate-spin" /> Завантажую…</> : "Завантажити"}
+          </button>
+        </div>
+      )}
+
+      {/* mode toggle */}
+      <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+        <ModeTab active={mode === "file"} onClick={() => { setMode("file"); setError(""); }} icon={FileSpreadsheet}>Spreadsheet</ModeTab>
+        <ModeTab active={mode === "paste"} onClick={() => { setMode("paste"); setError(""); }} icon={ClipboardPaste}>Paste text</ModeTab>
+      </div>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <X className="mt-0.5 h-4 w-4 shrink-0" /> {error}
+        </div>
+      )}
+
+      {mode === "file" && !parsed && !sheets && (
+        <div>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white py-12 text-slate-500 transition hover:border-rose-400 hover:text-rose-600"
+          >
+            <Upload className="h-8 w-8" />
+            <span className="font-medium">Choose a .xlsx, .xls or .csv file</span>
+            <span className="text-xs text-slate-400">Columns: Front, Back, and optional Deck, Tags, Notes — every sheet becomes a deck</span>
+          </button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} className="hidden" />
+        </div>
+      )}
+
+      {mode === "file" && sheets && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm">
+            <span className="flex items-center gap-2 text-slate-600">
+              <FileSpreadsheet className="h-4 w-4 text-green-600" />
+              <span className="font-medium">{sourceName}</span>
+              <span className="text-slate-400">· {sheets.length} sheet{sheets.length === 1 ? "" : "s"} with cards</span>
+            </span>
+            <button onClick={resetFile} className="text-slate-400 hover:text-slate-700">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-slate-500">Each sheet imports as its own deck. Untick any you don't want, or rename them.</p>
+            <div className="flex shrink-0 gap-3 text-xs font-medium">
+              <button onClick={() => setAllSheets(true)} className="text-rose-600 hover:text-rose-700">All</button>
+              <button onClick={() => setAllSheets(false)} className="text-slate-400 hover:text-slate-600">None</button>
+            </div>
+          </div>
+
+          <div className="max-h-[22rem] space-y-1.5 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+            {sheets.map((s, i) => (
+              <div
+                key={s.name}
+                className={`flex items-center gap-3 rounded-lg px-2 py-2 transition ${s.include ? "" : "opacity-50"}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={s.include}
+                  onChange={(e) => setSheet(i, { include: e.target.checked })}
+                  className="h-4 w-4 shrink-0 accent-rose-600"
+                />
+                <input
+                  value={s.deckName}
+                  onChange={(e) => setSheet(i, { deckName: e.target.value })}
+                  className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-slate-800 hover:border-slate-200 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100"
+                />
+                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-500">
+                  {s.cards.length} cards
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={commitSheets}
+              disabled={!includedCount}
+              className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <Check className="h-4 w-4" /> Import {includedCount.toLocaleString()} card{includedCount === 1 ? "" : "s"}
+              <span className="opacity-80">· {includedSheets.length} deck{includedSheets.length === 1 ? "" : "s"}</span>
+            </button>
+            <button onClick={resetFile} className="text-sm font-medium text-slate-500 hover:text-slate-800">
+              Choose another file
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === "file" && parsed && (
+        <div className="space-y-5">
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm">
+            <span className="flex items-center gap-2 text-slate-600">
+              <FileSpreadsheet className="h-4 w-4 text-green-600" />
+              <span className="font-medium">{parsed.source}</span>
+              <span className="text-slate-400">· {parsed.rows.length} rows</span>
+            </span>
+            <button onClick={() => { setParsed(null); setError(""); }} className="text-slate-400 hover:text-slate-700">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* column mapping */}
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-slate-700">Map your columns</h3>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                { field: "front", label: "Front", required: true },
+                { field: "back", label: "Back", required: false },
+                { field: "deck", label: "Deck (optional)", required: false },
+                { field: "tags", label: "Tags (optional)", required: false },
+                { field: "notes", label: "Notes (optional)", required: false },
+              ].map(({ field, label, required }) => (
+                <label key={field} className="block">
+                  <span className="mb-1 block text-xs font-medium text-slate-500">
+                    {label} {required && <span className="text-red-500">*</span>}
+                  </span>
+                  <select
+                    value={mapping[field]}
+                    onChange={(e) => setMapping((m) => ({ ...m, [field]: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                  >
+                    <option value="">— none —</option>
+                    {parsed.headers.map((h) => (
+                      <option key={h} value={h}>{h}</option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {!mapping.deck ? (
+            <DeckTargetPicker decks={decks} target={target} onChange={setTarget} defaultName="Imported" />
+          ) : (
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              Rows are split into decks by the “{mapping.deck}” column. Matching existing decks get the new cards appended.
+            </p>
+          )}
+
+          {/* preview */}
+          {previewCards.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-slate-700">Preview</h3>
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Front</th>
+                      <th className="px-3 py-2 font-medium">Back</th>
+                      {mapping.deck && <th className="px-3 py-2 font-medium">Deck</th>}
+                      {mapping.tags && <th className="px-3 py-2 font-medium">Tags</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {previewCards.map((c, i) => (
+                      <tr key={i}>
+                        <td className="px-3 py-2 text-slate-800">{String(c.front)}</td>
+                        <td className="px-3 py-2 text-slate-500">{String(c.back)}</td>
+                        {mapping.deck && <td className="px-3 py-2 text-slate-500">{String(c.deck)}</td>}
+                        {mapping.tags && <td className="px-3 py-2 text-slate-400">{String(c.tags)}</td>}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              onClick={commitFile}
+              disabled={!mapping.front || !validCount}
+              className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <Check className="h-4 w-4" /> Import {validCount} card{validCount === 1 ? "" : "s"}
+            </button>
+            <button onClick={() => { setParsed(null); setError(""); }} className="text-sm font-medium text-slate-500 hover:text-slate-800">
+              Choose another file
+            </button>
+          </div>
+        </div>
+      )}
+
+      {mode === "paste" && (
+        <div className="space-y-4">
+          <DeckTargetPicker decks={decks} target={target} onChange={setTarget} defaultName="Pasted cards" />
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              One card per line — <span className="font-mono">Front | Back</span> (also accepts tab or comma)
+            </label>
+            <textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              rows={9}
+              placeholder={"bonjour | hello\nmerci | thank you\nau revoir | goodbye"}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+            />
+          </div>
+          <button
+            onClick={commitPaste}
+            disabled={!pasteText.trim()}
+            className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <Check className="h-4 w-4" /> Add cards
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModeTab({ active, onClick, icon: Icon, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+        active ? "bg-rose-600 text-white" : "text-slate-500 hover:text-slate-800"
+      }`}
+    >
+      <Icon className="h-4 w-4" /> {children}
+    </button>
+  );
+}
+
+// Choose where imported cards go: an existing deck (append) or a brand-new one.
+function DeckTargetPicker({ decks, target, onChange, defaultName }) {
+  return (
+    <div className="space-y-2">
+      <label className="block text-xs font-medium text-slate-500">Add cards to</label>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative sm:w-64">
+          <select
+            value={target.deckId}
+            onChange={(e) => onChange({ ...target, deckId: e.target.value })}
+            className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+          >
+            <option value="">➕ Create a new deck…</option>
+            {decks.length > 0 && <option disabled>──────────</option>}
+            {decks.map((d) => (
+              <option key={d.id} value={d.id}>{d.emoji ? `${d.emoji} ` : ""}{d.name}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        </div>
+        {!target.deckId && (
+          <input
+            value={target.name}
+            onChange={(e) => onChange({ ...target, name: e.target.value })}
+            placeholder={defaultName || "New deck name"}
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+          />
+        )}
+      </div>
+      {target.deckId && (
+        <p className="text-xs text-slate-400">New cards will be appended — nothing already in the deck is removed.</p>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Stats view                                                          */
+/* ------------------------------------------------------------------ */
+function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onChangeNewPerDay }) {
+  const streak = computeStreak(stats.history);
+  const studiedToday = stats.history?.[dateKey(Date.now())]?.studied || 0;
+  const retention = retention30(stats.history);
+  const newPerDay = stats.settings?.newPerDay ?? DEFAULT_NEW_PER_DAY;
+
+  const totalCards = useMemo(
+    () => Object.values(cardsByDeck).reduce((s, arr) => s + arr.length, 0),
+    [cardsByDeck]
+  );
+
+  // upcoming reviews (next 14 days)
+  const upcoming = useMemo(() => {
+    const now = Date.now();
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+    const buckets = Array.from({ length: 14 }, (_, i) => {
+      const day = new Date(startOfToday.getTime() + i * DAY);
+      return { label: i === 0 ? "Today" : day.toLocaleDateString(undefined, { weekday: "short", day: "numeric" }), count: 0, i };
+    });
+    for (const arr of Object.values(cardsByDeck)) {
+      for (const c of arr) {
+        if (c.state !== "review") continue;
+        const idx = Math.floor((c.due - startOfToday.getTime()) / DAY);
+        if (idx >= 0 && idx < 14) buckets[idx].count += 1;
+        else if (idx < 0) buckets[0].count += 1; // overdue rolls into today
+      }
+    }
+    return buckets;
+  }, [cardsByDeck]);
+
+  // last 7 days studied
+  const last7 = useMemo(() => {
+    const now = Date.now();
+    return Array.from({ length: 7 }, (_, i) => {
+      const ms = now - (6 - i) * DAY;
+      const d = new Date(ms);
+      return {
+        label: d.toLocaleDateString(undefined, { weekday: "short" }),
+        studied: stats.history?.[dateKey(ms)]?.studied || 0,
+      };
+    });
+  }, [stats]);
+
+  const maxUpcoming = Math.max(1, ...upcoming.map((b) => b.count));
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-xl font-bold text-slate-900">Your progress</h1>
+
+      <div className="flex flex-wrap gap-3">
+        <StatTile icon={Check} label="Studied today" value={studiedToday} tint="text-rose-600" />
+        <StatTile icon={Flame} label="Streak" value={streak} tint={streak ? "text-orange-500" : "text-slate-400"} sub={streak === 1 ? "day" : "days"} />
+        <StatTile icon={Target} label="Retention" value={retention == null ? "—" : `${retention}%`} tint="text-green-600" sub="last 30 days" />
+        <StatTile icon={Inbox} label="Due now" value={totalDue} tint={totalDue ? "text-slate-700" : "text-slate-400"} />
+        <StatTile icon={Layers} label="Total cards" value={totalCards} tint="text-slate-700" />
+      </div>
+
+      {/* upcoming chart */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-1 flex items-center gap-2">
+          <Clock className="h-4 w-4 text-slate-400" />
+          <h2 className="text-sm font-semibold text-slate-700">Upcoming reviews · next 14 days</h2>
+        </div>
+        <p className="mb-4 text-xs text-slate-400">When your review cards are next scheduled to come back.</p>
+        <div className="h-56 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={upcoming} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} interval={0} angle={-30} textAnchor="end" height={44} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <Tooltip
+                cursor={{ fill: "#eef2ff" }}
+                contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12 }}
+                labelStyle={{ color: "#475569", fontWeight: 600 }}
+              />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {upcoming.map((b, i) => (
+                  <Cell key={i} fill={i === 0 ? "#4f46e5" : "#c7d2fe"} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* last 7 days */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <BarChart3 className="h-4 w-4 text-slate-400" /> Cards studied · last 7 days
+        </h2>
+        <div className="flex items-end justify-between gap-2" style={{ height: 120 }}>
+          {last7.map((d, i) => {
+            const max = Math.max(1, ...last7.map((x) => x.studied));
+            const h = Math.round((d.studied / max) * 100);
+            return (
+              <div key={i} className="flex flex-1 flex-col items-center gap-1">
+                <div className="flex w-full flex-1 items-end">
+                  <div
+                    className="w-full rounded-t bg-rose-500 transition-all"
+                    style={{ height: `${d.studied ? Math.max(6, h) : 0}%`, minHeight: d.studied ? 6 : 0 }}
+                    title={`${d.studied} cards`}
+                  />
+                </div>
+                <span className="text-[11px] font-medium tabular-nums text-slate-600">{d.studied || ""}</span>
+                <span className="text-[11px] text-slate-400">{d.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* cloud sync */}
+      <CloudSyncPanel />
+
+      {/* settings + data */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-4 text-sm font-semibold text-slate-700">Settings & data</h2>
+        <label className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <span>
+            <span className="block text-sm font-medium text-slate-700">New cards per day</span>
+            <span className="block text-xs text-slate-400">How many brand-new cards to introduce daily.</span>
+          </span>
+          <input
+            type="number" min={0} max={999} value={newPerDay}
+            onChange={(e) => onChangeNewPerDay(Math.max(0, Math.min(999, Number(e.target.value) || 0)))}
+            className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm tabular-nums focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+          />
+        </label>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button onClick={onExport} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50">
+            <Download className="h-4 w-4" /> Export backup (JSON)
+          </button>
+          <button
+            onClick={() => { if (confirm("Reset ALL data — decks, cards, stats AND your routine/habits? This cannot be undone.")) onReset(); }}
+            className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
+          >
+            <RotateCcw className="h-4 w-4" /> Reset everything
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Cloud sync (Supabase) — optional cross-device sync                  */
+/* ------------------------------------------------------------------ */
+function CloudSyncPanel() {
+  const [signed, setSigned] = useState(false);
+  const [email, setEmail] = useState(null);
+  const [step, setStep] = useState("idle"); // idle | email | code
+  const [input, setInput] = useState("");
+  const [code, setCode] = useState("");
+  const [link, setLink] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => { (async () => { await refreshSession(); setSigned(cloudSignedIn()); setEmail(currentEmail()); })(); }, []);
+
+  const doSend = async () => {
+    setErr(""); if (!input.trim()) return;
+    setBusy(true);
+    try { await sendCode(input); setStep("code"); } catch (e) { setErr(e?.message || "Не вдалося надіслати код."); } finally { setBusy(false); }
+  };
+  const doVerify = async () => {
+    setErr(""); if (!code.trim()) return;
+    setBusy(true);
+    try { await verifyCode(input, code); location.reload(); }
+    catch (e) {
+      const msg = e?.message || "";
+      if (/kv|schema cache|relation|does not exist/i.test(msg)) setErr("Майже готово — створи таблицю kv у Supabase (SQL з інструкції), і синхронізація запрацює.");
+      else setErr(msg || "Невірний або застарілий код.");
+      setBusy(false);
+    }
+  };
+  const doLink = async () => {
+    setErr(""); if (!link.trim()) return;
+    setBusy(true);
+    try { await signInWithLink(link); location.reload(); }
+    catch (e) { setErr(e?.message || "Не вдалося увійти за посиланням."); setBusy(false); }
+  };
+  const doSignOut = async () => { setBusy(true); await signOutCloud(); setSigned(false); setEmail(null); setStep("idle"); setBusy(false); };
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-1 flex items-center gap-2">
+        {signed ? <Cloud className="h-4 w-4 text-green-500" /> : <CloudOff className="h-4 w-4 text-slate-400" />}
+        <h2 className="text-sm font-semibold text-slate-700">Хмарна синхронізація (між пристроями)</h2>
+      </div>
+
+      {signed ? (
+        <div className="mt-2 flex items-center justify-between gap-3">
+          <p className="text-sm text-slate-500">Синхронізовано як <span className="font-semibold text-slate-700">{email}</span>. Дані збережено в хмарі й синхронізуються між пристроями.</p>
+          <button onClick={doSignOut} disabled={busy} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"><LogOut className="h-4 w-4" /> Вийти</button>
+        </div>
+      ) : (
+        <>
+          <p className="mb-3 text-sm text-slate-500">Щоб <b>усе зберігалося в базі даних</b> і синхронізувалося між телефоном і компʼютером — увійди своєю поштою. У листі буде код і посилання для входу. Без входу дані живуть лише на цьому пристрої.</p>
+          {step !== "code" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[200px]">
+                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input type="email" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") doSend(); }} placeholder="you@email.com" className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
+              </div>
+              <button onClick={doSend} disabled={busy || !input.trim()} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:bg-slate-300">{busy ? "…" : "Надіслати код"}</button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} onKeyDown={(e) => { if (e.key === "Enter") doVerify(); }} placeholder="6-значний код" inputMode="numeric" className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-center text-sm tracking-widest focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
+              <button onClick={doVerify} disabled={busy || code.length < 6} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:bg-slate-300">{busy ? "…" : "Підтвердити й синхронізувати"}</button>
+              <button onClick={() => { setStep("idle"); setCode(""); setErr(""); }} className="text-sm font-medium text-slate-400 hover:text-slate-600">Змінити пошту</button>
+              <span className="w-full text-xs text-slate-400">Лист надіслано на {input} (перевір і спам). Введи код — або скористайся посиланням нижче.</span>
+            </div>
+          )}
+
+          <details className="mt-3 rounded-lg bg-slate-50 p-3">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-600">Прийшло тільки посилання, без коду? Натисни сюди 👇</summary>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">1) Клікни посилання в листі. 2) Куди б воно не привело — <b>скопіюй увесь URL зі стрічки адреси браузера</b> (там усередині є «access_token=…»). 3) Встав його сюди:</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…#access_token=…" className="min-w-[200px] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-xs focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
+              <button onClick={doLink} disabled={busy || !link.trim()} className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:bg-slate-300">{busy ? "…" : "Увійти за посиланням"}</button>
+            </div>
+          </details>
+          {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* MY ROUTINE — Me+ style UI                                          */
+/* ================================================================== */
+function ProgressRing({ pct, size = 64, stroke = 6, color = "#ec4899", track = "#f7dceb", children }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const off = c * (1 - Math.max(0, Math.min(1, pct)));
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" style={{ transition: "stroke-dashoffset .5s ease" }} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">{children}</div>
+    </div>
+  );
+}
+
+const weekDaysOf = (anchorDs) => {
+  const base = new Date(anchorDs + "T00:00:00");
+  const dow = (base.getDay() + 6) % 7; // Mon=0
+  const mon = new Date(base); mon.setDate(base.getDate() - dow);
+  return Array.from({ length: 7 }, (_, i) => { const d = new Date(mon); d.setDate(mon.getDate() + i); return dateKey(d.getTime()); });
+};
+const prettyDate = (ds) => new Date(ds + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+
+/* ---------- ADHD gamification: XP bar, challenges, wheel, focus, rewards, recap ---------- */
+function GamifyBar({ xp, onRewards }) {
+  const lp = levelProgress(xp);
+  return (
+    <button onClick={onRewards} className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/80 p-3 text-left shadow-sm ring-1 ring-red-100 transition hover:ring-red-200">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-pink-400 to-fuchsia-400 text-white shadow-sm">
+        <span className="text-xs font-black leading-none">LVL</span>
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between">
+          <span className="text-sm font-extrabold text-slate-800">Рівень {lp.lvl}</span>
+          <span className="text-[11px] font-semibold tabular-nums text-slate-400">{xp} XP</span>
+        </div>
+        <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-pink-100">
+          <div className="h-full rounded-full bg-gradient-to-r from-pink-400 to-fuchsia-400 transition-all" style={{ width: `${lp.pct * 100}%` }} />
+        </div>
+        <div className="mt-0.5 text-[10px] text-slate-400">{lp.next - xp} XP до рівня {lp.lvl + 1} · нагороди 🎁</div>
+      </div>
+    </button>
+  );
+}
+
+function ChallengesCard({ challenges, ctx, chDoc, onDismiss }) {
+  const visible = challenges.filter((c) => !chDoc.dismissed?.[c.id]);
+  if (!visible.length) return null;
+  return (
+    <div className="mt-4 rounded-2xl bg-white/80 p-3.5 shadow-sm ring-1 ring-red-100">
+      <div className="mb-2 flex items-center gap-1.5 text-sm font-extrabold text-slate-800"><span>🎯</span> Челенджі дня</div>
+      <div className="space-y-2">
+        {visible.map((c) => {
+          const done = c.check(ctx);
+          return (
+            <div key={c.id} className={`flex items-center gap-2.5 rounded-xl px-3 py-2 ${done ? "bg-green-50 ring-1 ring-green-200" : "bg-slate-50"}`}>
+              <span className="text-lg">{c.emoji}</span>
+              <span className={`min-w-0 flex-1 text-sm ${done ? "font-semibold text-green-700 line-through" : "text-slate-600"}`}>{c.label}</span>
+              <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-pink-500 ring-1 ring-pink-100">+{c.xp}</span>
+              {done ? <Check className="h-4 w-4 shrink-0 text-green-500" /> : <button onClick={() => onDismiss(c.id)} className="shrink-0 rounded-full p-0.5 text-slate-300 hover:text-slate-500"><X className="h-4 w-4" /></button>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function WheelSpin({ tasks, onClose, onPick }) {
+  const [picked, setPicked] = useState(null);
+  const [spinning, setSpinning] = useState(false);
+  const spin = () => {
+    if (!tasks.length) return;
+    setSpinning(true);
+    let n = 0;
+    const iv = setInterval(() => {
+      setPicked(tasks[Math.floor((n * 7) % tasks.length)]);
+      n += 1;
+      if (n > 14) { clearInterval(iv); const final = tasks[Math.floor((n * 7 + 3) % tasks.length)]; setPicked(final); setSpinning(false); }
+    }, 90);
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-t-3xl bg-white p-6 text-center shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="text-4xl">🎡</div>
+        <h3 className="mt-2 text-lg font-extrabold text-slate-900">Колесо задач</h3>
+        <p className="mt-1 text-sm text-slate-400">Не знаєш, з чого почати? Хай вирішить колесо.</p>
+        {tasks.length === 0 ? (
+          <p className="mt-6 text-sm text-slate-400">Немає незавершених справ на сьогодні 🎉</p>
+        ) : (
+          <>
+            <div className="my-5 grid min-h-[64px] place-items-center rounded-2xl bg-pink-50 px-4 py-4 ring-1 ring-pink-100">
+              {picked ? <div className="flex items-center gap-2 text-lg font-bold text-slate-800"><span className="text-2xl">{picked.emoji || "⭐"}</span>{picked.title}</div> : <span className="text-sm text-slate-400">Крути, щоб обрати</span>}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={spin} disabled={spinning} className="flex-1 rounded-2xl bg-pink-500 py-3 font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-600 disabled:opacity-60">{picked ? "Ще раз" : "Крутити"}</button>
+              {picked && !spinning && <button onClick={() => onPick(picked)} className="flex-1 rounded-2xl bg-slate-800 py-3 font-bold text-white hover:bg-slate-900">Робити це</button>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FocusMode({ tasks, doc, onClose, onDone, onSkip }) {
+  const [idx, setIdx] = useState(0);
+  const task = tasks[idx];
+  if (!task) return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-b from-pink-500 to-fuchsia-500 p-6 text-center text-white" onClick={onClose}>
+      <div><div className="text-5xl">🎉</div><h2 className="mt-3 text-2xl font-extrabold">Усе на зараз закрито!</h2><p className="mt-1 text-white/80">Можеш видихнути.</p><button onClick={onClose} className="mt-6 rounded-2xl bg-white px-8 py-3 font-bold text-pink-600">Готово</button></div>
+    </div>
+  );
+  const p = getPastel(task.color);
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-red-50 to-pink-100 p-6">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-bold text-slate-400">Зараз · {idx + 1}/{tasks.length}</span>
+        <button onClick={onClose} className="rounded-full bg-white/70 p-2 text-slate-500"><X className="h-5 w-5" /></button>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <div className="grid h-28 w-28 place-items-center rounded-3xl text-5xl shadow-lg" style={{ backgroundColor: p.card }}>{task.emoji || "⭐"}</div>
+        <h1 className="mt-5 max-w-md text-3xl font-extrabold text-slate-900">{task.title}</h1>
+        {task.note && <p className="mt-2 max-w-sm text-sm text-slate-500">{task.note}</p>}
+        <div className="mt-3 flex flex-wrap justify-center gap-2 text-xs">
+          {task.estMin && <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-500 ring-1 ring-slate-200">≈ {fmtEst(task.estMin)}</span>}
+          {task.energy && ENERGY[task.energy] && <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-500 ring-1 ring-slate-200">{ENERGY[task.energy].emoji} {ENERGY[task.energy].label}</span>}
+        </div>
+      </div>
+      <div className="flex gap-3">
+        <button onClick={() => setIdx((i) => i + 1)} className="flex-1 rounded-2xl bg-white py-4 font-bold text-slate-500 shadow-sm ring-1 ring-slate-200">Пропустити →</button>
+        <button onClick={() => { onDone(task); setIdx((i) => i); }} className="flex-[2] rounded-2xl bg-pink-500 py-4 font-bold text-white shadow-lg shadow-pink-500/25 hover:bg-pink-600">Готово ✓</button>
+      </div>
+    </div>
+  );
+}
+
+function RewardsPanel({ xp, rewards, onClose, onAdd, onUnlock, onDelete }) {
+  const [label, setLabel] = useState("");
+  const [cost, setCost] = useState(300);
+  const lp = levelProgress(xp);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="text-lg font-extrabold text-slate-900">🎁 Мої нагороди</h3>
+          <button onClick={onClose} className="rounded-full p-1 text-slate-400 hover:text-slate-600"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="mb-3 rounded-2xl bg-pink-50 p-3">
+          <div className="flex items-baseline justify-between text-sm"><span className="font-bold text-slate-700">Рівень {lp.lvl}</span><span className="font-semibold tabular-nums text-pink-500">{xp} XP</span></div>
+          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-pink-100"><div className="h-full rounded-full bg-gradient-to-r from-pink-400 to-fuchsia-400" style={{ width: `${lp.pct * 100}%` }} /></div>
+        </div>
+        <p className="mb-3 text-xs text-slate-400">Придумай собі маленькі приємності й відмикай їх, коли назбираєш XP. Це твоє особисте «меню дофаміну».</p>
+        <div className="space-y-2">
+          {rewards.length === 0 && <div className="rounded-xl bg-slate-50 py-6 text-center text-sm text-slate-400">Ще немає нагород. Додай першу нижче 👇</div>}
+          {rewards.map((r) => {
+            const unlocked = !!r.unlockedAt;
+            const can = xp >= r.cost;
+            return (
+              <div key={r.id} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 ${unlocked ? "bg-green-50 ring-1 ring-green-200" : "bg-slate-50"}`}>
+                <span className="text-lg">{unlocked ? "🎉" : can ? "🔓" : "🔒"}</span>
+                <div className="min-w-0 flex-1"><div className={`truncate text-sm font-semibold ${unlocked ? "text-green-700" : "text-slate-700"}`}>{r.label}</div><div className="text-[11px] text-slate-400">{r.cost} XP{unlocked ? " · відкрито" : ""}</div></div>
+                {!unlocked && <button onClick={() => onUnlock(r.id)} disabled={!can} className="shrink-0 rounded-full bg-pink-500 px-3 py-1 text-xs font-bold text-white disabled:bg-slate-200 disabled:text-slate-400">Відкрити</button>}
+                <button onClick={() => onDelete(r.id)} className="shrink-0 rounded-full p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-3 rounded-2xl border border-dashed border-slate-200 p-3">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Напр. улюблений снек, серія серіалу…" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none" />
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-xs text-slate-400">Ціна:</span>
+            <input type="number" min={50} step={50} value={cost} onChange={(e) => setCost(Math.max(50, +e.target.value || 50))} className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm" />
+            <span className="text-xs text-slate-400">XP</span>
+            <button onClick={() => { if (label.trim()) { onAdd(label.trim(), cost); setLabel(""); } }} className="ml-auto rounded-full bg-slate-800 px-4 py-1.5 text-sm font-semibold text-white hover:bg-slate-900">Додати</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DayRecap({ tasks, doc, xpToday, xp, streak, onClose, onCarryOver, carryCount }) {
+  const doneTasks = tasks.filter((t) => doc.tasks?.[t.id]);
+  const lp = levelProgress(xp);
+  const totalMin = doneTasks.reduce((s, t) => s + (t.estMin || 0), 0);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-6 text-center shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="text-4xl">🌙</div>
+        <h3 className="mt-2 text-xl font-extrabold text-slate-900">Підсумок дня</h3>
+        <div className="my-4 grid grid-cols-3 gap-2">
+          <div className="rounded-2xl bg-pink-50 p-3"><div className="text-2xl font-extrabold text-pink-500">{doneTasks.length}</div><div className="text-[11px] text-slate-400">закрито</div></div>
+          <div className="rounded-2xl bg-fuchsia-50 p-3"><div className="text-2xl font-extrabold text-fuchsia-500">+{xpToday}</div><div className="text-[11px] text-slate-400">XP сьогодні</div></div>
+          <div className="rounded-2xl bg-orange-50 p-3"><div className="text-2xl font-extrabold text-orange-500">{streak.current}🔥</div><div className="text-[11px] text-slate-400">днів поспіль</div></div>
+        </div>
+        <div className="mb-1 text-sm font-semibold text-slate-600">Рівень {lp.lvl}{totalMin ? ` · ≈ ${fmtEst(totalMin)} роботи` : ""}</div>
+        {doneTasks.length > 0 ? (
+          <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-left">
+            <div className="mb-1.5 text-xs font-bold uppercase tracking-wide text-slate-400">Що зроблено</div>
+            <div className="space-y-1">{doneTasks.map((t) => <div key={t.id} className="flex items-center gap-2 text-sm text-slate-700"><span>{t.emoji || "✅"}</span><span className="truncate">{t.title}</span></div>)}</div>
+          </div>
+        ) : <p className="mt-3 text-sm text-slate-400">Сьогодні нічого не закрито — і це теж нормально. Завтра новий день 💛</p>}
+        {carryCount > 0 && <button onClick={onCarryOver} className="mt-4 w-full rounded-2xl bg-white py-3 text-sm font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50">Перенести {carryCount} незавершену(і) на завтра — без провини 💛</button>}
+        <button onClick={onClose} className="mt-2 w-full rounded-2xl bg-pink-500 py-3 font-bold text-white hover:bg-pink-600">Гарного вечора ✨</button>
+      </div>
+    </div>
+  );
+}
+
+function LevelUp({ level, onClose }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gradient-to-b from-fuchsia-500 to-pink-600 p-6 text-center text-white" onClick={onClose}>
+      <div>
+        <div className="text-6xl">🎉</div>
+        <div className="mt-3 text-sm font-bold uppercase tracking-widest text-white/80">Новий рівень</div>
+        <h2 className="text-5xl font-black">Рівень {level}</h2>
+        <p className="mt-2 text-white/80">Так тримати! Кожна закрита справа — це крок.</p>
+        <button onClick={onClose} className="mt-6 rounded-2xl bg-white px-8 py-3 font-bold text-pink-600">Далі</button>
+      </div>
+    </div>
+  );
+}
+
+function RoutineSection() {
+  const [loading, setLoading] = useState(true);
+  const [rview, setRview] = useState("today"); // today | stats
+  const [tasks, setTasks] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [completions, setCompletions] = useState({});
+  const [cindex, setCindex] = useState([]);
+  const [streakMeta, setStreakMeta] = useState({ best: 0, lastCelebrated: "" });
+  const [moods, setMoods] = useState({});
+  const [selDate, setSelDate] = useState(dateKey(Date.now()));
+  const [selCat, setSelCat] = useState("all");
+  const [taskEditor, setTaskEditor] = useState(null); // {task}
+  const [detailId, setDetailId] = useState(null);
+  const [moodOpen, setMoodOpen] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [celebration, setCelebration] = useState(null);
+  const [catManager, setCatManager] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [timer, setTimer] = useState(null); // {taskId, elapsed, target, running}
+  const [toast, setToast] = useState(null);
+  const [xp, setXp] = useState(0);
+  const [rewards, setRewards] = useState([]);
+  const [wheelOpen, setWheelOpen] = useState(false);
+  const [focusOpen, setFocusOpen] = useState(false);
+  const [rewardsOpen, setRewardsOpen] = useState(false);
+  const [recapOpen, setRecapOpen] = useState(false);
+  const [levelUp, setLevelUp] = useState(null);
+  const [energyFilter, setEnergyFilter] = useState(null); // null | "quick" | "low"
+  const [pomo, setPomo] = useState(null); // { task, mode: "2min" | "pomodoro" }
+  const [pomoSettings, setPomoSettings] = useState({ work: 25, break: 5 });
+  const timerRef = useRef(null);
+
+  const today = dateKey(Date.now());
+  const isToday = selDate === today;
+
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2000); }, []);
+
+  const reload = useCallback(async () => {
+    let d = await loadRoutineData();
+    if (d.tasks === null && d.categories === null && d.cindex.length === 0) {
+      const seed = seededRoutine();
+      await store.set(RKEYS.categories, seed.categories);
+      await store.set(RKEYS.tasks, seed.tasks);
+      await store.set(RKEYS.seeded, true);
+      d = await loadRoutineData();
+    }
+    // one-time: add the "shave" task on Tue + Fri
+    if (!(await store.get("routine:mig:shave", false))) {
+      const list = [...(d.tasks || []), { id: ruid("t"), emoji: "🪒", title: "Поголитися", note: "", time: null, color: "teal", categoryId: "", repeat: { type: "weekdays", days: [2, 5] }, goal: { type: "off" }, subtasks: [], created: Date.now(), date: dateKey(Date.now()) }];
+      await store.set(RKEYS.tasks, list); await store.set("routine:mig:shave", true);
+      d = { ...d, tasks: list };
+    }
+    setTasks(d.tasks || []); setCategories(d.categories || []); setCompletions(d.completions);
+    setCindex(d.cindex); setStreakMeta(d.streak || { best: 0, lastCelebrated: "" }); setMoods(d.moods || {});
+    setXp((d.xp && d.xp.xp) || 0); setRewards(d.rewards || []);
+    setPomoSettings(d.pomo || { work: 25, break: 5 });
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("routine-reset", onReset);
+    return () => window.removeEventListener("routine-reset", onReset);
+  }, [reload]);
+
+  /* ---- persistence ---- */
+  const saveTasks = useCallback(async (next) => { setTasks(next); await store.set(RKEYS.tasks, next); }, []);
+  const saveCategories = useCallback(async (next) => { setCategories(next); await store.set(RKEYS.categories, next); }, []);
+  const saveMoods = useCallback(async (next) => { setMoods(next); await store.set(RKEYS.mood, next); }, []);
+  const completionsRef = useRef(completions);
+  completionsRef.current = completions;
+  const persistCompletion = useCallback(async (date, doc) => {
+    setCompletions((m) => ({ ...m, [date]: doc }));
+    completionsRef.current = { ...completionsRef.current, [date]: doc };
+    await store.set(cKey(date), doc);
+    setCindex((prev) => { if (prev.includes(date)) return prev; const next = [...prev, date].sort(); store.set(RKEYS.cindex, next); return next; });
+  }, []);
+
+  // Award XP for any freshly-completed tasks + newly-satisfied challenges (idempotent, never removes).
+  const settleDoc = useCallback((doc, dateStr) => {
+    const occurring = tasks.filter((t) => taskOccursOn(t, dateStr));
+    doc.xpAwarded = { ...(doc.xpAwarded || {}) };
+    let delta = 0;
+    for (const t of occurring) {
+      if (doc.tasks?.[t.id] && doc.xpAwarded[t.id] == null) { const amt = xpForTask(t); doc.xpAwarded[t.id] = amt; delta += amt; }
+    }
+    const ctx = {
+      tasks: occurring,
+      doneCount: occurring.filter((t) => doc.tasks?.[t.id]).length,
+      isDone: (t) => !!doc.tasks?.[t.id],
+      actualMin: (t) => (doc.goal?.[t.id] != null ? Math.round(doc.goal[t.id] / 60) : null),
+    };
+    doc.ch = { dismissed: { ...(doc.ch?.dismissed || {}) }, awarded: { ...(doc.ch?.awarded || {}) } };
+    for (const c of pickChallenges(dateStr)) {
+      if (!doc.ch.awarded[c.id] && c.check(ctx)) { doc.ch.awarded[c.id] = c.xp; delta += c.xp; }
+    }
+    return delta;
+  }, [tasks]);
+
+  // Persist a completion doc AND grant any earned XP, with a level-up moment.
+  const commitDoc = useCallback(async (doc) => {
+    const delta = settleDoc(doc, selDate);
+    await persistCompletion(selDate, doc);
+    if (delta > 0) {
+      setXp((prev) => { const nx = prev + delta; store.set(RKEYS.xp, { xp: nx }); if (levelFromXp(nx) > levelFromXp(prev)) setLevelUp(levelFromXp(nx)); return nx; });
+      flash(`+${delta} XP ✨`);
+    }
+  }, [settleDoc, selDate, persistCompletion, flash]);
+
+  const maybeCelebrate = useCallback((nextCompletions) => {
+    if (selDate !== today) return;
+    const after = computeTaskStreak(nextCompletions, today).current;
+    const before = computeTaskStreak(completions, today).current;
+    if (before === 0 && after === 1 && streakMeta.lastCelebrated !== today) {
+      setCelebration({ streak: after });
+      const nextMeta = { ...streakMeta, lastCelebrated: today, best: Math.max(streakMeta.best || 0, after) };
+      setStreakMeta(nextMeta); store.set(RKEYS.streak, nextMeta);
+    }
+  }, [selDate, today, completions, streakMeta]);
+
+  const toggleTask = useCallback(async (taskId) => {
+    const doc = { ...(completionsRef.current[selDate] || {}) };
+    doc.tasks = { ...(doc.tasks || {}) };
+    const willComplete = !doc.tasks[taskId];
+    if (willComplete) doc.tasks[taskId] = true; else delete doc.tasks[taskId];
+    const nextCompletions = { ...completions, [selDate]: doc };
+    await commitDoc(doc);
+    if (willComplete) maybeCelebrate(nextCompletions);
+  }, [completions, selDate, commitDoc, maybeCelebrate]);
+
+  const toggleSubtask = useCallback(async (taskId, subId) => {
+    const task = tasks.find((t) => t.id === taskId);
+    const doc = { ...(completionsRef.current[selDate] || {}) };
+    doc.subtasks = { ...(doc.subtasks || {}) };
+    doc.subtasks[taskId] = { ...(doc.subtasks[taskId] || {}) };
+    if (doc.subtasks[taskId][subId]) delete doc.subtasks[taskId][subId]; else doc.subtasks[taskId][subId] = true;
+    // auto-complete parent when all subtasks done
+    doc.tasks = { ...(doc.tasks || {}) };
+    const total = (task?.subtasks || []).length;
+    const done = Object.keys(doc.subtasks[taskId]).length;
+    let willComplete = false;
+    if (total > 0 && done >= total) { if (!doc.tasks[taskId]) willComplete = true; doc.tasks[taskId] = true; }
+    else if (total > 0) delete doc.tasks[taskId];
+    const nextCompletions = { ...completions, [selDate]: doc };
+    await commitDoc(doc);
+    if (willComplete) maybeCelebrate(nextCompletions);
+  }, [tasks, completions, selDate, commitDoc, maybeCelebrate]);
+
+  const setMood = useCallback(async (score) => { await saveMoods({ ...moods, [today]: score }); setMoodOpen(false); flash("Mood saved"); }, [moods, today, saveMoods, flash]);
+
+  const saveTask = useCallback(async (meta, id) => {
+    if (id) await saveTasks(tasks.map((t) => (t.id === id ? { ...t, ...meta } : t)));
+    else await saveTasks([...tasks, { id: ruid("t"), created: Date.now(), ...meta }]);
+    flash(id ? "Task saved" : "Task added");
+  }, [tasks, saveTasks, flash]);
+  const deleteTask = useCallback(async (id) => { await saveTasks(tasks.filter((t) => t.id !== id)); flash("Task deleted"); }, [tasks, saveTasks, flash]);
+
+  const addCategory = useCallback(async (name, color) => { await saveCategories([...categories, { id: ruid("cat"), name: name.trim(), color }]); }, [categories, saveCategories]);
+  const renameCategory = useCallback(async (id, name) => { await saveCategories(categories.map((c) => (c.id === id ? { ...c, name } : c))); }, [categories, saveCategories]);
+  const recolorCategory = useCallback(async (id, color) => { await saveCategories(categories.map((c) => (c.id === id ? { ...c, color } : c))); }, [categories, saveCategories]);
+  const deleteCategory = useCallback(async (id) => {
+    await saveCategories(categories.filter((c) => c.id !== id));
+    await saveTasks(tasks.map((t) => (t.categoryId === id ? { ...t, categoryId: "" } : t)));
+    if (selCat === id) setSelCat("all");
+  }, [categories, tasks, saveCategories, saveTasks, selCat]);
+
+  /* ---- timed-goal timer ---- */
+  const stopTimer = useCallback(async (markProgress = true) => {
+    if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null; }
+    setTimer((cur) => {
+      if (cur && markProgress) {
+        const doc = { ...(completionsRef.current[selDate] || {}) };
+        doc.goal = { ...(doc.goal || {}) };
+        doc.goal[cur.taskId] = cur.elapsed;
+        doc.tasks = { ...(doc.tasks || {}) };
+        let willComplete = false;
+        if (cur.elapsed >= cur.target && !doc.tasks[cur.taskId]) { doc.tasks[cur.taskId] = true; willComplete = true; }
+        commitDoc(doc);
+        if (willComplete) maybeCelebrate({ ...completions, [selDate]: doc });
+      }
+      return null;
+    });
+  }, [completions, selDate, commitDoc, maybeCelebrate]);
+
+  const startTimer = useCallback((task) => {
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    const target = (task.goal?.minutes || 1) * 60;
+    const startElapsed = completions[selDate]?.goal?.[task.id] || 0;
+    setTimer({ taskId: task.id, elapsed: startElapsed, target, running: true });
+    timerRef.current = window.setInterval(() => {
+      setTimer((cur) => {
+        if (!cur) return cur;
+        const elapsed = cur.elapsed + 1;
+        if (elapsed >= cur.target) {
+          // finish
+          window.clearInterval(timerRef.current); timerRef.current = null;
+          const doc = { ...(completionsRef.current[selDate] || {}) };
+          doc.goal = { ...(doc.goal || {}), [cur.taskId]: elapsed };
+          doc.tasks = { ...(doc.tasks || {}), [cur.taskId]: true };
+          commitDoc(doc);
+          maybeCelebrate({ ...completions, [selDate]: doc });
+          flash("Ціль виконано! 🎉");
+          return null;
+        }
+        return { ...cur, elapsed };
+      });
+    }, 1000);
+  }, [completions, selDate, commitDoc, maybeCelebrate, flash]);
+
+  useEffect(() => () => { if (timerRef.current) window.clearInterval(timerRef.current); }, []);
+
+  /* ---- derived ---- */
+  const doc = completions[selDate] || {};
+  const streak = useMemo(() => computeTaskStreak(completions, today), [completions, today]);
+  const dayTasks = useMemo(() => {
+    const list = tasks.filter((t) => taskOccursOn(t, selDate) && (selCat === "all" || t.categoryId === selCat));
+    return list.slice().sort((a, b) => {
+      const at = a.time || "99:99", bt = b.time || "99:98"; // Anytime after timed
+      return at.localeCompare(bt);
+    });
+  }, [tasks, selDate, selCat]);
+  const dayDone = dayTasks.filter((t) => doc.tasks?.[t.id]).length;
+  const dayPct = dayTasks.length ? dayDone / dayTasks.length : 0;
+
+  /* ---- gamification derived ---- */
+  const occurringAll = useMemo(() => tasks.filter((t) => taskOccursOn(t, selDate)), [tasks, selDate]);
+  const shownTasks = useMemo(() => {
+    if (energyFilter === "quick") return dayTasks.filter((t) => t.estMin && t.estMin <= 5);
+    if (energyFilter === "low") return dayTasks.filter((t) => t.energy === "low");
+    return dayTasks;
+  }, [dayTasks, energyFilter]);
+  const notDone = dayTasks.filter((t) => !doc.tasks?.[t.id]);
+  const dayTotalMin = occurringAll.reduce((s, t) => s + (t.estMin || 0), 0);
+  const challenges = useMemo(() => pickChallenges(selDate), [selDate]);
+  const chCtx = { tasks: occurringAll, doneCount: occurringAll.filter((t) => doc.tasks?.[t.id]).length, isDone: (t) => !!doc.tasks?.[t.id], actualMin: (t) => (doc.goal?.[t.id] != null ? Math.round(doc.goal[t.id] / 60) : null) };
+  const xpToday = Object.values(doc.xpAwarded || {}).reduce((s, v) => s + v, 0) + Object.values(doc.ch?.awarded || {}).reduce((s, v) => s + v, 0);
+  const carryList = occurringAll.filter((t) => !doc.tasks?.[t.id] && (t.repeat?.type || "off") === "off");
+
+  const saveRewards = useCallback(async (next) => { setRewards(next); await store.set(RKEYS.rewards, next); }, []);
+  const addReward = (label, cost) => saveRewards([...rewards, { id: ruid("rw"), label, cost, unlockedAt: null }]);
+  const unlockReward = (id) => { saveRewards(rewards.map((r) => (r.id === id ? { ...r, unlockedAt: Date.now() } : r))); flash("Нагороду відкрито! 🎉"); };
+  const deleteReward = (id) => saveRewards(rewards.filter((r) => r.id !== id));
+  const dismissChallenge = useCallback(async (cid) => { const d = { ...(completionsRef.current[selDate] || {}) }; d.ch = { dismissed: { ...(d.ch?.dismissed || {}), [cid]: true }, awarded: { ...(d.ch?.awarded || {}) } }; await persistCompletion(selDate, d); }, [completions, selDate, persistCompletion]);
+  const carryOver = useCallback(async () => { const tomorrow = dateKey(Date.now() + 86400000); const ids = new Set(carryList.map((c) => c.id)); await saveTasks(tasks.map((t) => (ids.has(t.id) ? { ...t, date: tomorrow } : t))); setRecapOpen(false); flash("Перенесено на завтра 💛"); }, [tasks, carryList, saveTasks, flash]);
+  const focusDone = useCallback(async (task) => { const d = { ...(completionsRef.current[selDate] || {}) }; d.tasks = { ...(d.tasks || {}), [task.id]: true }; await commitDoc(d); maybeCelebrate({ ...completions, [selDate]: d }); }, [completions, selDate, commitDoc, maybeCelebrate]);
+  const logPomo = useCallback((taskId, secs) => { const d = { ...(completionsRef.current[selDate] || {}) }; d.pomo = { ...(d.pomo || {}) }; d.pomo[taskId] = (d.pomo[taskId] || 0) + secs; persistCompletion(selDate, d); flash(`Записано ${Math.round(secs / 60)} хв роботи 🍅`); }, [selDate, persistCompletion, flash]);
+  const savePomoSettings = useCallback((s) => { setPomoSettings(s); store.set(RKEYS.pomo, s); }, []);
+
+  if (loading) {
+    return <div className="flex flex-1 items-center justify-center text-pink-400"><div className="flex flex-col items-center gap-3"><Sun className="h-8 w-8 animate-pulse" /><span className="text-sm">Loading your routine…</span></div></div>;
+  }
+
+  const detailTask = detailId ? tasks.find((t) => t.id === detailId) : null;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-red-50 to-pink-50/40" style={{ fontFamily: "inherit" }}>
+      {rview === "today" && (
+        <div className="mx-auto w-full max-w-2xl px-4 pb-28 pt-5">
+          {/* header */}
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-extrabold text-slate-900">{isToday ? "Today" : prettyDate(selDate).split(",")[0]}</h1>
+              <p className="text-xs font-medium text-slate-400">{prettyDate(selDate)}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-red-100">
+                <span className="text-lg">🔥</span>
+                <span className="text-sm font-bold tabular-nums text-orange-500">{streak.current}</span>
+              </div>
+              <div className="relative">
+                <button onClick={() => setMenuOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-red-100 hover:text-slate-700"><Menu className="h-4 w-4" /></button>
+                {menuOpen && (<>
+                  <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 top-11 z-20 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                    <button onClick={() => { setRview("wellbeing"); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><Smile className="h-4 w-4 text-slate-400" /> Настрій і вдячність</button>
+                    <button onClick={() => { setRview("meds"); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><HeartPulse className="h-4 w-4 text-slate-400" /> Ліки й самопочуття</button>
+                    <button onClick={() => { setRview("stats"); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><BarChart3 className="h-4 w-4 text-slate-400" /> Stats & profile</button>
+                    <button onClick={() => { setCatManager(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><Tag className="h-4 w-4 text-slate-400" /> Manage categories</button>
+                  </div>
+                </>)}
+              </div>
+            </div>
+          </div>
+
+          {/* week strip */}
+          <WeekStrip selDate={selDate} today={today} completions={completions} tasks={tasks} onPick={setSelDate} />
+
+          {/* XP / level */}
+          <GamifyBar xp={xp} onRewards={() => setRewardsOpen(true)} />
+
+          {/* daily challenges */}
+          {isToday && <ChallengesCard challenges={challenges} ctx={chCtx} chDoc={doc.ch || {}} onDismiss={dismissChallenge} />}
+
+          {/* quick actions */}
+          {isToday && dayTasks.length > 0 && (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button onClick={() => notDone.length ? setWheelOpen(true) : flash("Усе на сьогодні закрито 🎉")} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-red-100 hover:ring-red-200">🎡 Колесо</button>
+              <button onClick={() => setFocusOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-red-100 hover:ring-red-200">🎯 Зараз</button>
+              <button onClick={() => setRecapOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-red-100 hover:ring-red-200">🌙 Підсумок</button>
+              {dayTotalMin > 0 && <span className="ml-auto text-xs font-semibold text-slate-400">Сьогодні ≈ {fmtEst(dayTotalMin)}</span>}
+            </div>
+          )}
+          {isToday && dayTasks.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[["quick", "⚡ Швидкі перемоги"], ["low", "🟢 Мало енергії"]].map(([k, label]) => (
+                <button key={k} onClick={() => setEnergyFilter((f) => (f === k ? null : k))} className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${energyFilter === k ? "bg-pink-500 text-white ring-pink-500" : "bg-white text-slate-500 ring-slate-200 hover:ring-pink-200"}`}>{label}</button>
+              ))}
+            </div>
+          )}
+
+          {/* mood banner */}
+          {isToday && !bannerDismissed && moods[today] == null && (
+            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/80 p-3 shadow-sm ring-1 ring-red-100">
+              <span className="text-2xl">🌸</span>
+              <div className="flex-1">
+                <div className="text-sm font-semibold text-slate-800">How is your day?</div>
+                <div className="text-xs text-slate-400">Take a second to check in.</div>
+              </div>
+              <button onClick={() => setMoodOpen(true)} className="rounded-full bg-pink-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-pink-600">Check in</button>
+              <button onClick={() => setBannerDismissed(true)} className="rounded-full p-1 text-slate-300 hover:text-slate-500"><X className="h-4 w-4" /></button>
+            </div>
+          )}
+          {isToday && moods[today] != null && (
+            <button onClick={() => setMoodOpen(true)} className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/80 p-3 text-left shadow-sm ring-1 ring-red-100">
+              <span className="text-2xl">{MOODS.find((m) => m.score === moods[today])?.emoji}</span>
+              <div className="flex-1"><div className="text-sm font-semibold text-slate-800">Feeling {MOODS.find((m) => m.score === moods[today])?.label.toLowerCase()}</div><div className="text-xs text-slate-400">Tap to change</div></div>
+            </button>
+          )}
+
+          {/* category chips */}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Chip active={selCat === "all"} onClick={() => setSelCat("all")}>All</Chip>
+            {categories.map((c) => (
+              <Chip key={c.id} active={selCat === c.id} color={c.color} onClick={() => setSelCat(c.id)}>{c.name}</Chip>
+            ))}
+            <button onClick={() => setCatManager(true)} className="grid h-7 w-7 place-items-center rounded-full bg-white text-slate-400 shadow-sm ring-1 ring-slate-200 hover:text-slate-600"><Plus className="h-4 w-4" /></button>
+          </div>
+
+          {/* progress line */}
+          {dayTasks.length > 0 && (
+            <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/70 p-3 ring-1 ring-red-100">
+              <ProgressRing pct={dayPct} size={44} stroke={5}><span className="text-[11px] font-bold text-pink-600">{Math.round(dayPct * 100)}%</span></ProgressRing>
+              <div className="text-sm font-medium text-slate-600">{dayDone} of {dayTasks.length} done{dayPct >= 1 ? " — all clear! 🎉" : ""}</div>
+            </div>
+          )}
+
+          {/* movement (block 5) */}
+          {isToday && <MovementCard flash={flash} />}
+
+          {/* task list */}
+          <div className="mt-4 space-y-2.5">
+            {dayTasks.length === 0 ? (
+              <div className="rounded-2xl bg-white/70 py-12 text-center text-sm text-slate-400">Nothing here yet — tap the + to add a task.</div>
+            ) : shownTasks.length === 0 ? (
+              <div className="rounded-2xl bg-white/70 py-10 text-center text-sm text-slate-400">Нема справ під цей фільтр. <button onClick={() => setEnergyFilter(null)} className="font-semibold text-pink-500 underline">Показати всі</button></div>
+            ) : shownTasks.map((t) => (
+              <TaskCard key={t.id} task={t} done={!!doc.tasks?.[t.id]} doc={doc}
+                timer={timer?.taskId === t.id ? timer : null}
+                onToggle={() => toggleTask(t.id)} onOpen={() => setDetailId(t.id)} onStartTimer={() => startTimer(t)} onStopTimer={() => stopTimer(true)} onTwoMin={() => setPomo({ task: t, mode: "2min" })} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {rview === "stats" && (
+        <RoutineStats tasks={tasks} completions={completions} moods={moods} streak={streak} best={Math.max(streakMeta.best || 0, streak.best)} onBack={() => setRview("today")} />
+      )}
+      {rview === "wellbeing" && <WellbeingView onExit={() => setRview("today")} moods={moods} onMood={setMood} />}
+      {rview === "meds" && <MedsView onExit={() => setRview("today")} />}
+
+      {/* floating add */}
+      {rview === "today" && (
+        <button onClick={() => setTaskEditor({ task: null })} className="fixed bottom-6 right-6 z-30 grid h-14 w-14 place-items-center rounded-full bg-pink-500 text-white shadow-lg shadow-pink-500/30 transition hover:bg-pink-600 hover:scale-105">
+          <Plus className="h-7 w-7" />
+        </button>
+      )}
+
+      {/* mood picker */}
+      {moodOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/30 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setMoodOpen(false)}>
+          <div className="w-full max-w-sm rounded-t-3xl bg-white p-6 text-center shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-1 text-lg font-bold text-slate-900">How is your day?</h3>
+            <p className="mb-4 text-sm text-slate-400">{prettyDate(today)}</p>
+            <div className="flex justify-between">
+              {MOODS.map((m) => (
+                <button key={m.score} onClick={() => setMood(m.score)} className={`flex flex-col items-center gap-1 rounded-2xl px-2 py-2 transition hover:scale-110 ${moods[today] === m.score ? "bg-pink-50 ring-2 ring-pink-300" : ""}`}>
+                  <span className="text-3xl">{m.emoji}</span><span className="text-[10px] font-medium text-slate-400">{m.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* task detail */}
+      {detailTask && (
+        <TaskDetail task={detailTask} doc={completions[selDate] || {}} category={categories.find((c) => c.id === detailTask.categoryId)}
+          timer={timer?.taskId === detailTask.id ? timer : null}
+          onClose={() => setDetailId(null)}
+          onEdit={() => { setTaskEditor({ task: detailTask }); setDetailId(null); }}
+          onDelete={() => { if (confirm("Delete this task?")) { deleteTask(detailTask.id); setDetailId(null); } }}
+          onToggle={() => toggleTask(detailTask.id)}
+          onToggleSub={(sid) => toggleSubtask(detailTask.id, sid)}
+          onStartTimer={() => startTimer(detailTask)} onStopTimer={() => stopTimer(true)}
+          onTwoMin={() => { setPomo({ task: detailTask, mode: "2min" }); setDetailId(null); }}
+          onPomodoro={() => { setPomo({ task: detailTask, mode: "pomodoro" }); setDetailId(null); }} />
+      )}
+
+      {pomo && <RoutinePomodoro task={pomo.task} mode={pomo.mode} settings={pomoSettings} onClose={() => setPomo(null)} onLog={logPomo} onSaveSettings={savePomoSettings} />}
+
+      {/* task editor */}
+      {taskEditor && (
+        <TaskEditor task={taskEditor.task} categories={categories} defaultDate={selDate}
+          onClose={() => setTaskEditor(null)}
+          onSave={async (meta) => { await saveTask(meta, taskEditor.task?.id); setTaskEditor(null); }} />
+      )}
+
+      {/* category manager */}
+      {catManager && (
+        <CategoryManager categories={categories} onClose={() => setCatManager(false)}
+          onAdd={addCategory} onRename={renameCategory} onRecolor={recolorCategory} onDelete={deleteCategory} />
+      )}
+
+      {/* streak born celebration */}
+      {celebration && <StreakBorn streak={celebration.streak} onClose={() => setCelebration(null)} />}
+
+      {/* gamification modals */}
+      {wheelOpen && <WheelSpin tasks={notDone} onClose={() => setWheelOpen(false)} onPick={(t) => { setWheelOpen(false); setDetailId(t.id); }} />}
+      {focusOpen && <FocusMode tasks={notDone} doc={doc} onClose={() => setFocusOpen(false)} onDone={focusDone} onSkip={() => {}} />}
+      {rewardsOpen && <RewardsPanel xp={xp} rewards={rewards} onClose={() => setRewardsOpen(false)} onAdd={addReward} onUnlock={unlockReward} onDelete={deleteReward} />}
+      {recapOpen && <DayRecap tasks={occurringAll} doc={doc} xpToday={xpToday} xp={xp} streak={streak} onClose={() => setRecapOpen(false)} onCarryOver={carryOver} carryCount={carryList.length} />}
+      {levelUp && <LevelUp level={levelUp} onClose={() => setLevelUp(null)} />}
+
+      {toast && <div className="fixed bottom-24 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+function Chip({ active, color, onClick, children }) {
+  const p = color ? getPastel(color) : null;
+  return (
+    <button onClick={onClick}
+      className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${active ? "text-white shadow-sm" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"}`}
+      style={active ? { backgroundColor: p ? p.dot : "#ec4899" } : {}}>
+      {children}
+    </button>
+  );
+}
+
+function WeekStrip({ selDate, today, completions, tasks, onPick }) {
+  const days = weekDaysOf(selDate);
+  return (
+    <div className="flex justify-between gap-1">
+      {days.map((ds) => {
+        const d = new Date(ds + "T00:00:00");
+        const sel = ds === selDate;
+        const isToday = ds === today;
+        const prog = dayTaskProgress(tasks, completions, ds);
+        return (
+          <button key={ds} onClick={() => onPick(ds)} className={`flex flex-1 flex-col items-center gap-1 rounded-2xl py-2 transition ${sel ? "bg-pink-500 text-white shadow-md shadow-pink-500/20" : "text-slate-500 hover:bg-white/60"}`}>
+            <span className={`text-[10px] font-semibold uppercase ${sel ? "text-white/80" : "text-slate-400"}`}>{WD_LETTER[d.getDay()]}</span>
+            <span className={`text-sm font-bold ${isToday && !sel ? "text-pink-500" : ""}`}>{d.getDate()}</span>
+            <span className={`h-1.5 w-1.5 rounded-full ${prog.total && prog.pct >= 1 ? (sel ? "bg-white" : "bg-green-400") : prog.done ? (sel ? "bg-white/60" : "bg-pink-300") : "bg-transparent"}`} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TaskCard({ task, done, doc, timer, onToggle, onOpen, onStartTimer, onStopTimer, onTwoMin }) {
+  const p = getPastel(task.color);
+  const timed = task.goal?.type === "timed";
+  const goalSecs = timer ? timer.elapsed : (doc.goal?.[task.id] || 0);
+  const subDone = task.subtasks?.length ? Object.keys(doc.subtasks?.[task.id] || {}).length : 0;
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return (
+    <div className="flex items-center gap-3 rounded-2xl p-3.5 shadow-sm transition" style={{ backgroundColor: p.card }}>
+      <button onClick={onOpen} className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white/70 text-2xl">
+        {task.image ? <img src={task.image} alt="" loading="lazy" className="h-full w-full object-cover" /> : (task.emoji || "⭐")}
+      </button>
+      <button onClick={onOpen} className="min-w-0 flex-1 text-left">
+        <div className="text-[11px] font-semibold" style={{ color: p.ink }}>{task.time || "Anytime"}</div>
+        <div className={`truncate font-bold ${done ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px]" style={{ color: p.ink }}>
+          {timed && <span className="font-semibold">Goal: {Math.floor(goalSecs / 60)}/{task.goal.minutes} min</span>}
+          {task.subtasks?.length > 0 && <span className="font-semibold">{subDone}/{task.subtasks.length} steps</span>}
+          {task.estMin > 0 && <span className="font-semibold opacity-80">≈ {fmtEst(task.estMin)}</span>}
+          {task.energy && ENERGY[task.energy] && <span className="opacity-80">{ENERGY[task.energy].emoji}</span>}
+          {task.reminder && <span className="inline-flex items-center gap-0.5 opacity-70"><Clock className="h-3 w-3" />{task.reminder}</span>}
+          {done && task.estMin > 0 && goalSecs > 0 && <span className="rounded-full bg-white/70 px-1.5 font-medium opacity-90">оцінка {task.estMin}хв · факт {Math.max(1, Math.round(goalSecs / 60))}хв</span>}
+        </div>
+      </button>
+      {!done && !timer && onTwoMin && <button onClick={onTwoMin} title="Почни з 2 хвилин" className="grid h-9 shrink-0 place-items-center rounded-full bg-white/80 px-2.5 text-[11px] font-bold" style={{ color: p.ink }}>▶ 2хв</button>}
+      {timed && !done && (
+        timer ? (
+          <button onClick={onStopTimer} className="grid h-9 w-16 shrink-0 place-items-center rounded-full bg-white/80 text-xs font-bold tabular-nums" style={{ color: p.ink }}>{fmt(timer.target - timer.elapsed)}</button>
+        ) : (
+          <button onClick={onStartTimer} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/80" style={{ color: p.ink }} title="Start timer"><Play className="h-4 w-4" /></button>
+        )
+      )}
+      <button onClick={onToggle} title="Done" className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 transition-all ${done ? "scale-100 border-transparent text-white" : "border-current bg-white/40"}`} style={done ? { backgroundColor: p.dot } : { color: p.dot }}>
+        <Check className={`h-4 w-4 transition-transform ${done ? "scale-100" : "scale-0"}`} />
+      </button>
+    </div>
+  );
+}
+
+function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onToggle, onToggleSub, onStartTimer, onStopTimer, onTwoMin, onPomodoro }) {
+  const p = getPastel(task.color);
+  const done = !!doc.tasks?.[task.id];
+  const timed = task.goal?.type === "timed";
+  const goalSecs = timer ? timer.elapsed : (doc.goal?.[task.id] || 0);
+  const pomoSecs = doc.pomo?.[task.id] || 0;
+  const noSteps = !(task.subtasks?.length > 0);
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-2xl text-2xl" style={{ backgroundColor: p.card }}>
+              {task.image ? <img src={task.image} alt="" className="h-full w-full object-cover" /> : (task.emoji || "⭐")}
+            </span>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">{task.title}</h2>
+              {category && <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-white" style={{ backgroundColor: getPastel(category.color).dot }}>{category.name}</span>}
+            </div>
+          </div>
+          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        </div>
+
+        {task.image && <img src={task.image} alt="" className="mb-3 max-h-80 w-full rounded-2xl object-contain bg-slate-50" />}
+        {task.note && <p className="mb-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">{task.note}</p>}
+        <p className="mb-3 text-sm text-slate-500">{repeatWords(task)}</p>
+
+        {/* ADHD low-barrier start */}
+        {!done && (
+          <div className="mb-3 rounded-2xl bg-red-50/70 p-3">
+            {task.twoMin && <div className="mb-2 text-sm text-slate-600"><span className="font-semibold text-slate-800">Версія на 2 хв:</span> {task.twoMin}</div>}
+            <div className="flex gap-2">
+              <button onClick={onTwoMin} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-pink-500 py-2.5 text-sm font-bold text-white hover:bg-pink-600">🌱 Почни з 2 хв</button>
+              <button onClick={onPomodoro} className="flex items-center justify-center gap-1.5 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-600 ring-1 ring-slate-200 hover:ring-pink-200">🍅 Помодоро</button>
+            </div>
+            <p className="mt-1.5 text-center text-[11px] text-slate-400">Не мусиш робити все — лише 2 хвилини. Далі саме піде.</p>
+          </div>
+        )}
+        {pomoSecs > 0 && <p className="mb-3 text-xs font-medium text-pink-500">🍅 відпрацьовано {Math.round(pomoSecs / 60)} хв</p>}
+
+        {noSteps && (
+          <button onClick={onEdit} className="mb-3 flex w-full items-center gap-2 rounded-2xl border border-dashed border-slate-300 px-3 py-2.5 text-left text-sm text-slate-500 hover:bg-slate-50">
+            <span className="text-lg">🧩</span><span className="flex-1">Велика чи розмита задача? Розбий на маленькі кроки — так легше почати.</span><ChevronRight className="h-4 w-4 text-slate-300" />
+          </button>
+        )}
+
+        {timed && (
+          <div className="mb-3 flex items-center gap-3 rounded-2xl p-3" style={{ backgroundColor: p.card }}>
+            <ProgressRing pct={Math.min(1, goalSecs / (task.goal.minutes * 60))} size={52} stroke={6} color={p.dot} track="#ffffff88">
+              <span className="text-[10px] font-bold" style={{ color: p.ink }}>{Math.floor(goalSecs / 60)}m</span>
+            </ProgressRing>
+            <div className="flex-1"><div className="font-bold text-slate-800">Goal: {Math.floor(goalSecs / 60)}/{task.goal.minutes} minutes</div><div className="text-xs text-slate-500">{timer ? `Running — ${fmt(timer.target - timer.elapsed)} left` : "Tap play to start a timer"}</div></div>
+            {!done && (timer
+              ? <button onClick={onStopTimer} className="rounded-full bg-white px-4 py-2 text-sm font-bold" style={{ color: p.ink }}>Pause</button>
+              : <button onClick={onStartTimer} className="grid h-11 w-11 place-items-center rounded-full text-white" style={{ backgroundColor: p.dot }}><Play className="h-5 w-5" /></button>)}
+          </div>
+        )}
+
+        {task.subtasks?.length > 0 && (
+          <div className="mb-3">
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Steps</div>
+            <div className="space-y-1">
+              {task.subtasks.map((s) => {
+                const sd = !!doc.subtasks?.[task.id]?.[s.id];
+                return (
+                  <button key={s.id} onClick={() => onToggleSub(s.id)} className="flex w-full items-center gap-2 rounded-lg px-1 py-1.5 text-left text-sm hover:bg-slate-50">
+                    {sd ? <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" /> : <Circle className="h-5 w-5 shrink-0 text-slate-300" />}
+                    <span className={sd ? "text-slate-400 line-through" : "text-slate-700"}>{s.text}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center gap-2">
+          <button onClick={onToggle} className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 font-bold text-white transition ${done ? "bg-slate-400" : ""}`} style={done ? {} : { backgroundColor: p.dot }}>
+            {done ? <><RotateCcw className="h-4 w-4" /> Mark not done</> : <><Check className="h-4 w-4" /> Mark done</>}
+          </button>
+          <button onClick={onEdit} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Edit Task</button>
+          <button onClick={onDelete} className="rounded-xl border border-red-200 px-3 py-2.5 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
+  const [emoji, setEmoji] = useState(task?.emoji || "⭐");
+  const [image, setImage] = useState(task?.image || "");
+  const [title, setTitle] = useState(task?.title || "");
+  const [note, setNote] = useState(task?.note || "");
+  const [color, setColor] = useState(task?.color || "pink");
+  const [date, setDate] = useState(task?.date || defaultDate);
+  const [repType, setRepType] = useState(task?.repeat?.type || "daily");
+  const [days, setDays] = useState(task?.repeat?.days || [1, 2, 3, 4, 5]);
+  const [times, setTimes] = useState(task?.repeat?.times || 3);
+  const [anytime, setAnytime] = useState(task ? !task.time : false);
+  const [time, setTime] = useState(task?.time || "09:00");
+  const [reminderOn, setReminderOn] = useState(!!task?.reminder);
+  const [reminder, setReminder] = useState(task?.reminder || "09:00");
+  const [categoryId, setCategoryId] = useState(task?.categoryId || "");
+  const [goalOn, setGoalOn] = useState(task?.goal?.type === "timed");
+  const [goalMin, setGoalMin] = useState(task?.goal?.minutes || 20);
+  const [subs, setSubs] = useState(task?.subtasks?.map((s) => ({ ...s })) || []);
+  const [subText, setSubText] = useState("");
+  const [estMin, setEstMin] = useState(task?.estMin || 0);
+  const [twoMin, setTwoMin] = useState(task?.twoMin || "");
+  const [energy, setEnergy] = useState(task?.energy || "");
+
+  const toggleDay = (d) => setDays((ds) => (ds.includes(d) ? ds.filter((x) => x !== d) : [...ds, d]));
+  const addSub = () => { if (subText.trim()) { setSubs((s) => [...s, { id: ruid("s"), text: subText.trim() }]); setSubText(""); } };
+
+  const save = () => {
+    if (!title.trim()) return;
+    const repeat = repType === "off" ? { type: "off" } : repType === "daily" ? { type: "daily" }
+      : repType === "weekdays" ? { type: "weekdays", days: days.slice().sort() } : { type: "times", times };
+    onSave({
+      emoji, image: image || "", title: title.trim().slice(0, 50), note: note.trim(), color, date,
+      repeat, time: anytime ? null : time, reminder: reminderOn ? reminder : null, categoryId,
+      goal: goalOn ? { type: "timed", minutes: goalMin } : { type: "off" },
+      subtasks: subs.filter((s) => s.text.trim()),
+      estMin: estMin || 0, energy: energy || null, twoMin: twoMin.trim(),
+    });
+  };
+
+  const p = getPastel(color);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[94vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">{task ? "Edit task" : "New task"}</h2>
+          <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        </div>
+
+        {/* emoji/photo + name */}
+        <div className="mb-3 flex items-center gap-3">
+          <span className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl text-3xl" style={{ backgroundColor: p.card }}>
+            {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : emoji}
+            {image && <button onClick={() => setImage("")} title="Remove photo" className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-slate-900/60 text-white"><X className="h-3 w-3" /></button>}
+          </span>
+          <div className="flex-1">
+            <input value={title} onChange={(e) => setTitle(e.target.value.slice(0, 50))} placeholder="Task name" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100" />
+            <div className="mt-0.5 text-right text-[10px] text-slate-400">{title.length}/50</div>
+          </div>
+        </div>
+
+        {/* emoji picker */}
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {TASK_EMOJIS.map((e) => <button key={e} onClick={() => setEmoji(e)} className={`grid h-8 w-8 place-items-center rounded-lg text-lg transition ${emoji === e ? "bg-pink-100 ring-2 ring-pink-300" : "hover:bg-slate-100"}`}>{e}</button>)}
+        </div>
+
+        {/* color */}
+        <div className="mb-3">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">Color</div>
+          <div className="flex gap-2">
+            {PASTELS.map((c) => <button key={c.id} onClick={() => setColor(c.id)} className={`h-8 w-8 rounded-full transition ${color === c.id ? "ring-2 ring-slate-900 ring-offset-2" : ""}`} style={{ backgroundColor: c.dot }} />)}
+          </div>
+        </div>
+
+        {/* note */}
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Note (optional)" className="mb-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100" />
+
+        {/* time estimate */}
+        <div className="mb-3">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">Скільки часу займе? (для планування дня)</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {EST_CHIPS.map((m) => <button key={m} onClick={() => setEstMin(estMin === m ? 0 : m)} className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${estMin === m ? "bg-pink-500 text-white ring-pink-500" : "bg-white text-slate-500 ring-slate-200 hover:ring-pink-200"}`}>{m} хв</button>)}
+            <input type="number" min={0} value={estMin && !EST_CHIPS.includes(estMin) ? estMin : ""} onChange={(e) => setEstMin(Math.max(0, +e.target.value || 0))} placeholder="інше" className="w-16 rounded-full border border-slate-300 px-2 py-1.5 text-center text-xs focus:border-pink-400 focus:outline-none" />
+          </div>
+        </div>
+
+        {/* energy / effort */}
+        <div className="mb-3">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">Скільки енергії треба?</div>
+          <div className="flex gap-2">
+            {Object.entries(ENERGY).map(([k, v]) => <button key={k} onClick={() => setEnergy(energy === k ? "" : k)} className={`flex-1 rounded-xl px-2 py-2 text-xs font-semibold ring-1 transition ${energy === k ? "bg-pink-50 text-slate-800 ring-pink-300" : "bg-white text-slate-500 ring-slate-200 hover:ring-pink-200"}`}>{v.emoji} {v.label}</button>)}
+          </div>
+        </div>
+
+        {/* 2-minute starter */}
+        <div className="mb-3">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">Версія на 2 хвилини <span className="text-slate-400">(крихітний перший крок, щоб зрушити)</span></div>
+          <input value={twoMin} onChange={(e) => setTwoMin(e.target.value)} placeholder="напр. «Прибрати кухню» → просто звільнити раковину" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none" />
+        </div>
+
+        <div className="space-y-3">
+          <Row label="Date">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />
+          </Row>
+
+          <div>
+            <div className="mb-1.5 text-xs font-medium text-slate-500">Repeat</div>
+            <div className="flex flex-wrap gap-1.5">
+              {[{ id: "off", l: "Off" }, { id: "daily", l: "Every day" }, { id: "weekdays", l: "Days" }, { id: "times", l: "X / week" }].map((o) => (
+                <button key={o.id} onClick={() => setRepType(o.id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${repType === o.id ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{o.l}</button>
+              ))}
+            </div>
+            {repType === "weekdays" && (
+              <div className="mt-2 flex gap-1.5">
+                {[1, 2, 3, 4, 5, 6, 0].map((i) => <button key={i} onClick={() => toggleDay(i)} className={`h-9 flex-1 rounded-lg text-xs font-semibold transition ${days.includes(i) ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500"}`}>{WD_LETTER[i]}</button>)}
+              </div>
+            )}
+            {repType === "times" && (
+              <div className="mt-2 flex items-center gap-2"><input type="number" min={1} max={7} value={times} onChange={(e) => setTimes(Math.max(1, Math.min(7, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">times per week</span></div>
+            )}
+          </div>
+
+          <Row label="Time">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setAnytime((v) => !v)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${anytime ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500"}`}>Anytime</button>
+              {!anytime && <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />}
+            </div>
+          </Row>
+
+          <Row label="Reminder">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setReminderOn((v) => !v)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${reminderOn ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500"}`}>{reminderOn ? "On" : "Off"}</button>
+              {reminderOn && <input type="time" value={reminder} onChange={(e) => setReminder(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />}
+            </div>
+          </Row>
+          {reminderOn && <p className="-mt-1 text-[11px] text-slate-400">Shown on the card as text. In-app only — an artifact can't send phone notifications.</p>}
+
+          <Row label="Category">
+            <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-pink-400 focus:outline-none">
+              <option value="">None</option>
+              {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Row>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-medium text-slate-500">Timed goal</div>
+              <button onClick={() => setGoalOn((v) => !v)} className={`rounded-lg px-3 py-1 text-sm font-medium ${goalOn ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500"}`}>{goalOn ? "On" : "Off"}</button>
+            </div>
+            {goalOn && <div className="mt-2 flex items-center gap-2"><input type="number" min={1} max={240} value={goalMin} onChange={(e) => setGoalMin(Math.max(1, Math.min(240, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">minutes — shows a timer on the card</span></div>}
+          </div>
+
+          <div>
+            <div className="mb-1.5 text-xs font-medium text-slate-500">Subtasks (a routine's steps)</div>
+            <div className="space-y-1.5">
+              {subs.map((s, i) => (
+                <div key={s.id} className="flex items-center gap-2">
+                  <input value={s.text} onChange={(e) => setSubs((arr) => arr.map((x) => (x.id === s.id ? { ...x, text: e.target.value } : x)))} className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm" placeholder={`Step ${i + 1}`} />
+                  <button onClick={() => setSubs((arr) => arr.filter((x) => x.id !== s.id))} className="rounded p-1 text-slate-300 hover:text-red-500"><X className="h-4 w-4" /></button>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <input value={subText} onChange={(e) => setSubText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addSub(); }} placeholder="Add a step…" className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+              <button onClick={addSub} className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-200"><Plus className="h-4 w-4" /></button>
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 -mx-5 -mb-5 mt-6 flex items-center justify-end gap-3 border-t border-slate-100 bg-white/95 px-5 py-3 backdrop-blur">
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Скасувати</button>
+          <button onClick={save} disabled={!title.trim()} className="inline-flex items-center gap-2 rounded-xl bg-pink-500 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-pink-600 disabled:bg-slate-300">
+            <Check className="h-4 w-4" /> {task ? "Зберегти" : "Додати"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, children }) {
+  return <div className="flex items-center justify-between gap-3"><span className="text-sm font-medium text-slate-600">{label}</span><div>{children}</div></div>;
+}
+
+function CategoryManager({ categories, onClose, onAdd, onRename, onRecolor, onDelete }) {
+  const [name, setName] = useState("");
+  const [color, setColor] = useState("pink");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">Categories</h2><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="space-y-2">
+          {categories.map((c) => (
+            <div key={c.id} className="flex items-center gap-2">
+              <span className="h-4 w-4 shrink-0 rounded-full" style={{ backgroundColor: getPastel(c.color).dot }} />
+              <input value={c.name} onChange={(e) => onRename(c.id, e.target.value)} className="flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />
+              <select value={c.color} onChange={(e) => onRecolor(c.id, e.target.value)} className="rounded-lg border border-slate-200 px-1 py-1.5 text-xs">
+                {PASTELS.map((p) => <option key={p.id} value={p.id}>{p.id}</option>)}
+              </select>
+              <button onClick={() => { if (confirm(`Delete “${c.name}”? Its tasks stay, just uncategorized.`)) onDelete(c.id); }} className="rounded p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">New category</div>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">{PASTELS.map((p) => <button key={p.id} onClick={() => setColor(p.id)} className={`h-6 w-6 rounded-full ${color === p.id ? "ring-2 ring-slate-900 ring-offset-1" : ""}`} style={{ backgroundColor: p.dot }} />)}</div>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) { onAdd(name, color); setName(""); } }} placeholder="Category name" className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none" />
+            <button onClick={() => { if (name.trim()) { onAdd(name, color); setName(""); } }} className="rounded-lg bg-pink-500 px-4 py-2 text-sm font-semibold text-white hover:bg-pink-600">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StreakBorn({ streak, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-3xl bg-white p-7 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mx-auto mb-2 text-6xl">🔥</div>
+        <div className="text-4xl font-extrabold tabular-nums text-orange-500">{streak}</div>
+        <h2 className="mt-2 text-xl font-bold text-slate-900">A streak is born!</h2>
+        <p className="mt-1 text-sm text-slate-500">Keep it up every day to help it grow.</p>
+        <div className="mx-auto mt-4 flex max-w-[220px] justify-between">
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => <span key={i} className={`h-2.5 w-2.5 rounded-full ${i === 0 ? "bg-orange-400" : "bg-orange-100"}`} />)}
+        </div>
+        <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-pink-500 py-3 font-bold text-white transition hover:bg-pink-600">I'm committed 💪</button>
+      </div>
+    </div>
+  );
+}
+
+function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
+  const [monthOffset, setMonthOffset] = useState(0);
+  const total = totalTasksCompleted(completions);
+  const now = new Date();
+  const view = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const year = view.getFullYear(), month = view.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startPad = new Date(year, month, 1).getDay();
+
+  const cells = [];
+  for (let i = 0; i < startPad; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = dateKey(new Date(year, month, d).getTime());
+    cells.push({ d, ds, prog: dayTaskProgress(tasks, completions, ds), mood: moods[ds] });
+  }
+  const heat = (pct, total) => !total ? "#f6e6ef" : pct >= 1 ? "#22c55e" : pct >= 0.6 ? "#86efac" : pct > 0 ? "#f9a8d4" : "#fbcfe0";
+
+  const week = Array.from({ length: 7 }, (_, i) => {
+    const ms = Date.now() - (6 - i) * DAY; const ds = dateKey(ms);
+    const p = dayTaskProgress(tasks, completions, ds);
+    return { label: WD_LETTER[new Date(ms).getDay()], pct: Math.round(p.pct * 100) };
+  });
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-5">
+      <div className="mb-4 flex items-center gap-2">
+        <button onClick={onBack} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-red-100"><ArrowLeft className="h-4 w-4" /></button>
+        <h1 className="text-2xl font-extrabold text-slate-900">Stats</h1>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">🔥</div><div className="text-2xl font-extrabold tabular-nums text-orange-500">{streak.current}</div><div className="text-[11px] text-slate-400">day streak</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">🏆</div><div className="text-2xl font-extrabold tabular-nums text-amber-500">{best}</div><div className="text-[11px] text-slate-400">best streak</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">✅</div><div className="text-2xl font-extrabold tabular-nums text-green-500">{total}</div><div className="text-[11px] text-slate-400">completed</div></div>
+      </div>
+
+      {/* completion calendar */}
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-red-100">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-700">{view.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
+          <div className="flex gap-1">
+            <button onClick={() => setMonthOffset((m) => m - 1)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" /></button>
+            <button onClick={() => setMonthOffset(0)} disabled={monthOffset === 0} className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40">Today</button>
+            <button onClick={() => setMonthOffset((m) => Math.min(0, m + 1))} disabled={monthOffset === 0} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-40"><ArrowRight className="h-4 w-4" /></button>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 gap-1.5">
+          {["M", "T", "W", "T", "F", "S", "S"].map((w, i) => <div key={i} className="pb-1 text-center text-[10px] font-semibold text-slate-400">{w}</div>)}
+          {/* re-pad for Mon-first */}
+          {(() => {
+            const monPad = (startPad + 6) % 7;
+            const out = [];
+            for (let i = 0; i < monPad; i++) out.push(<div key={"p" + i} />);
+            for (const c of cells.filter(Boolean)) out.push(
+              <div key={c.ds} className="aspect-square rounded-lg" style={{ backgroundColor: heat(c.prog.pct, c.prog.total) }} title={`${c.ds}: ${Math.round(c.prog.pct * 100)}%`}>
+                <div className="flex h-full items-center justify-center text-[10px] font-medium text-slate-600/70">{c.d}</div>
+              </div>
+            );
+            return out;
+          })()}
+        </div>
+      </div>
+
+      {/* mood calendar */}
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-red-100">
+        <h2 className="mb-3 text-sm font-bold text-slate-700">Mood check-ins</h2>
+        <div className="grid grid-cols-7 gap-1.5">
+          {(() => {
+            const monPad = (startPad + 6) % 7;
+            const out = [];
+            for (let i = 0; i < monPad; i++) out.push(<div key={"mp" + i} />);
+            for (const c of cells.filter(Boolean)) {
+              const m = MOODS.find((x) => x.score === c.mood);
+              out.push(<div key={c.ds} className="grid aspect-square place-items-center rounded-lg text-sm" style={{ backgroundColor: m ? m.color + "44" : "#f1f5f9" }} title={c.ds}>{m ? m.emoji : ""}</div>);
+            }
+            return out;
+          })()}
+        </div>
+      </div>
+
+      {/* weekly chart */}
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-red-100">
+        <h2 className="mb-4 text-sm font-bold text-slate-700">This week</h2>
+        <div className="h-48 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={week} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#fce7f3" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#c084a8" }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#c084a8" }} axisLine={false} tickLine={false} unit="%" />
+              <Tooltip cursor={{ fill: "#fdf2f8" }} contentStyle={{ borderRadius: 10, border: "1px solid #fbcfe0", fontSize: 12 }} formatter={(v) => [`${v}%`, "done"]} />
+              <Bar dataKey="pct" radius={[6, 6, 0, 0]}>{week.map((w, i) => <Cell key={i} fill={w.pct >= 100 ? "#22c55e" : "#ec4899"} />)}</Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Supportive daily plan for living with GAD ---------- */
+const CALM_PLAN_DAILY = [
+  { id: "morning", emoji: "🌅", title: "Ранкове заземлення", when: "щойно прокинулась", what: "2–3 хв дихання або вправа 5-4-3-2-1", why: "почати день у тілі, а не в потоці тривожних думок", go: "breath" },
+  { id: "move", emoji: "🚶‍♀️", title: "Рух", when: "будь-коли вдень", what: "20–30 хв ходьби (чи будь-який рух, що подобається)", why: "регулярний рух знижує базовий рівень тривоги — це доведено" },
+  { id: "worry", emoji: "⏳", title: "«Час для тривоги»", when: "пополудні, НЕ перед сном", what: "10–15 хв випиши всі «а що як», а тоді свідомо стоп", why: "збирає хвилювання в одне вікно, щоб воно не текло на весь день", go: "worry" },
+  { id: "journal", emoji: "📓", title: "Вечірній розбір", when: "перед сном", what: "розбери 1 тривожну думку (факти за/проти) + запиши 3 хороші речі дня", why: "тренує реалістичне мислення й перемикає фокус із загрози на ресурс", go: "thought" },
+  { id: "sleep", emoji: "😴", title: "Сон за розкладом", when: "щовечора", what: "лягай і вставай в той самий час; екран убік за 30 хв до сну", why: "недосип напряму підсилює тривогу — це фундамент усього" },
+];
+const CALM_PLAN_WEEKLY = [
+  { emoji: "🪜", text: "Одна сходинка драбини страху — маленький крок назустріч тому, чого уникаєш." },
+  { emoji: "🔎", text: "Тижневий огляд: що цього тижня заспокоювало, а що розганяло тривогу." },
+  { emoji: "☕", text: "Тримай кофеїн і алкоголь у межах — обидва фізично підсилюють тривожність." },
+  { emoji: "💬", text: "Хоча б одна тепла розмова чи зустріч — ізоляція годує тривогу." },
+];
+const CALM_PLAN_PILLARS = [
+  { emoji: "😴", label: "Сон", note: "7–9 год, стабільно" },
+  { emoji: "🏃‍♀️", label: "Рух", note: "щодня потроху" },
+  { emoji: "☕", label: "Кофеїн", note: "менше = спокійніше" },
+  { emoji: "💬", label: "Зв'язок", note: "люди, не ізоляція" },
+];
+
+function CalmPlan({ onExit, onGo }) {
+  const [done, setDone] = useState({});
+  const today = dateKey(Date.now());
+  useEffect(() => { let on = true; store.get(CKEYS.plan, {}).then((v) => { if (on) setDone(v || {}); }); return () => { on = false; }; }, []);
+  const todayMap = done[today] || {};
+  const toggle = (id) => setDone((prev) => {
+    const day = { ...(prev[today] || {}) };
+    if (day[id]) delete day[id]; else day[id] = true;
+    const next = { ...prev, [today]: day };
+    store.set(CKEYS.plan, next);
+    return next;
+  });
+  const doneCount = Object.values(todayMap).filter(Boolean).length;
+  let streak = 0;
+  for (let i = 0; i < 400; i++) {
+    const c = Object.values(done[dateKey(Date.now() - i * DAY)] || {}).filter(Boolean).length;
+    if (c >= 3) streak++; else if (i === 0) continue; else break;
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <CalmHeader title="Мій план спокою" onExit={onExit} />
+
+      <div className="rounded-3xl bg-gradient-to-br from-teal-400 to-sky-400 p-5 text-white shadow-sm">
+        <div className="text-sm font-semibold text-white/90">Підтримувальний план при тривозі (ГТР)</div>
+        <div className="mt-1 flex items-end gap-3">
+          <div><div className="text-3xl font-extrabold tabular-nums">{doneCount}/{CALM_PLAN_DAILY.length}</div><div className="text-xs text-white/80">сьогодні</div></div>
+          <div className="ml-auto text-right"><div className="text-3xl font-extrabold tabular-nums">🔥 {streak}</div><div className="text-xs text-white/80">днів поспіль</div></div>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-white/90">Не мусиш робити все ідеально. Навіть 3 пункти на день — це вже турбота про себе. Пропустила день — просто повернись завтра, без провини. 💛</p>
+      </div>
+
+      {/* daily */}
+      <div className="mt-4 mb-2 text-sm font-bold text-slate-700">Щодня</div>
+      <div className="space-y-2">
+        {CALM_PLAN_DAILY.map((it) => {
+          const on = !!todayMap[it.id];
+          return (
+            <div key={it.id} className={`rounded-2xl p-4 shadow-sm ring-1 transition ${on ? "bg-teal-50 ring-teal-200" : "bg-white ring-teal-50"}`}>
+              <div className="flex items-start gap-3">
+                <button onClick={() => toggle(it.id)} className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 transition ${on ? "border-transparent bg-teal-500 text-white" : "border-slate-300 hover:border-teal-400"}`}>{on && <Check className="h-4 w-4" />}</button>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2"><span>{it.emoji}</span><span className={`font-bold ${on ? "text-slate-500" : "text-slate-800"}`}>{it.title}</span><span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">{it.when}</span></div>
+                  <div className="mt-1 text-sm text-slate-600"><b className="font-semibold text-slate-700">Що робити:</b> {it.what}</div>
+                  <div className="mt-0.5 text-xs text-slate-400">чому: {it.why}</div>
+                  {it.go && onGo && <button onClick={() => onGo(it.go)} className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-teal-600 hover:text-teal-700">Відкрити вправу <ArrowRight className="h-3 w-3" /></button>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* weekly */}
+      <div className="mt-5 mb-2 text-sm font-bold text-slate-700">Щотижня</div>
+      <div className="space-y-2">
+        {CALM_PLAN_WEEKLY.map((it, i) => (
+          <div key={i} className="flex items-start gap-3 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-teal-50"><span className="text-lg">{it.emoji}</span><span className="text-sm text-slate-600">{it.text}</span></div>
+        ))}
+      </div>
+
+      {/* foundation pillars */}
+      <div className="mt-5 mb-2 text-sm font-bold text-slate-700">Фундамент (на ньому все тримається)</div>
+      <div className="grid grid-cols-4 gap-2">
+        {CALM_PLAN_PILLARS.map((p) => (
+          <div key={p.label} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-50"><div className="text-2xl">{p.emoji}</div><div className="mt-1 text-xs font-bold text-slate-700">{p.label}</div><div className="text-[10px] text-slate-400">{p.note}</div></div>
+        ))}
+      </div>
+
+      {/* how it helps */}
+      <div className="mt-5 rounded-2xl bg-teal-50/70 p-4 text-sm leading-relaxed text-teal-900 ring-1 ring-teal-100">
+        <div className="mb-1 font-bold">Чому саме так</div>
+        При ГТР мозок «застрягає» в режимі загрози. Цей план не «прибирає» тривогу силою, а щодня потроху вчить нервову систему, що можна бути в безпеці: рух і сон знижують фізичний фон, «час для тривоги» й журнал розбирають думки, а маленькі кроки назустріч страху показують мозку, що небезпеки нема. Працює саме <b>сталість</b>, а не інтенсивність.
+      </div>
+
+      {/* safety */}
+      <div className="mt-3 rounded-2xl bg-amber-50 p-4 text-xs leading-relaxed text-amber-900 ring-1 ring-amber-100">
+        <div className="mb-1 flex items-center gap-1.5 font-bold"><ShieldAlert className="h-4 w-4" /> Важливо</div>
+        <p>Це підтримка для щодення, а <b>не заміна</b> терапії. Найкраще працює <b>разом</b> із психотерапевтом (КПТ) і, якщо призначив лікар, медикаментами. Ліки не починай і не відміняй сама — тільки з лікарем.</p>
+        <p className="mt-2">Звернись по допомогу швидше, якщо: тривога зриває сон/їжу тижнями, накрила паніка, що не минає, або з'являються думки нашкодити собі. В Україні цілодобово й безкоштовно — <b>Lifeline Ukraine 7333</b> (лінія емоційної підтримки та запобігання суїцидам). Ти не сама. 💛</p>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* CALM — section UI                                                  */
+/* ================================================================== */
+function CalmSection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [cview, setCview] = useState("hub");
+  const [anxOpen, setAnxOpen] = useState(false);
+  const [fears, setFears] = useState([]);
+  const [thoughts, setThoughts] = useState([]);
+  const [decat, setDecat] = useState([]);
+  const [rules, setRules] = useState([]);
+  const [wdep, setWdep] = useState([]);
+  const [dibs, setDibs] = useState([]);
+  const [dtr, setDtr] = useState([]);
+  const [darrow, setDarrow] = useState([]);
+  const [activity, setActivity] = useState({});
+  const [rumination, setRumination] = useState([]);
+  const [abcde, setAbcde] = useState([]);
+  const [ifthen, setIfthen] = useState([]);
+  const [probsolve, setProbsolve] = useState([]);
+  const [facts, setFacts] = useState([]);
+  const [imagexp, setImagexp] = useState([]);
+  const [intero, setIntero] = useState([]);
+  const [eventvis, setEventvis] = useState([]);
+  const [pleasant, setPleasant] = useState({});
+  const [eval9, setEval9] = useState([]);
+  const [trigrec, setTrigrec] = useState([]);
+  const [behexp, setBehexp] = useState([]);
+  const [reframe, setReframe] = useState([]);
+  const [socratic, setSocratic] = useState([]);
+  const [abc, setAbc] = useState([]);
+  const [whatif, setWhatif] = useState([]);
+  const [coping, setCoping] = useState([]);
+  const [rabbit, setRabbit] = useState([]);
+  const [solvefull, setSolvefull] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [settings, setSettings] = useState({ name: "Спокій", tick: true, pattern: "box" });
+  const [toast, setToast] = useState(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+
+  const today = dateKey(Date.now());
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2200); }, []);
+
+  const reload = useCallback(async () => {
+    const d = await loadCalmData();
+    setFears(d.fears); setThoughts(d.thoughts); setDecat(d.decat || []); setRules(d.rules || []); setWdep(d.wdep || []); setDibs(d.dibs || []); setDtr(d.dtr || []); setDarrow(d.darrow || []); setActivity(d.activity || {}); setRumination(d.rumination || []); setAbcde(d.abcde || []); setIfthen(d.ifthen || []); setProbsolve(d.probsolve || []); setFacts(d.facts || []); setImagexp(d.imagexp || []); setIntero(d.intero || []); setEventvis(d.eventvis || []); setPleasant(d.pleasant || {}); setEval9(d.eval9 || []); setTrigrec(d.trigrec || []); setBehexp(d.behexp || []); setReframe(d.reframe || []); setSocratic(d.socratic || []); setAbc(d.abc || []); setWhatif(d.whatif || []); setCoping(d.coping || []); setRabbit(d.rabbit || []); setSolvefull(d.solvefull || []); setSessions(d.sessions);
+    setSettings({ tick: true, pattern: "box", ...d.settings });
+    setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => { setFears([]); setThoughts([]); setDecat([]); setRules([]); setWdep([]); setDibs([]); setDtr([]); setDarrow([]); setActivity({}); setRumination([]); setAbcde([]); setIfthen([]); setProbsolve([]); setFacts([]); setImagexp([]); setIntero([]); setEventvis([]); setPleasant({}); setEval9([]); setTrigrec([]); setBehexp([]); setReframe([]); setSocratic([]); setAbc([]); setWhatif([]); setCoping([]); setRabbit([]); setSolvefull([]); setSessions([]); setCview("hub"); };
+    window.addEventListener("calm-reset", onReset);
+    return () => window.removeEventListener("calm-reset", onReset);
+  }, [reload]);
+
+  const saveSettings = useCallback(async (patch) => {
+    const next = { ...settings, ...patch };
+    setSettings(next); await store.set(CKEYS.settings, next);
+  }, [settings]);
+
+  const log = useCallback(async (type, durationSec, meta = {}) => {
+    const s = { id: ruid("cs"), type, date: dateKey(Date.now()), durationSec: Math.round(durationSec || 0), meta, ts: Date.now() };
+    const next = [...sessions, s];
+    setSessions(next); await store.set(CKEYS.sessions, next);
+  }, [sessions]);
+
+  const saveFears = useCallback(async (next) => { setFears(next); await store.set(CKEYS.fears, next); }, []);
+  const saveThoughts = useCallback(async (next) => { setThoughts(next); await store.set(CKEYS.thoughts, next); }, []);
+  const saveDecat = useCallback(async (next) => { setDecat(next); await store.set(CKEYS.decat, next); }, []);
+  const saveRules = useCallback(async (next) => { setRules(next); await store.set(CKEYS.rules, next); }, []);
+  const saveWdep = useCallback(async (next) => { setWdep(next); await store.set(CKEYS.wdep, next); }, []);
+  const saveDibs = useCallback(async (next) => { setDibs(next); await store.set(CKEYS.dibs, next); }, []);
+  const saveDtr = useCallback(async (next) => { setDtr(next); await store.set(CKEYS.dtr, next); }, []);
+  const saveDarrow = useCallback(async (next) => { setDarrow(next); await store.set(CKEYS.darrow, next); }, []);
+  const saveActivity = useCallback(async (next) => { setActivity(next); await store.set(CKEYS.activity, next); }, []);
+  const saveRumination = useCallback(async (next) => { setRumination(next); await store.set(CKEYS.rumination, next); }, []);
+  const saveAbcde = useCallback(async (next) => { setAbcde(next); await store.set(CKEYS.abcde, next); }, []);
+  const saveIfthen = useCallback(async (next) => { setIfthen(next); await store.set(CKEYS.ifthen, next); }, []);
+  const saveProbsolve = useCallback(async (next) => { setProbsolve(next); await store.set(CKEYS.probsolve, next); }, []);
+  const saveFacts = useCallback(async (next) => { setFacts(next); await store.set(CKEYS.facts, next); }, []);
+  const saveImagexp = useCallback(async (next) => { setImagexp(next); await store.set(CKEYS.imagexp, next); }, []);
+  const saveIntero = useCallback(async (next) => { setIntero(next); await store.set(CKEYS.intero, next); }, []);
+  const saveEventvis = useCallback(async (next) => { setEventvis(next); await store.set(CKEYS.eventvis, next); }, []);
+  const savePleasant = useCallback(async (next) => { setPleasant(next); await store.set(CKEYS.pleasant, next); }, []);
+  const saveEval9 = useCallback(async (next) => { setEval9(next); await store.set(CKEYS.eval9, next); }, []);
+  const saveTrigrec = useCallback(async (next) => { setTrigrec(next); await store.set(CKEYS.trigrec, next); }, []);
+  const saveBehexp = useCallback(async (next) => { setBehexp(next); await store.set(CKEYS.behexp, next); }, []);
+  const saveReframe = useCallback(async (next) => { setReframe(next); await store.set(CKEYS.reframe, next); }, []);
+  const saveSocratic = useCallback(async (next) => { setSocratic(next); await store.set(CKEYS.socratic, next); }, []);
+  const saveAbc = useCallback(async (next) => { setAbc(next); await store.set(CKEYS.abc, next); }, []);
+  const saveWhatif = useCallback(async (next) => { setWhatif(next); await store.set(CKEYS.whatif, next); }, []);
+  const saveCoping = useCallback(async (next) => { setCoping(next); await store.set(CKEYS.coping, next); }, []);
+  const saveRabbit = useCallback(async (next) => { setRabbit(next); await store.set(CKEYS.rabbit, next); }, []);
+  const saveSolvefull = useCallback(async (next) => { setSolvefull(next); await store.set(CKEYS.solvefull, next); }, []);
+
+  const streak = useMemo(() => calmStreak(sessions, today), [sessions, today]);
+  const minutes = useMemo(() => calmMinutes(sessions), [sessions]);
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-teal-400"><div className="flex flex-col items-center gap-3"><Leaf className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  const back = () => setCview("hub");
+  const done = (type) => (sec, meta) => { log(type, sec, meta); flash("Молодець — записано 🌿"); back(); };
+
+  const PRACTICE_GROUPS = [
+    { title: "Тривожність · швидке заспокоєння", items: [
+      { id: "breath", label: "Дихання з підказкою", desc: "Анімоване дихання, щоб сповільнитися", icon: Wind, color: "#0ea5e9" },
+      { id: "pmr", label: "Розслаблення м'язів", desc: "Напруж і відпусти — від голови до п'ят", icon: HeartPulse, color: "#14b8a6" },
+      { id: "ground", label: "Заземлення 5-4-3-2-1", desc: "Повернися до своїх відчуттів", icon: Anchor, color: "#6366f1" },
+      { id: "worry", label: "Час для тривоги", desc: "Виділений час потривожитись — і відпустити", icon: Hourglass, color: "#f472b6" },
+      { id: "focus", label: "Таймер фокусу", desc: "Спокійний вдих, потім зосереджена робота", icon: Timer, color: "#10b981" },
+      { id: "coping", label: "Стрес і копінг", desc: "Тригери стресу → що контролюю → кращий копінг", icon: ShieldAlert, color: "#c2410c" },
+    ]},
+    { title: "Думки під контроль (КПТ)", items: [
+      { id: "thought", label: "Журнал думок", desc: "Розплутати тривожну думку", icon: NotebookPen, color: "#8b5cf6" },
+      { id: "dtr", label: "Протокол думок", desc: "Думка → викривлення → альтернатива → результат", icon: FileSpreadsheet, color: "#10b981" },
+      { id: "abcde", label: "ABCDE", desc: "Ситуація → думки → почуття → нові думки", icon: ArrowLeftRight, color: "#65a30d" },
+      { id: "decat", label: "Декатастрофізація", desc: "Найгірший vs найімовірніший сценарій", icon: Scale, color: "#f43f5e" },
+      { id: "dibs", label: "Спростування переконань", desc: "Кинути виклик думці, що мучить", icon: Lightbulb, color: "#f59e0b" },
+      { id: "darrow", label: "Стрілка вниз", desc: "Докопатися до глибинного переконання", icon: TrendingDown, color: "#7c3aed" },
+      { id: "rules", label: "Внутрішні правила", desc: "Знайти і переглянути правило, що мучить", icon: ListTree, color: "#d946ef" },
+      { id: "eval9", label: "Оцінка думок", desc: "Докази за і проти — і чесна альтернатива", icon: Layers3, color: "#475569" },
+      { id: "trigrec", label: "Запис тригера", desc: "Пауза → тригер → думки → альтернатива", icon: Zap, color: "#b45309" },
+      { id: "reframe", label: "Рефреймінг події", desc: "Подія сталася — переписати думки про неї", icon: Shuffle, color: "#9333ea" },
+      { id: "socratic", label: "Сократівські питання", desc: "Допит думки: факти, перспективи, ймовірність", icon: HelpCircle, color: "#0369a1" },
+      { id: "whatif", label: "Заміна «а що як»", desc: "З тривожних питань — у факти і план", icon: Repeat, color: "#15803d" },
+      { id: "rabbit", label: "Реверс кролячої нори", desc: "На кожен поганий сценарій — рівно ймовірний добрий", icon: ArrowLeftRight, color: "#e11d48" },
+    ]},
+    { title: "Депресія · енергія і дія", items: [
+      { id: "activity", label: "Розклад активності", desc: "Тижнева сітка справ — запланувала і зробила", icon: CalendarDays, color: "#0891b2" },
+      { id: "rumination", label: "Румінації", desc: "Впіймати думки, що крутяться по колу", icon: RefreshCw, color: "#db2777" },
+      { id: "wdep", label: "WDEP", desc: "Хочу → Роблю → Чи працює → План", icon: Compass, color: "#0284c7" },
+      { id: "pleasant", label: "Приємні активності", desc: "Щодня — одна радість або одне досягнення", icon: Smile, color: "#16a34a" },
+    ]},
+    { title: "Страхи та уникнення", items: [
+      { id: "fear", label: "Сходинки страху", desc: "Назустріч страху — по одній м'якій сходинці", icon: TrendingUp, color: "#f59e0b" },
+      { id: "ifthen", label: "Якщо–то", desc: "План на випадок «а раптом»: якщо X — то я зроблю Y", icon: ListChecks, color: "#4f46e5" },
+      { id: "imagexp", label: "Експозиція в уяві", desc: "Побути зі складним спогадом, поки він не ослабне", icon: Waves, color: "#0e7490" },
+      { id: "intero", label: "Тілесна експозиція", desc: "Подружитися з відчуттями паніки у безпечних умовах", icon: HeartPulse, color: "#be123c" },
+      { id: "eventvis", label: "Візуалізація події", desc: "Прожити подію в уяві — і зайти в неї впевненою", icon: Sparkles, color: "#ca8a04" },
+      { id: "behexp", label: "Поведінковий експеримент", desc: "Перевірити страшне переконання дією", icon: TestTube2, color: "#7e22ce" },
+    ]},
+    { title: "РДУГ · фокус і рішення", items: [
+      { id: "probsolve", label: "Розбір проблеми", desc: "Проблема → мета → що пробувала → результат", icon: Wrench, color: "#ea580c" },
+      { id: "facts", label: "Лише факти", desc: "Хто, що, де, коли, чому — без домислів", icon: Search, color: "#57534e" },
+      { id: "abc", label: "ABC-аналіз", desc: "Що передує поведінці — і що з неї виходить", icon: GripVertical, color: "#1d4ed8" },
+      { id: "solvefull", label: "Розв'язання проблеми", desc: "Повний цикл: ідеї → зважити → рішення → план → ревізія", icon: ListChecks, color: "#065f46" },
+    ]},
+    { title: "Залежність", items: [
+      { id: "recovery", label: "Відновлення", desc: "Тверезість, тригери й підтримка в мить пориву", icon: HandHeart, color: "#0d9488" },
+    ]},
+  ];
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-teal-50 via-sky-50/50 to-white">
+      {cview === "hub" && (
+        <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+          {/* header */}
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              {renaming ? (
+                <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)}
+                  onBlur={() => { onRename(nameDraft); setRenaming(false); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }}
+                  className="rounded-lg border border-teal-200 px-2 py-1 text-2xl font-extrabold text-slate-900 focus:outline-none" />
+              ) : (
+                <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="text-left" title="Натисни, щоб перейменувати">
+                  <h1 className="text-2xl font-extrabold text-slate-900">{name} <Pencil className="ml-1 inline h-4 w-4 text-slate-300" /></h1>
+                </button>
+              )}
+              <p className="text-sm text-slate-500">Зроби вдих. Усе гаразд.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-teal-100"><Leaf className="h-4 w-4 text-teal-500" /><span className="text-sm font-bold tabular-nums text-teal-600">{streak}</span></div>
+              <button onClick={() => setCview("stats")} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-teal-100 hover:text-slate-700"><BarChart3 className="h-4 w-4" /></button>
+            </div>
+          </div>
+
+          {/* front door — I'm anxious right now */}
+          <button onClick={() => setAnxOpen(true)} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-red-300 via-teal-300 to-sky-300 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:brightness-105">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/25"><HandHeart className="h-6 w-6" /></span>
+            <span className="flex-1"><span className="block text-lg font-bold">Мені зараз тривожно</span><span className="block text-sm text-white/90">Тисни — і я підкажу, з чого почати.</span></span>
+            <ArrowRight className="h-5 w-5" />
+          </button>
+
+          {/* before work */}
+          <button onClick={() => setCview("beforework")} className="mb-3 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-teal-400 to-sky-400 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:from-teal-500 hover:to-sky-500">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20"><Sparkle className="h-6 w-6" /></span>
+            <span className="flex-1"><span className="block text-lg font-bold">Перед роботою</span><span className="block text-sm text-white/90">2 хв дихання → заземлення. Одне натискання — і ти в ресурсі.</span></span>
+            <ArrowRight className="h-5 w-5" />
+          </button>
+
+          <button onClick={() => setCview("plan")} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-white p-4 text-left shadow-sm ring-1 ring-teal-100 transition hover:shadow-md hover:ring-teal-200">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-teal-100 text-teal-600"><ListChecks className="h-6 w-6" /></span>
+            <span className="flex-1"><span className="block text-lg font-bold text-slate-800">Мій план спокою</span><span className="block text-sm text-slate-400">Щоденні кроки при тривозі (ГТР) — що, скільки й коли робити.</span></span>
+            <ArrowRight className="h-5 w-5 text-slate-300" />
+          </button>
+
+          {/* stat strip */}
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-teal-600">{minutes}</div><div className="text-[11px] text-slate-400">хвилин</div></div>
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-sky-600">{sessions.length}</div><div className="text-[11px] text-slate-400">сесій</div></div>
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-teal-100"><div className="text-2xl font-extrabold tabular-nums text-emerald-500">{streak}</div><div className="text-[11px] text-slate-400">днів поспіль</div></div>
+          </div>
+
+          {/* practices */}
+          <div>
+            {PRACTICE_GROUPS.map((gr) => (
+              <div key={gr.title} className="mb-5">
+                <div className="mb-2 flex items-center gap-2 px-1">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">{gr.title}</span>
+                  <span className="h-px flex-1 bg-slate-200/80" />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {gr.items.map((p) => (
+                    <button key={p.id} onClick={() => setCview(p.id)} className="flex items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-teal-50 transition hover:shadow-md hover:ring-teal-200">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ backgroundColor: p.color }}><p.icon className="h-5 w-5" /></span>
+                      <span className="min-w-0"><span className="block font-bold text-slate-800">{p.label}</span><span className="block truncate text-xs text-slate-400">{p.desc}</span></span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">
+            Це інструменти самодопомоги, а не заміна професійної підтримки. Якщо тривога сильна або триває довго — розмова з фахівцем справді може допомогти. 💛
+          </p>
+        </div>
+      )}
+
+      {anxOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 backdrop-blur-sm sm:items-center" onClick={() => setAnxOpen(false)}>
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-1 flex items-center gap-2"><span className="grid h-9 w-9 place-items-center rounded-2xl bg-teal-50 text-teal-500"><HandHeart className="h-5 w-5" /></span><h2 className="text-lg font-extrabold text-slate-800">Я поруч. Що зараз потрібно?</h2></div>
+            <p className="mb-4 text-sm text-slate-500">Нема правильної відповіді. Обери те, що легше.</p>
+            <div className="space-y-2.5">
+              {[
+                { icon: Wind, color: "#0ea5e9", label: "Просто подихати", desc: "М'яке дихання, щоб сповільнитися", go: () => setCview("breath") },
+                { icon: Anchor, color: "#6366f1", label: "Повернутися в тіло", desc: "Заземлення 5-4-3-2-1", go: () => setCview("ground") },
+                { icon: HeartPulse, color: "#14b8a6", label: "Відпустити напругу", desc: "Розслаблення м'язів", go: () => setCview("pmr") },
+                { icon: NotebookPen, color: "#8b5cf6", label: "Виписати думку", desc: "Розплутати тривожну думку на папері", go: () => setCview("thought") },
+              ].map((o) => (
+                <button key={o.label} onClick={() => { setAnxOpen(false); o.go(); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 transition hover:ring-teal-200">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-white" style={{ backgroundColor: o.color }}><o.icon className="h-5 w-5" /></span>
+                  <span className="min-w-0 flex-1"><span className="block font-bold text-slate-800">{o.label}</span><span className="block text-xs text-slate-400">{o.desc}</span></span>
+                  <ArrowRight className="h-4 w-4 text-slate-300" />
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setAnxOpen(false)} className="mt-4 w-full rounded-2xl py-2.5 text-sm font-semibold text-slate-400 hover:text-slate-600">Просто побути тут</button>
+          </div>
+        </div>
+      )}
+
+      {cview === "breath" && <BreathPractice settings={settings} saveSettings={saveSettings} onExit={back} onDone={done("breath")} />}
+      {cview === "pmr" && <PMRPractice onExit={back} onDone={done("pmr")} />}
+      {cview === "ground" && <GroundingPractice onExit={back} onDone={done("ground")} />}
+      {cview === "thought" && <ThoughtRecord thoughts={thoughts} onExit={back} onSave={async (entry, sec) => { await saveThoughts([entry, ...thoughts]); log("thought", sec); flash("Збережено 🌿"); }} onDelete={async (id) => saveThoughts(thoughts.filter((t) => t.id !== id))} />}
+      {cview === "decat" && <DecatJournal entries={decat} onExit={back} onSave={async (entry, sec) => { await saveDecat([entry, ...decat]); log("decat", sec); flash("Записано — тривога розібрана 🌿"); }} onDelete={async (id) => saveDecat(decat.filter((t) => t.id !== id))} />}
+      {cview === "wdep" && <WdepJournal entries={wdep} onExit={back} onSave={async (entry, sec) => { await saveWdep([entry, ...wdep]); log("wdep", sec); flash("План записано 🌿"); }} onDelete={async (id) => saveWdep(wdep.filter((t) => t.id !== id))} />}
+      {cview === "rabbit" && <SimpleJournal spec={RABBIT_SPEC} entries={rabbit} onExit={back} onSave={async (entry, sec) => { await saveRabbit([entry, ...rabbit]); log("rabbit", sec); flash("Нору реверсовано 🐇"); }} onDelete={async (id) => saveRabbit(rabbit.filter((t) => t.id !== id))} />}
+      {cview === "solvefull" && <SimpleJournal spec={SOLVEFULL_SPEC} entries={solvefull} onExit={back} onSave={async (entry, sec) => { await saveSolvefull([entry, ...solvefull]); log("solvefull", sec); flash("Рішення ухвалено 🌿"); }} onDelete={async (id) => saveSolvefull(solvefull.filter((t) => t.id !== id))} />}
+      {cview === "coping" && <SimpleJournal spec={COPING_SPEC} entries={coping} onExit={back} onSave={async (entry, sec) => { await saveCoping([entry, ...coping]); log("coping", sec); flash("Копінг оновлено 🌿"); }} onDelete={async (id) => saveCoping(coping.filter((t) => t.id !== id))} />}
+      {cview === "trigrec" && <SimpleJournal spec={TRIGREC_SPEC} entries={trigrec} onExit={back} onSave={async (entry, sec) => { await saveTrigrec([entry, ...trigrec]); log("trigrec", sec); flash("Тригер розібрано 🌿"); }} onDelete={async (id) => saveTrigrec(trigrec.filter((t) => t.id !== id))} />}
+      {cview === "behexp" && <SimpleJournal spec={BEHEXP_SPEC} entries={behexp} onExit={back} onSave={async (entry, sec) => { await saveBehexp([entry, ...behexp]); log("behexp", sec); flash("Експеримент записано 🧪"); }} onDelete={async (id) => saveBehexp(behexp.filter((t) => t.id !== id))} />}
+      {cview === "reframe" && <SimpleJournal spec={REFRAME_SPEC} entries={reframe} onExit={back} onSave={async (entry, sec) => { await saveReframe([entry, ...reframe]); log("reframe", sec); flash("Подію переосмислено 🌿"); }} onDelete={async (id) => saveReframe(reframe.filter((t) => t.id !== id))} />}
+      {cview === "socratic" && <SimpleJournal spec={SOCRATIC_SPEC} entries={socratic} onExit={back} onSave={async (entry, sec) => { await saveSocratic([entry, ...socratic]); log("socratic", sec); flash("Думку допитано 🌿"); }} onDelete={async (id) => saveSocratic(socratic.filter((t) => t.id !== id))} />}
+      {cview === "abc" && <SimpleJournal spec={ABC_SPEC} entries={abc} onExit={back} onSave={async (entry, sec) => { await saveAbc([entry, ...abc]); log("abc", sec); flash("Поведінку розібрано 🌿"); }} onDelete={async (id) => saveAbc(abc.filter((t) => t.id !== id))} />}
+      {cview === "whatif" && <SimpleJournal spec={WHATIF_SPEC} entries={whatif} onExit={back} onSave={async (entry, sec) => { await saveWhatif([entry, ...whatif]); log("whatif", sec); flash("«А що як» приборкано 🌿"); }} onDelete={async (id) => saveWhatif(whatif.filter((t) => t.id !== id))} />}
+      {cview === "eval9" && <Eval9Journal entries={eval9} onExit={back} onSave={async (entry, sec) => { await saveEval9([entry, ...eval9], ); log("eval9", sec); flash("Думку зважено 🌿"); }} onDelete={async (id) => saveEval9(eval9.filter((t) => t.id !== id))} />}
+      {cview === "pleasant" && <PleasantWeekView week={pleasant} onExit={back} onSave={savePleasant} />}
+      {cview === "eventvis" && <EventVisJournal entries={eventvis} onExit={back} onSave={async (entry, sec) => { await saveEventvis([entry, ...eventvis]); log("eventvis", sec); flash("Репетицію зіграно — ти готова ✨"); }} onDelete={async (id) => saveEventvis(eventvis.filter((t) => t.id !== id))} />}
+      {cview === "intero" && <InteroExposureJournal entries={intero} onExit={back} onSave={async (entry, sec) => { await saveIntero([entry, ...intero]); log("intero", sec); flash("Сесію записано. Ти хоробра 🌿"); }} onDelete={async (id) => saveIntero(intero.filter((t) => t.id !== id))} />}
+      {cview === "imagexp" && <ImageryExposureJournal entries={imagexp} onExit={back} onSave={async (entry, sec) => { await saveImagexp([entry, ...imagexp]); log("imagexp", sec); flash("Сильна робота. Подбай зараз про себе 🌿"); }} onDelete={async (id) => saveImagexp(imagexp.filter((t) => t.id !== id))} />}
+      {cview === "facts" && <FactsJournal entries={facts} onExit={back} onSave={async (entry, sec) => { await saveFacts([entry, ...facts]); log("facts", sec); flash("Факти зібрано 🌿"); }} onDelete={async (id) => saveFacts(facts.filter((t) => t.id !== id))} />}
+      {cview === "probsolve" && <ProblemSolvingJournal entries={probsolve} onExit={back} onSave={async (entry, sec) => { await saveProbsolve([entry, ...probsolve]); log("probsolve", sec); flash("Проблему розібрано 🌿"); }} onDelete={async (id) => saveProbsolve(probsolve.filter((t) => t.id !== id))} />}
+      {cview === "ifthen" && <IfThenJournal entries={ifthen} onExit={back} onSave={async (entry, sec) => { await saveIfthen([entry, ...ifthen]); log("ifthen", sec); flash("План готовий — контроль у тебе 🌿"); }} onDelete={async (id) => saveIfthen(ifthen.filter((t) => t.id !== id))} />}
+      {cview === "abcde" && <AbcdeJournal entries={abcde} onExit={back} onSave={async (entry, sec) => { await saveAbcde([entry, ...abcde]); log("abcde", sec); flash("Думку переписано 🌿"); }} onDelete={async (id) => saveAbcde(abcde.filter((t) => t.id !== id))} />}
+      {cview === "rumination" && <RuminationJournal entries={rumination} onExit={back} onSave={async (entry, sec) => { await saveRumination([entry, ...rumination]); log("rumination", sec); flash("Румінацію впіймано 🌿"); }} onDelete={async (id) => saveRumination(rumination.filter((t) => t.id !== id))} />}
+      {cview === "activity" && <ActivityScheduleView grid={activity} onExit={back} onSave={saveActivity} flash={flash} />}
+      {cview === "darrow" && <DarrowJournal entries={darrow} onExit={back} onSave={async (entry, sec) => { await saveDarrow([entry, ...darrow]); log("darrow", sec); flash("Докопалась — сильна робота 🌿"); }} onDelete={async (id) => saveDarrow(darrow.filter((t) => t.id !== id))} />}
+      {cview === "dtr" && <DtrJournal entries={dtr} onExit={back} onSave={async (entry, sec) => { await saveDtr([entry, ...dtr], ); log("dtr", sec); flash("Думку розібрано 🌿"); }} onDelete={async (id) => saveDtr(dtr.filter((t) => t.id !== id))} />}
+      {cview === "dibs" && <DibsJournal entries={dibs} onExit={back} onSave={async (entry, sec) => { await saveDibs([entry, ...dibs]); log("dibs", sec); flash("Переконання розібрано 🌿"); }} onDelete={async (id) => saveDibs(dibs.filter((t) => t.id !== id))} />}
+      {cview === "rules" && <InnerRulesJournal entries={rules} onExit={back} onSave={async (entry, sec) => { await saveRules([entry, ...rules]); log("rules", sec); flash("Правило переглянуто 🌿"); }} onDelete={async (id) => saveRules(rules.filter((t) => t.id !== id))} />}
+      {cview === "fear" && <FearLadder fears={fears} onExit={back} onSave={saveFears} onLog={(sec, meta) => log("fear", sec, meta)} flash={flash} />}
+      {cview === "focus" && <FocusTimer settings={settings} onExit={back} onDone={done("focus")} />}
+      {cview === "worry" && <WorryTimer onExit={back} onDone={done("worry")} />}
+      {cview === "beforework" && <BeforeWork onExit={back} onDone={(sec) => { log("beforework", sec); flash("Готово — у тебе все вийде ✨"); back(); }} />}
+      {cview === "stats" && <CalmStats sessions={sessions} onExit={back} />}
+      {cview === "plan" && <CalmPlan onExit={back} onGo={(v) => setCview(v)} />}
+      {cview === "recovery" && <RecoveryView onExit={back} onQuickCalm={(v) => setCview(v)} />}
+
+      {toast && <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+
+/* ---------- Decatastrophizing journal ---------- */
+function DecatJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = {
+    worry: "", awfulBefore: "", happenedBefore: "", frequency: "",
+    worst: "", worstChance: "", worstOk: { week: false, month: false, year: false },
+    best: "", likely: "", likelyChance: "", likelyOk: { week: false, month: false, year: false },
+    cope: "", friend: "", reassure: "", after: "", awfulAfter: "",
+  };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const setOk = (k, part) => setF((p) => ({ ...p, [k]: { ...p[k], [part]: !p[k][part] } }));
+
+  const save = () => {
+    if (!f.worry.trim()) return;
+    onSave({ id: ruid("dc"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty);
+    startRef.current = Date.now();
+  };
+
+  const Field = ({ label, hint, k, rows = 2 }) => (
+    <div>
+      <div className="text-sm font-semibold text-slate-700">{label}</div>
+      {hint && <div className="mb-1 text-xs text-slate-400">{hint}</div>}
+      <textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={rows}
+        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-rose-300 focus:outline-none" />
+    </div>
+  );
+  const Pct = ({ label, k }) => (
+    <label className="flex items-center gap-2 text-sm text-slate-600">
+      <span>{label}</span>
+      <input type="number" min={0} max={100} value={f[k]} onChange={(e) => set(k, e.target.value)}
+        className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm tabular-nums focus:border-rose-300 focus:outline-none" />
+      <span className="text-slate-400">%</span>
+    </label>
+  );
+  const OkPills = ({ k }) => (
+    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+      <span className="text-slate-500">Якщо це станеться — чи буду я ок через:</span>
+      {[["week", "тиждень"], ["month", "місяць"], ["year", "рік"]].map(([part, lbl]) => (
+        <button key={part} onClick={() => setOk(k, part)}
+          className={`rounded-full px-2.5 py-1 font-semibold transition ${f[k][part] ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>
+          {lbl}{f[k][part] ? " ✓" : ""}
+        </button>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Декатастрофізація" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Коли тривога роздуває найгірший сценарій, цей журнал повертає масштаб: назви «катастрофу», чесно оціни ймовірності, розстав сценарії — і подивись на тривогу ще раз. Заповнюй те, що відгукується, — не обов'язково все.
+      </p>
+
+      <div className="space-y-5 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-rose-100">
+        <div className="space-y-3">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-rose-400">1 · Що за «катастрофа» турбує</div>
+          <Field k="worry" label="Що, як мені здається, станеться?" hint="Без «а якщо…» — сформулюй як точне передбачення: «Мене не візьмуть на цю роботу»." rows={2} />
+          <Pct label="Наскільки жахливим це зараз здається:" k="awfulBefore" />
+        </div>
+
+        <div className="space-y-3 border-t border-slate-100 pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-rose-400">2 · Наскільки це ймовірно</div>
+          <Field k="happenedBefore" label="Чи траплялося таке зі мною раніше?" hint="Якщо так — що було насправді і чим закінчилось?" />
+          <Field k="frequency" label="Як часто таке взагалі стається в реальному житті?" />
+        </div>
+
+        <div className="space-y-3 border-t border-slate-100 pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-rose-400">3 · Сценарії</div>
+          <Field k="worst" label="Найгірший сценарій" hint="Як виглядав би найгірший можливий результат?" />
+          <Pct label="Шанс, що станеться саме він:" k="worstChance" />
+          <OkPills k="worstOk" />
+          <Field k="best" label="Найкращий сценарій" hint="А як виглядав би найкращий можливий результат?" />
+          <Field k="likely" label="Найімовірніший сценарій" hint="Що станеться швидше за все — чесно, без драми і без рожевих окулярів?" />
+          <Pct label="Шанс, що станеться саме він:" k="likelyChance" />
+          <OkPills k="likelyOk" />
+        </div>
+
+        <div className="space-y-3 border-t border-slate-100 pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-rose-400">4 · Якщо найгірше таки станеться</div>
+          <Field k="cope" label="Як я впораюсь?" hint="Що я робила в схожих ситуаціях? Які техніки, стратегії, люди мені доступні?" />
+        </div>
+
+        <div className="space-y-3 border-t border-slate-100 pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-rose-400">5 · Підтримка</div>
+          <Field k="friend" label="Що сказала б мені про це близька подруга?" />
+          <Field k="reassure" label="Що мені найбільше хотілося б почути зараз?" hint="Які слова заспокоїли б? Запиши їх — це твоя фраза підтримки." />
+        </div>
+
+        <div className="space-y-3 border-t border-slate-100 pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-rose-400">6 · Погляд після розбору</div>
+          <Field k="after" label="Як я тепер почуваюся щодо цієї тривоги?" />
+          <Pct label="Наскільки жахливим це здається тепер:" k="awfulAfter" />
+        </div>
+
+        <button onClick={save} disabled={!f.worry.trim()}
+          className="w-full rounded-2xl bg-rose-500 py-3 font-bold text-white shadow-lg shadow-rose-500/25 transition hover:bg-rose-600 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої записи</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.worry}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  {e.awfulBefore !== "" && e.awfulAfter !== "" && (
+                    <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-600">{e.awfulBefore}% → {e.awfulAfter}%</span>
+                  )}
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["Чи траплялось раніше", e.happenedBefore], ["Як часто буває насправді", e.frequency], ["Найгірший сценарій", e.worst && `${e.worst}${e.worstChance !== "" ? ` (шанс ${e.worstChance}%)` : ""}`], ["Найкращий сценарій", e.best], ["Найімовірніший сценарій", e.likely && `${e.likely}${e.likelyChance !== "" ? ` (шанс ${e.likelyChance}%)` : ""}`], ["Як впораюсь", e.cope], ["Слова подруги", e.friend], ["Що хочу почути", e.reassure], ["Як почуваюся тепер", e.after]]
+                      .filter(([, v]) => v && String(v).trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Декатастрофізація — класична вправа когнітивної терапії. Вона доповнює, але не замінює роботу з фахівцем. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Inner rules journal ---------- */
+function InnerRulesJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { infraction: "", rule: "", origin: "", pros: "", cons: "", verdict: "", newRule: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const save = () => {
+    if (!f.rule.trim()) return;
+    onSave({ id: ruid("ir"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty);
+    startRef.current = Date.now();
+  };
+
+  const Area = ({ label, hint, k, rows = 2 }) => (
+    <div>
+      <div className="text-sm font-semibold text-slate-700">{label}</div>
+      {hint && <div className="mb-1 text-xs text-slate-400">{hint}</div>}
+      <textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={rows}
+        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-fuchsia-300 focus:outline-none" />
+    </div>
+  );
+
+  const VERDICTS = [["keep", "Лишити ✅"], ["trash", "Викинути 🗑️"], ["modify", "Переписати ✍️"]];
+  const verdictLabel = (v) => (VERDICTS.find(([id]) => id === v) || [])[1] || "";
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Внутрішні правила" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        У кожної з нас є негласні внутрішні правила, які керують поведінкою — часто непомітно. Деякі з них помічні, а деякі («помилилась — значить, погана») лише мучать. Цей журнал допомагає впіймати сумнівне правило, роздивитися його і вирішити його долю.
+      </p>
+
+      <div className="space-y-5 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-fuchsia-100">
+        <div className="space-y-3">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-fuchsia-400">1 · Порушення</div>
+          <Area k="infraction" label="Що я зробила такого, після чого мені стало погано?" hint="Опиши вчинок чи ситуацію, де ти ніби «зламала» власне правило." />
+        </div>
+        <div className="space-y-3 border-t border-slate-100 pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-fuchsia-400">2 · Правило</div>
+          <Area k="rule" label="Яке саме моє правило це порушило?" hint="Сформулюй його прямо: «Я завжди повинна…», «Не можна ніколи…»" />
+        </div>
+        <div className="space-y-3 border-t border-slate-100 pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-fuchsia-400">3 · Звідки воно</div>
+          <Area k="origin" label="Звідки це правило взялося? Чому я вважаю його правильним?" hint="Сім'я, школа, чийсь голос у голові? Що робить його «законом»?" />
+        </div>
+        <div className="space-y-3 border-t border-slate-100 pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-fuchsia-400">4 · Баланс</div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Area k="pros" label="Чим це правило мені ДОПОМАГАЄ?" rows={3} />
+            <Area k="cons" label="Чим це правило мені ШКОДИТЬ?" rows={3} />
+          </div>
+        </div>
+        <div className="space-y-3 border-t border-slate-100 pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-fuchsia-400">5 · Вирок</div>
+          <div className="flex flex-wrap gap-2">
+            {VERDICTS.map(([id, lbl]) => (
+              <button key={id} onClick={() => set("verdict", id)}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${f.verdict === id ? "bg-fuchsia-500 text-white shadow" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+          <Area k="newRule" label="Найкраща версія цього правила відтепер" hint="Як звучить правило, з яким я хочу жити далі? (М'якше, чесніше, з правом на помилку.)" />
+        </div>
+        <button onClick={save} disabled={!f.rule.trim()}
+          className="w-full rounded-2xl bg-fuchsia-500 py-3 font-bold text-white shadow-lg shadow-fuchsia-500/25 transition hover:bg-fuchsia-600 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої правила</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.rule}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  {e.verdict && <span className="shrink-0 rounded-full bg-fuchsia-50 px-2 py-0.5 text-xs font-bold text-fuchsia-600">{verdictLabel(e.verdict)}</span>}
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["Порушення", e.infraction], ["Звідки правило", e.origin], ["Допомагає", e.pros], ["Шкодить", e.cons], ["Нова версія правила", e.newRule]]
+                      .filter(([, v]) => v && String(v).trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Ревізія внутрішніх правил — вправа з когнітивної терапії. Хороші правила лишаються, шкідливі — переписуються. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- WDEP journal (reality-therapy style) ---------- */
+function WdepJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { want: "", doing: "", evaluate: "", plan: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!f.want.trim() && !f.plan.trim()) return;
+    onSave({ id: ruid("wd"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty); startRef.current = Date.now();
+  };
+  const SECTIONS = [
+    { k: "want", letter: "W", title: "Чого я хочу?", hints: ["Ким я хочу бути, що робити?", "Чого я хочу ЗАМІСТЬ цієї проблеми?", "Як виглядає моє «ідеально» в цій сфері?", "Чого для мене хочуть близькі?"] },
+    { k: "doing", letter: "D", title: "Що я роблю зараз?", hints: ["Що я реально роблю — діями, думками, емоціями?", "Що я вже пробувала?", "Які думки супроводжують цю поведінку і що я відчуваю?", "Як це впливає на мій стан?"] },
+    { k: "evaluate", letter: "E", title: "Чи це працює?", hints: ["Чи наближає мене те, що я роблю, до того, чого хочу?", "Чи задоволена я тим, як є?", "Чи досяжне те, чого я хочу?", "Чи допомагає мені такий погляд на речі?"] },
+    { k: "plan", letter: "P", title: "Який мій план?", hints: ["Що конкретно я зміню в діях чи думках? Коли, як часто, де?", "Чи план ясний і реалістичний?", "Як я зрозумію, що досягла?", "Чи можу почати вже зараз? Чи це в моїх руках?", "Наскільки я налаштована це зробити?"] },
+  ];
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="WDEP" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Чотири питання, що ведуть від «щось не так» до конкретного плану: W — чого я хочу, D — що я насправді роблю, E — чи воно працює, P — що змінюю. Відповідай письмово, спираючись на питання-підказки.
+      </p>
+      <div className="space-y-4">
+        {SECTIONS.map((s) => (
+          <div key={s.k} className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-sky-100">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sky-500 text-sm font-extrabold text-white">{s.letter}</span>
+              <span className="font-bold text-slate-800">{s.title}</span>
+            </div>
+            <ul className="mb-2 space-y-0.5 text-xs italic text-slate-400">
+              {s.hints.map((h) => <li key={h}>· {h}</li>)}
+            </ul>
+            <textarea value={f[s.k]} onChange={(e) => set(s.k, e.target.value)} rows={3}
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-sky-300 focus:outline-none" />
+          </div>
+        ))}
+        <button onClick={save} disabled={!f.want.trim() && !f.plan.trim()}
+          className="w-full rounded-2xl bg-sky-500 py-3 font-bold text-white shadow-lg shadow-sky-500/25 transition hover:bg-sky-600 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої записи</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.want || e.plan}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["W · Хочу", e.want], ["D · Роблю", e.doing], ["E · Чи працює", e.evaluate], ["P · План", e.plan]]
+                      .filter(([, v]) => v && String(v).trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">WDEP — рамка з терапії реальності: від бажання до плану, який у твоїх руках. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Disputing irrational beliefs journal ---------- */
+const DIBS_QUESTIONS = [
+  "Які факти ЗА це переконання, а які ПРОТИ? Чи є винятки?",
+  "Чи можу я раціонально його обґрунтувати — чи це звичка, а не факт?",
+  "Хто «автор» цієї думки і наскільки це надійне джерело?",
+  "Чи не мислю я «все або нічого»?",
+  "Чи не вживаю крайніх слів: «завжди», «ніколи», «повинна», «не можу»?",
+  "Чи не вириваю окремі випадки з контексту?",
+  "Чи не шукаю відмовок («я не боюсь — просто не хочу»)?",
+  "Чи не мислю я певностями замість імовірностей?",
+  "Чи не плутаю малу ймовірність із великою?",
+  "Чи не суджу за почуттями замість фактів?",
+  "Що НАСПРАВДІ найгірше станеться, якщо я не отримаю бажаного?",
+  "Що хорошого я можу зробити, навіть якщо не отримаю бажаного?",
+];
+function DibsJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { belief: "", slots: [{ q: "", a: "" }, { q: "", a: "" }, { q: "", a: "" }, { q: "", a: "" }] };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const setBelief = (v) => setF((p) => ({ ...p, belief: v }));
+  const setSlot = (i, k, v) => setF((p) => { const slots = p.slots.map((s, j) => (j === i ? { ...s, [k]: v } : s)); return { ...p, slots }; });
+  const save = () => {
+    if (!f.belief.trim()) return;
+    onSave({ id: ruid("db"), ts: Date.now(), date: dateKey(Date.now()), belief: f.belief, slots: f.slots.filter((s) => s.q || s.a.trim()) }, (Date.now() - startRef.current) / 1000);
+    setF({ belief: "", slots: [{ q: "", a: "" }, { q: "", a: "" }, { q: "", a: "" }, { q: "", a: "" }] });
+    startRef.current = Date.now();
+  };
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Спростування переконань" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Не подія робить нам боляче, а наше тлумачення події. Ірраціональні переконання («я варта лише стільки, скільки досягаю», «якщо він не любить — я ніщо», «все безнадійно») запускають і тримають важкі емоції. Впіймай своє переконання, обери до нього 4 питання-виклики і дай відповіді з нової перспективи.
+      </p>
+      <div className="space-y-5 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-amber-100">
+        <div>
+          <div className="text-sm font-semibold text-slate-700">Переконання, яке мене мучить</div>
+          <div className="mb-1 text-xs text-slate-400">Сформулюй прямо, як воно звучить у голові: «Якщо я помиляюсь — я погана», «Я мушу встигати все»…</div>
+          <textarea value={f.belief} onChange={(e) => setBelief(e.target.value)} rows={2}
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-300 focus:outline-none" />
+        </div>
+        {f.slots.map((s, i) => (
+          <div key={i} className="space-y-2 border-t border-slate-100 pt-4">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-amber-500">Виклик {i + 1}</div>
+            <select value={s.q} onChange={(e) => setSlot(i, "q", e.target.value)}
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 focus:border-amber-300 focus:outline-none">
+              <option value="">— обери питання-виклик —</option>
+              {DIBS_QUESTIONS.map((q) => <option key={q} value={q}>{q}</option>)}
+            </select>
+            <textarea value={s.a} onChange={(e) => setSlot(i, "a", e.target.value)} rows={2} placeholder="Відповідь із нової перспективи…"
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-300 focus:outline-none" />
+          </div>
+        ))}
+        <button onClick={save} disabled={!f.belief.trim()}
+          className="w-full rounded-2xl bg-amber-500 py-3 font-bold text-white shadow-lg shadow-amber-500/25 transition hover:bg-amber-600 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої розбори</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.belief}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {(e.slots || []).map((s, i) => (
+                      <div key={i}>
+                        {s.q && <div className="text-xs font-semibold text-amber-600">{s.q}</div>}
+                        {s.a && <div className="whitespace-pre-wrap">{s.a}</div>}
+                      </div>
+                    ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">«Людей турбують не речі, а їхні погляди на речі» — стара стоїчна ідея, на якій стоїть уся ця вправа. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Dysfunctional thought record ---------- */
+const DTR_DISTORTIONS = [
+  "Все-або-нічого", "Фільтрація (бачу лише погане)", "Катастрофізація", "Читання думок",
+  "Передбачення майбутнього", "Надузагальнення («завжди», «ніколи»)", "Персоналізація (все через мене)",
+  "Знецінення позитивного", "«Повинна/мушу»", "Навішування ярликів", "Емоційне обґрунтування («відчуваю — отже, так і є»)",
+];
+function DtrJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { situation: "", thought: "", beliefBefore: "", emotion: "", intensityBefore: "", distortion: "", alternative: "", beliefAfter: "", intensityAfter: "", outcome: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!f.thought.trim()) return;
+    onSave({ id: ruid("dt"), ts: Date.now(), date: dateKey(Date.now()), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty); startRef.current = Date.now();
+  };
+  const Area = ({ label, hint, k, rows = 2 }) => (
+    <div>
+      <div className="text-sm font-semibold text-slate-700">{label}</div>
+      {hint && <div className="mb-1 text-xs text-slate-400">{hint}</div>}
+      <textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={rows}
+        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-emerald-300 focus:outline-none" />
+    </div>
+  );
+  const Pct = ({ label, k }) => (
+    <label className="flex items-center gap-2 text-sm text-slate-600">
+      <span>{label}</span>
+      <input type="number" min={0} max={100} value={f[k]} onChange={(e) => set(k, e.target.value)}
+        className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm tabular-nums focus:border-emerald-300 focus:outline-none" />
+      <span className="text-slate-400">%</span>
+    </label>
+  );
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Протокол думок" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Розгорнутий запис автоматичної думки: коли і де вона виникла, у що ти повірила і наскільки, яке викривлення спрацювало — і яка альтернатива чесніша. Дата й час підставляться самі.
+      </p>
+      <div className="space-y-5 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100">
+        <Area k="situation" label="Ситуація" hint="Що відбувалося перед думкою і в момент її появи? Де ти була, що робила?" />
+        <div className="space-y-2 border-t border-slate-100 pt-4">
+          <Area k="thought" label="Автоматична думка" hint="Дослівно, як пролунала в голові." />
+          <Pct label="Наскільки я їй повірила:" k="beliefBefore" />
+        </div>
+        <div className="space-y-2 border-t border-slate-100 pt-4">
+          <Area k="emotion" label="Емоції" hint="Що ти відчула? (тривога, сором, злість, провина…)" rows={1} />
+          <Pct label="Інтенсивність:" k="intensityBefore" />
+        </div>
+        <div className="border-t border-slate-100 pt-4">
+          <div className="text-sm font-semibold text-slate-700">Когнітивне викривлення</div>
+          <select value={f.distortion} onChange={(e) => set("distortion", e.target.value)}
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 focus:border-emerald-300 focus:outline-none">
+            <option value="">— обери, яке спрацювало —</option>
+            {DTR_DISTORTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+        <div className="border-t border-slate-100 pt-4">
+          <Area k="alternative" label="Альтернативна думка" hint="Адаптивніша, чесніша версія. Чи є інше пояснення / інше рішення?" />
+        </div>
+        <div className="space-y-2 border-t border-slate-100 pt-4">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-emerald-500">Підсумок</div>
+          <Pct label="Віра в початкову думку тепер:" k="beliefAfter" />
+          <Pct label="Інтенсивність емоції тепер:" k="intensityAfter" />
+          <Area k="outcome" label="Що вийшло" hint="Чи вдалося відповісти думці? Що змінилось?" rows={1} />
+        </div>
+        <button onClick={save} disabled={!f.thought.trim()}
+          className="w-full rounded-2xl bg-emerald-500 py-3 font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:bg-emerald-600 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої записи</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.thought}</span>
+                    <span className="text-xs text-slate-400">{e.date} · {e.time}{e.distortion ? ` · ${e.distortion}` : ""}</span>
+                  </span>
+                  {e.beliefBefore !== "" && e.beliefAfter !== "" && (
+                    <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-600">{e.beliefBefore}% → {e.beliefAfter}%</span>
+                  )}
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["Ситуація", e.situation], ["Емоції", e.emotion && `${e.emotion}${e.intensityBefore !== "" ? ` (${e.intensityBefore}%${e.intensityAfter !== "" ? ` → ${e.intensityAfter}%` : ""})` : ""}`], ["Альтернативна думка", e.alternative], ["Що вийшло", e.outcome]]
+                      .filter(([, v]) => v && String(v).trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Що частіше ловиш автоматичні думки на гарячому, то слабшими вони стають. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Downward arrow journal ---------- */
+const DARROW_QUESTIONS = [
+  "Що ця думка означає?",
+  "Що ця думка означає ПРО МЕНЕ?",
+  "Що вона означає про інших людей?",
+  "Що вона означає про світ?",
+  "Якщо це правда — чому це мене так зачіпає?",
+  "Якщо це правда — що в цьому найгіршого?",
+  "Якщо це правда — що це означає для мого майбутнього?",
+];
+function DarrowJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { situation: "", thought: "", steps: [{ q: DARROW_QUESTIONS[0], a: "" }], core: "", next: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const setStep = (i, k, v) => setF((p) => ({ ...p, steps: p.steps.map((s, j) => (j === i ? { ...s, [k]: v } : s)) }));
+  const addStep = () => setF((p) => ({ ...p, steps: [...p.steps, { q: "", a: "" }] }));
+  const save = () => {
+    if (!f.thought.trim()) return;
+    onSave({ id: ruid("da"), ts: Date.now(), date: dateKey(Date.now()), situation: f.situation, thought: f.thought, steps: f.steps.filter((s) => s.a.trim()), core: f.core, next: f.next }, (Date.now() - startRef.current) / 1000);
+    setF({ situation: "", thought: "", steps: [{ q: DARROW_QUESTIONS[0], a: "" }], core: "", next: "" });
+    startRef.current = Date.now();
+  };
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Стрілка вниз" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Глибинні переконання — базові уявлення про себе, інших і світ. Вони закладаються рано, живуть поза увагою і звучать абсолютно («я мушу бути ідеальною»). Техніка «стрілки вниз» докопується до них ланцюжком питань: бери думку і питай «що це означає?» — крок за кроком униз, поки не впрешся в дно.
+      </p>
+      <div className="space-y-5 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-violet-100">
+        <div>
+          <div className="text-sm font-semibold text-slate-700">Крок 1 · Ситуація</div>
+          <div className="mb-1 text-xs text-slate-400">Що викликає важкі емоції? (Напр.: «завтра іспит — і мене трусить»)</div>
+          <textarea value={f.situation} onChange={(e) => set("situation", e.target.value)} rows={2}
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-violet-300 focus:outline-none" />
+        </div>
+        <div className="border-t border-slate-100 pt-4">
+          <div className="text-sm font-semibold text-slate-700">Крок 2 · Думка</div>
+          <div className="mb-1 text-xs text-slate-400">Яка думка супроводжує цю ситуацію? (Напр.: «я точно провалюсь»)</div>
+          <textarea value={f.thought} onChange={(e) => set("thought", e.target.value)} rows={2}
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-violet-300 focus:outline-none" />
+        </div>
+        {f.steps.map((s, i) => (
+          <div key={i} className="border-t border-slate-100 pt-4">
+            <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-violet-600"><span>⬇</span> Копаємо глибше</div>
+            <select value={s.q} onChange={(e) => setStep(i, "q", e.target.value)}
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 focus:border-violet-300 focus:outline-none">
+              <option value="">— обери питання —</option>
+              {DARROW_QUESTIONS.map((q) => <option key={q} value={q}>{q}</option>)}
+            </select>
+            <textarea value={s.a} onChange={(e) => setStep(i, "a", e.target.value)} rows={2} placeholder="Чесна відповідь…"
+              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-violet-300 focus:outline-none" />
+          </div>
+        ))}
+        <button onClick={addStep} className="w-full rounded-xl border-2 border-dashed border-violet-200 py-2 text-sm font-semibold text-violet-500 hover:bg-violet-50">⬇ Ще глибше</button>
+        <div className="border-t border-slate-100 pt-4">
+          <div className="text-sm font-semibold text-slate-700">Дно · Глибинне переконання</div>
+          <div className="mb-1 text-xs text-slate-400">До чого ти докопалась? Сформулюй його прямо («я недостатньо хороша», «мене можна любити лише за успіхи»…)</div>
+          <textarea value={f.core} onChange={(e) => set("core", e.target.value)} rows={2}
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-violet-300 focus:outline-none" />
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-slate-700">Що далі</div>
+          <div className="mb-1 text-xs text-slate-400">Знайдене переконання можна віднести у «Спростування переконань» або «Внутрішні правила» — запиши, що з ним зробиш.</div>
+          <textarea value={f.next} onChange={(e) => set("next", e.target.value)} rows={1}
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-violet-300 focus:outline-none" />
+        </div>
+        <button onClick={save} disabled={!f.thought.trim()}
+          className="w-full rounded-2xl bg-violet-600 py-3 font-bold text-white shadow-lg shadow-violet-500/25 transition hover:bg-violet-700 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої розкопки</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.core || e.thought}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["Ситуація", e.situation], ["Думка", e.thought]].filter(([, v]) => v && v.trim()).map(([lbl, v]) => (
+                      <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                    ))}
+                    {(e.steps || []).map((s, i) => (
+                      <div key={i}><span className="text-xs font-semibold text-violet-500">⬇ {s.q}</span><div className="whitespace-pre-wrap">{s.a}</div></div>
+                    ))}
+                    {e.core && <div><span className="text-xs font-semibold uppercase tracking-wide text-violet-600">Глибинне переконання</span><div className="whitespace-pre-wrap font-semibold">{e.core}</div></div>}
+                    {e.next && <div><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Що далі</span><div className="whitespace-pre-wrap">{e.next}</div></div>}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Названі переконання втрачають владу: з «просто реальності» вони стають думкою, яку можна переглянути. Якщо розкопки піднімають надто важке — це знак іти з цим до фахівця, і це нормально. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Weekly activity schedule (behavioural activation) ---------- */
+const ACT_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"];
+const ACT_HOURS = Array.from({ length: 18 }, (_, i) => 6 + i); // 6:00–23:00
+function ActivityScheduleView({ grid = {}, onExit, onSave, flash }) {
+  const [g, setG] = useState(grid);
+  const commit = (next) => { setG(next); onSave(next); };
+  const setCell = (key, patch) => {
+    const cur = g[key] || { t: "", d: false };
+    const nextCell = { ...cur, ...patch };
+    const next = { ...g };
+    if (!nextCell.t && !nextCell.d) delete next[key]; else next[key] = nextCell;
+    commit(next);
+  };
+  const doneCount = Object.values(g).filter((c) => c.d).length;
+  const planCount = Object.values(g).filter((c) => c.t).length;
+  const clearWeek = () => { if (planCount === 0 || window.confirm("Очистити всю сітку тижня?")) commit({}); };
+  return (
+    <div className="mx-auto w-full max-w-5xl px-4 pb-20 pt-6">
+      <CalmHeader title="Розклад активності" onExit={onExit} right={<span className="text-sm font-semibold tabular-nums text-slate-400">{doneCount}/{planCount} ✓</span>} />
+      <p className="mb-4 max-w-2xl text-sm leading-relaxed text-slate-500">
+        Коли сил і настрою мало, план у сітці робить пів справи: запиши у клітинки навіть базове (душ, обід, прогулянка) і відмічай виконане галочкою. Так видно і план, і реальний рівень активності тиждень за тижнем — а «уникані» справи можна повертати поступово, по одній клітинці.
+      </p>
+      <div className="mb-3 flex items-center justify-end gap-2">
+        <button onClick={clearWeek} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50">Новий тиждень (очистити)</button>
+      </div>
+      <div className="overflow-x-auto rounded-2xl bg-white p-2 shadow-sm ring-1 ring-cyan-100">
+        <table className="w-full min-w-[760px] border-separate" style={{ borderSpacing: "3px" }}>
+          <thead>
+            <tr>
+              <th className="w-14"></th>
+              {ACT_DAYS.map((d) => <th key={d} className="rounded-lg bg-slate-700 px-2 py-1.5 text-xs font-bold text-white">{d}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {ACT_HOURS.map((h) => (
+              <tr key={h}>
+                <td className="rounded-lg bg-slate-700 px-1 py-1 text-center text-[10px] font-bold text-white">{h}:00</td>
+                {ACT_DAYS.map((_, di) => {
+                  const key = `${di}-${h}`;
+                  const cell = g[key] || { t: "", d: false };
+                  return (
+                    <td key={key} className={`rounded-lg p-0 ${cell.d ? "bg-emerald-50 ring-1 ring-emerald-200" : "bg-slate-50"}`}>
+                      <div className="flex items-center">
+                        <input value={cell.t} onChange={(e) => setCell(key, { t: e.target.value })} placeholder=""
+                          className={`w-full min-w-0 bg-transparent px-1.5 py-1.5 text-[11px] focus:outline-none ${cell.d ? "text-emerald-700 line-through" : "text-slate-700"}`} />
+                        {cell.t && (
+                          <button onClick={() => setCell(key, { d: !cell.d })} title="Виконано"
+                            className={`mr-1 grid h-4 w-4 shrink-0 place-items-center rounded ${cell.d ? "bg-emerald-500 text-white" : "bg-white text-slate-300 ring-1 ring-slate-200"}`}>
+                            <Check className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-4 text-center text-xs leading-relaxed text-slate-400">Ідеї для клітинок: базовий догляд за собою, їжа, рух, робота блоками, відпочинок, людина, з якою поговорити, і одна «уникана» справа на тиждень. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Rumination recognition journal ---------- */
+function RuminationJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { thought: "", timeOfDay: "", place: "", activity: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!f.thought.trim()) return;
+    onSave({ id: ruid("rm"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty); startRef.current = Date.now();
+  };
+  const Area = ({ label, hint, k, rows = 2 }) => (
+    <div>
+      <div className="text-sm font-semibold text-slate-700">{label}</div>
+      {hint && <div className="mb-1 text-xs text-slate-400">{hint}</div>}
+      <textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={rows}
+        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-pink-300 focus:outline-none" />
+    </div>
+  );
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Румінації" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Румінація — це коли та сама важка думка крутиться по колу: про минуле, яке не змінити, чи про питання без відповіді («чому я завжди…», «якби ж я тоді…»). Вона з'їдає робочу пам'ять і увагу. Перший крок — помітити СВОЇ патерни: яка думка, коли, де і за яким заняттям приходить. Побачиш патерн — зможеш вставити в це місце техніку (перемикання, дихання, час для тривоги).
+      </p>
+      <div className="space-y-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-pink-100">
+        <Area k="thought" label="Настирлива негативна думка" hint="Дослівно: «Якби я тоді не сказала того — ми б не посварились»…" />
+        <Area k="timeOfDay" label="О якій порі дня вона зазвичай крутиться?" hint="Напр.: пізно ввечері, зранку ще в ліжку…" rows={1} />
+        <Area k="place" label="Де ти буваєш, коли вона приходить?" hint="Напр.: у ліжку, в транспорті, в душі…" rows={1} />
+        <Area k="activity" label="Що ти в цей час робиш?" hint="Напр.: намагаюсь заснути, гортаю стрічку, мию посуд…" rows={1} />
+        <button onClick={save} disabled={!f.thought.trim()}
+          className="w-full rounded-2xl bg-pink-500 py-3 font-bold text-white shadow-lg shadow-pink-500/25 transition hover:bg-pink-600 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої патерни</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.thought}</span>
+                    <span className="text-xs text-slate-400">{e.date}{e.timeOfDay ? ` · ${e.timeOfDay}` : ""}{e.place ? ` · ${e.place}` : ""}</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["Пора дня", e.timeOfDay], ["Місце", e.place], ["Заняття", e.activity]]
+                      .filter(([, v]) => v && v.trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Знайшла патерн (напр., «ввечері в ліжку зі стрічкою») — постав туди заслін: техніку перемикання, дихання або «Час для тривоги». 💛</p>
+    </div>
+  );
+}
+
+/* ---------- ABCDE thought-challenge journal ---------- */
+function AbcdeJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { a: "", c: "", b: "", d: "", e: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!f.b.trim() && !f.a.trim()) return;
+    onSave({ id: ruid("ab"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty); startRef.current = Date.now();
+  };
+  const Area = ({ letter, label, hint, k, rows = 2 }) => (
+    <div className="border-t border-slate-100 pt-4 first:border-0 first:pt-0">
+      <div className="mb-1 flex items-center gap-2">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-lime-600 text-xs font-extrabold text-white">{letter}</span>
+        <span className="text-sm font-semibold text-slate-700">{label}</span>
+      </div>
+      {hint && <div className="mb-1 text-xs text-slate-400">{hint}</div>}
+      <textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={rows}
+        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-lime-400 focus:outline-none" />
+    </div>
+  );
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="ABCDE" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        П'ять кроків, щоб замінити недобру думку на помічну: A — що сталося, C — що я відчула і зробила, B — які думки за цим стояли, D — чесніша версія цих думок, E — як мені з нею. Порядок заповнення саме такий: A → C → B → D → E. Будь ласкавою до себе — особливо якщо тема важка: відповіді приходять не одразу, і це нормально.
+      </p>
+      <div className="space-y-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-lime-100">
+        <Area letter="A" k="a" label="Ситуація або тригер" hint="Що сталося? Що запустило важкий стан?" />
+        <Area letter="C" k="c" label="Почуття і поведінка" hint="Що я відчула? Що зробила (чи не зробила) під впливом цього?" />
+        <Area letter="B" k="b" label="Думки за цим" hint="Які думки й переконання стоять за цими почуттями? Перевір їх: які докази? яка альтернатива? що б я порадила подрузі?" />
+        <Area letter="D" k="d" label="Помічні думки" hint="Перепиши думки з урахуванням перевірки — чесніше і добріше до себе." />
+        <Area letter="E" k="e" label="Нові почуття і дії" hint="Як мені з новими думками? Що я тепер можу зробити інакше?" />
+        <button onClick={save} disabled={!f.b.trim() && !f.a.trim()}
+          className="w-full rounded-2xl bg-lime-600 py-3 font-bold text-white shadow-lg shadow-lime-600/25 transition hover:bg-lime-700 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої записи</div>
+          <div className="space-y-2">
+            {entries.map((en) => (
+              <div key={en.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === en.id ? null : en.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{en.b || en.a}</span>
+                    <span className="text-xs text-slate-400">{en.date}</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === en.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === en.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["A · Ситуація", en.a], ["C · Почуття/поведінка", en.c], ["B · Думки", en.b], ["D · Помічні думки", en.d], ["E · Нові почуття/дії", en.e]]
+                      .filter(([, v]) => v && v.trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(en.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Зміни потребують часу і повторень — не квап себе. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- If-then planning journal ---------- */
+function IfThenJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { scenario: "", pairs: [{ cond: "", act: "" }, { cond: "", act: "" }] };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const setPair = (i, k, v) => setF((p) => ({ ...p, pairs: p.pairs.map((s, j) => (j === i ? { ...s, [k]: v } : s)) }));
+  const addPair = () => setF((p) => ({ ...p, pairs: [...p.pairs, { cond: "", act: "" }] }));
+  const save = () => {
+    if (!f.scenario.trim()) return;
+    onSave({ id: ruid("it"), ts: Date.now(), date: dateKey(Date.now()), scenario: f.scenario, pairs: f.pairs.filter((s) => s.cond.trim() || s.act.trim()) }, (Date.now() - startRef.current) / 1000);
+    setF({ scenario: "", pairs: [{ cond: "", act: "" }, { cond: "", act: "" }] });
+    startRef.current = Date.now();
+  };
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Якщо–то" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        План «якщо–то» повертає відчуття контролю перед складною ситуацією: розклади її на можливі «а раптом X» і до кожного заздалегідь пропиши «то я зроблю Y». Продумавши відповіді, ти буквально бачиш, що впораєшся, — і тривога перед подією меншає. На кожен сценарій — окремий запис.
+      </p>
+      <div className="space-y-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-indigo-100">
+        <div>
+          <div className="text-sm font-semibold text-slate-700">Сценарій, що попереду</div>
+          <div className="mb-1 text-xs text-slate-400">Напр.: «наступного тижня співбесіда», «важка розмова з мамою», «виступ на команді»</div>
+          <textarea value={f.scenario} onChange={(e) => setF((p) => ({ ...p, scenario: e.target.value }))} rows={2}
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-indigo-300 focus:outline-none" />
+        </div>
+        {f.pairs.map((s, i) => (
+          <div key={i} className="space-y-2 rounded-2xl bg-indigo-50/50 p-3 ring-1 ring-indigo-100">
+            <div className="flex items-start gap-2">
+              <span className="mt-1.5 shrink-0 rounded-md bg-indigo-600 px-2 py-0.5 text-[11px] font-extrabold text-white">ЯКЩО</span>
+              <textarea value={s.cond} onChange={(e) => setPair(i, "cond", e.target.value)} rows={1} placeholder="…я запанікую перед початком"
+                className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-indigo-300 focus:outline-none" />
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="mt-1.5 shrink-0 rounded-md bg-emerald-600 px-2 py-0.5 text-[11px] font-extrabold text-white">ТО</span>
+              <textarea value={s.act} onChange={(e) => setPair(i, "act", e.target.value)} rows={2} placeholder="…зроблю паузу, подихаю повільно і згадаю, що я готова"
+                className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:border-indigo-300 focus:outline-none" />
+            </div>
+          </div>
+        ))}
+        <button onClick={addPair} className="w-full rounded-xl border-2 border-dashed border-indigo-200 py-2 text-sm font-semibold text-indigo-500 hover:bg-indigo-50">+ Ще одне «якщо–то»</button>
+        <button onClick={save} disabled={!f.scenario.trim()}
+          className="w-full rounded-2xl bg-indigo-600 py-3 font-bold text-white shadow-lg shadow-indigo-500/25 transition hover:bg-indigo-700 disabled:opacity-40">
+          Зберегти план
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої плани</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.scenario}</span>
+                    <span className="text-xs text-slate-400">{e.date} · {(e.pairs || []).length} якщо–то</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {(e.pairs || []).map((s, i) => (
+                      <div key={i} className="rounded-xl bg-slate-50 p-2">
+                        <div><span className="font-bold text-indigo-600">Якщо</span> {s.cond}</div>
+                        <div><span className="font-bold text-emerald-600">то</span> {s.act}</div>
+                      </div>
+                    ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити план</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Перечитай план перед самою подією — «то»-відповіді спрацюють швидше, коли вони свіжі в пам'яті. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Problem-solving self-monitoring journal ---------- */
+function ProblemSolvingJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { problem: "", goal: "", tried: "", outcome: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!f.problem.trim()) return;
+    onSave({ id: ruid("ps"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty); startRef.current = Date.now();
+  };
+  const Area = ({ label, hints, k, rows = 3 }) => (
+    <div className="border-t border-slate-100 pt-4 first:border-0 first:pt-0">
+      <div className="text-sm font-semibold text-slate-700">{label}</div>
+      {hints && <ul className="mb-1 mt-0.5 space-y-0.5 text-xs italic text-slate-400">{hints.map((h) => <li key={h}>· {h}</li>)}</ul>}
+      <textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={rows}
+        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-orange-300 focus:outline-none" />
+    </div>
+  );
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Розбір проблеми" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Коли задача велика й розмита, мозок (особливо РДУГ-мозок) відкладає її нескінченно. Ця форма робить проблему конкретною: що саме відбувається, чого я хочу, що вже пробувала і що з того вийшло. З конкретним — уже можна працювати.
+      </p>
+      <div className="space-y-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-orange-100">
+        <Area k="problem" label="Проблема, з якою я стикнулась" hints={["Що за ситуація, хто в ній задіяний, де це відбувається?", "Чому це проблема саме для мене?"]} />
+        <Area k="goal" label="Моя мета" hints={["Що я хочу, щоб сталося натомість?"]} rows={2} />
+        <Area k="tried" label="Що я вже пробувала" hints={["Конкретно: які думки і які дії я спробувала, щоб розв'язати це?"]} />
+        <Area k="outcome" label="Що вийшло" hints={["Що сталося після моїх спроб?", "Як я емоційно відреагувала?", "Наскільки я задоволена результатом?"]} />
+        <button onClick={save} disabled={!f.problem.trim()}
+          className="w-full rounded-2xl bg-orange-500 py-3 font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої розбори</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.problem}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["Мета", e.goal], ["Що пробувала", e.tried], ["Що вийшло", e.outcome]]
+                      .filter(([, v]) => v && v.trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Наступний крок після розбору часто очевидний: маленький, конкретний, з датою. Запиши його в «Якщо–то» або в розклад активності. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Getting-the-facts journal ---------- */
+function FactsJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { who: "", what: "", where: "", when: "", why: "", response: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!f.what.trim()) return;
+    onSave({ id: ruid("fc"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty); startRef.current = Date.now();
+  };
+  const FIELDS = [
+    ["who", "Хто задіяний?", "Перелічи людей — лише факти, без оцінок.", 1],
+    ["what", "Що сталося (чи не сталося) — і чим це мене зачепило?", "Опиши подію так, як зафіксувала б камера.", 2],
+    ["where", "Де це відбулося?", null, 1],
+    ["when", "Коли це відбулося?", null, 1],
+    ["why", "Чому це сталося?", "Причини і передумови — які знаєш напевно, а які лише припускаєш? Познач припущення словом «(припущення)».", 2],
+    ["response", "Як я відреагувала?", "Мої дії, думки і почуття — теж факти, запиши їх окремо від решти.", 2],
+  ];
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Лише факти" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Коли голова змішує факти з припущеннями, рішення приймаються наосліп. Ця форма розкладає ситуацію на чисті факти: хто, що, де, коли, чому — і як ти відреагувала. Із зібраними фактами проблема стає видимою, а наступний крок — очевиднішим.
+      </p>
+      <div className="space-y-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-stone-200">
+        {FIELDS.map(([k, label, hint, rows]) => (
+          <div key={k} className="border-t border-slate-100 pt-4 first:border-0 first:pt-0">
+            <div className="text-sm font-semibold text-slate-700">{label}</div>
+            {hint && <div className="mb-1 text-xs text-slate-400">{hint}</div>}
+            <textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={rows}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-stone-400 focus:outline-none" />
+          </div>
+        ))}
+        <button onClick={save} disabled={!f.what.trim()}
+          className="w-full rounded-2xl bg-stone-600 py-3 font-bold text-white shadow-lg shadow-stone-600/25 transition hover:bg-stone-700 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої записи</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.what}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["Хто", e.who], ["Де", e.where], ["Коли", e.when], ["Чому", e.why], ["Моя реакція", e.response]]
+                      .filter(([, v]) => v && v.trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Факт — те, що підтвердила б камера або третя особа. Решта — припущення, і їм місце в дужках. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Imagery-based exposure journal ---------- */
+function ImageryExposureJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { memory: "", distressBefore: "", observe: "", feelings: "", sitNotes: "", distressAfter: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!f.memory.trim()) return;
+    onSave({ id: ruid("ie"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty); startRef.current = Date.now();
+  };
+  const Area = ({ step, label, hint, k, rows = 2 }) => (
+    <div className="border-t border-slate-100 pt-4 first:border-0 first:pt-0">
+      <div className="text-sm font-semibold text-slate-700"><span className="mr-1.5 rounded-md bg-cyan-700 px-1.5 py-0.5 text-[11px] font-extrabold text-white">{step}</span>{label}</div>
+      {hint && <div className="mb-1 mt-0.5 text-xs text-slate-400">{hint}</div>}
+      <textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={rows}
+        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-cyan-400 focus:outline-none" />
+    </div>
+  );
+  const Pct = ({ step, label, k }) => (
+    <div className="border-t border-slate-100 pt-4">
+      <label className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-700">
+        <span className="rounded-md bg-cyan-700 px-1.5 py-0.5 text-[11px] font-extrabold text-white">{step}</span>
+        <span>{label}</span>
+        <input type="number" min={0} max={100} value={f[k]} onChange={(e) => set(k, e.target.value)}
+          className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm tabular-nums focus:border-cyan-400 focus:outline-none" />
+        <span className="font-normal text-slate-400">%</span>
+      </label>
+    </div>
+  );
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Експозиція в уяві" onExit={onExit} />
+      <p className="mb-3 text-sm leading-relaxed text-slate-500">
+        Суть техніки: свідомо повернутися до недавнього неприємного спогаду, побути з почуттями, які він піднімає, — не тікаючи і не відволікаючись — доки дискомфорт сам не почне спадати. Так спогад втрачає владу: ти на досвіді переконуєшся, що ці почуття можна пережити.
+      </p>
+      <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-700 ring-1 ring-amber-100">
+        ⚠️ Для НЕДАВНІХ і посильних неприємностей (сварка, провал, соромний момент). Із глибокими травмами цю вправу роблять ТІЛЬКИ з фахівцем — не самотужки. Якщо дискомфорт зашкалює — зупинись, подихай 5/10, заземлись.
+      </p>
+      <div className="space-y-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-cyan-100">
+        <Area step="1" k="memory" label="Уяви" hint="Згадай недавній спогад, що викликає сильні неприємні емоції. Опиши ситуацію якнайдетальніше." rows={3} />
+        <Pct step="2" k="distressBefore" label="Рівень дискомфорту зараз:" />
+        <Area step="3" k="observe" label="Споглядай" hint="Які думки і пориви до дій з'являються у відповідь на цей спогад? Просто фіксуй, не оцінюючи." />
+        <Area step="4" k="feelings" label="Почуття" hint="Які саме почуття й емоції піднялись? Назви їх словами." />
+        <Area step="5" k="sitNotes" label="Побудь із цим" hint="Посидь зі складними думками, почуттями і поривами, не проганяючи їх. Занотуй, як вони змінюються з часом." rows={3} />
+        <Pct step="6" k="distressAfter" label="Рівень дискомфорту тепер:" />
+        <p className="text-xs leading-relaxed text-slate-400">Крок 7: якщо дискомфорт ще не впав приблизно вдвічі від початкового — продовж «побути з цим» і переоцінюй рівень, поки не спаде. Це і є момент, коли спогад слабшає.</p>
+        <button onClick={save} disabled={!f.memory.trim()}
+          className="w-full rounded-2xl bg-cyan-700 py-3 font-bold text-white shadow-lg shadow-cyan-700/25 transition hover:bg-cyan-800 disabled:opacity-40">
+          Зберегти сесію
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої сесії</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.memory}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  {e.distressBefore !== "" && e.distressAfter !== "" && (
+                    <span className="shrink-0 rounded-full bg-cyan-50 px-2 py-0.5 text-xs font-bold text-cyan-700">{e.distressBefore}% → {e.distressAfter}%</span>
+                  )}
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["Думки і пориви", e.observe], ["Почуття", e.feelings], ["Як воно минало", e.sitNotes]]
+                      .filter(([, v]) => v && v.trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Після сесії подбай про себе: вода, рух, щось тепле. Ти зробила сміливу річ. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Interoceptive exposure journal ---------- */
+const INTERO_EXERCISES = [
+  "Дихання: 1 хв дихати глибоко, часто й посилено",
+  "Дихання: затримати подих на 30 сек",
+  "Дихання: 2 хв дихати лише ротом через соломинку",
+  "Обертання: крутитися на місці 30 сек, 30 сек стояти — повторювати 3 хв",
+  "Обертання: 30 сек швидко крутити головою з боку в бік (очі відкриті)",
+  "Обертання: 1 хв крутитися на офісному кріслі",
+  "Навантаження: 2 хв швидко (але обережно) ходити сходами вгору-вниз",
+  "Навантаження: 2 хв біг на місці з високими колінами",
+  "Навантаження: 1 хв напружувати все тіло",
+  "Запаморочення: полежати рівно 1 хв і різко сісти",
+  "Запаморочення: 1 хв посидіти з головою між колін і різко випрямитися",
+  "Дереалізація: 3 хв дивитися на крапку на стіні на рівні очей",
+  "Дереалізація: 2 хв дивитися на однотонну стіну, не кліпаючи",
+];
+function InteroExposureJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { exercise: "", notes: "", anxiety: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!f.exercise) return;
+    onSave({ id: ruid("io"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty); startRef.current = Date.now();
+  };
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Тілесна експозиція" onExit={onExit} />
+      <p className="mb-3 text-sm leading-relaxed text-slate-500">
+        Ідея: безпечно й навмисно викликати тілесні відчуття, схожі на паніку (серцебиття, запаморочення, брак повітря), — щоб мозок на досвіді вивчив: ці відчуття неприємні, але НЕ небезпечні. Коли вони з'являться самі, вже не буде ефекту раптовості — а отже, і половини страху.
+      </p>
+      <p className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-700 ring-1 ring-amber-100">
+        ⚠️ Вправи навмисно викликають дискомфорт. Перед початком порадься з лікарем — особливо якщо є серцево-судинні стани, епілепсія, астма, вагітність, проблеми з тиском чи шиєю. Роби сидячи або біля опори, час — лише орієнтир: зупиняйся, коли вважаєш за потрібне.
+      </p>
+      <div className="space-y-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-rose-100">
+        <div>
+          <div className="text-sm font-semibold text-slate-700">Вправа</div>
+          <select value={f.exercise} onChange={(e) => set("exercise", e.target.value)}
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 focus:border-rose-300 focus:outline-none">
+            <option value="">— обери вправу —</option>
+            {INTERO_EXERCISES.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+        </div>
+        <div>
+          <div className="text-sm font-semibold text-slate-700">Думки і тілесні відчуття</div>
+          <div className="mb-1 text-xs text-slate-400">Що відчувало тіло? Що промайнуло в голові під час вправи?</div>
+          <textarea value={f.notes} onChange={(e) => set("notes", e.target.value)} rows={3}
+            className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-rose-300 focus:outline-none" />
+        </div>
+        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <span>Рівень тривоги під час вправи:</span>
+          <input type="number" min={0} max={100} value={f.anxiety} onChange={(e) => set("anxiety", e.target.value)}
+            className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm tabular-nums focus:border-rose-300 focus:outline-none" />
+          <span className="font-normal text-slate-400">%</span>
+        </label>
+        <button onClick={save} disabled={!f.exercise}
+          className="w-full rounded-2xl bg-rose-600 py-3 font-bold text-white shadow-lg shadow-rose-600/25 transition hover:bg-rose-700 disabled:opacity-40">
+          Зберегти сесію
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої сесії</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.exercise}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  {e.anxiety !== "" && <span className="shrink-0 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-bold text-rose-600">{e.anxiety}%</span>}
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {e.notes && <div className="whitespace-pre-wrap">{e.notes}</div>}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Повторюй ту саму вправу в різні дні — і дивись, як падає її % тривоги. Це і є звикання, на якому все тримається. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Event visualization journal ---------- */
+function EventVisJournal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { event: "", place: "", sounds: "", people: "", playthrough: "", success: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!f.event.trim()) return;
+    onSave({ id: ruid("ev"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty); startRef.current = Date.now();
+  };
+  const STEPS = [
+    ["event", "1 · Яка подія?", "Співбесіда, виступ, зустріч, іспит…", 1],
+    ["place", "2 · Як виглядає місце?", "Уяви деталі (з досвіду чи здогадки): будівля, кімната, світло, атмосфера.", 2],
+    ["sounds", "3 · Які там звуки?", "Гомін, дзвінки, тиша, шум вулиці? Додай уяві звукову доріжку.", 1],
+    ["people", "4 · Кого ти зустрінеш?", "Хто там буде? Як ти привітаєшся? Уяви себе теплою, спокійною і професійною.", 2],
+    ["playthrough", "5 · Програй подію", "Прокрути її в уяві від початку: очікування, перші кроки, перша фраза, основна частина.", 3],
+    ["success", "6 · Уяви успіх", "Все йде добре: люди зацікавлені, ти впевнена і навіть отримуєш задоволення. Опиши, як це виглядає і як почувається.", 3],
+  ];
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Візуалізація події" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Уява — безпечний тренажер: негативні картинки підточують упевненість, а детальна репетиція успіху її будує. Пройди шість кроків, роблячи картинку максимально живою — з місцем, звуками і людьми. Потім повтори кроки 5–6 очима інших: нехай ВОНИ бачать тебе впевненою. Повторюй репетицію, поки не стане комфортно.
+      </p>
+      <div className="space-y-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-yellow-100">
+        {STEPS.map(([k, label, hint, rows]) => (
+          <div key={k} className="border-t border-slate-100 pt-4 first:border-0 first:pt-0">
+            <div className="text-sm font-semibold text-slate-700">{label}</div>
+            {hint && <div className="mb-1 text-xs text-slate-400">{hint}</div>}
+            <textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={rows}
+              className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-yellow-400 focus:outline-none" />
+          </div>
+        ))}
+        <button onClick={save} disabled={!f.event.trim()}
+          className="w-full rounded-2xl bg-yellow-500 py-3 font-bold text-white shadow-lg shadow-yellow-500/25 transition hover:bg-yellow-600 disabled:opacity-40">
+          Зберегти репетицію
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої репетиції</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.event}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["Місце", e.place], ["Звуки", e.sounds], ["Люди", e.people], ["Хід події", e.playthrough], ["Успіх", e.success]]
+                      .filter(([, v]) => v && v.trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Перед самою подією — коротка повторна репетиція успіху + дихання 5/10. Ти вже там була, і там усе вийшло. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Pleasant activity scheduling ---------- */
+const PLEASANT_DAYS = ["Понеділок", "Вівторок", "Середа", "Четвер", "П'ятниця", "Субота", "Неділя"];
+function PleasantWeekView({ week = {}, onExit, onSave }) {
+  const [w, setW] = useState(week);
+  const commit = (next) => { setW(next); onSave(next); };
+  const setDay = (i, patch) => {
+    const cur = w[i] || { act: "", type: "P", time: "", rating: "" };
+    const cell = { ...cur, ...patch };
+    const next = { ...w };
+    if (!cell.act && !cell.time && cell.rating === "") delete next[i]; else next[i] = cell;
+    commit(next);
+  };
+  const filled = Object.values(w).filter((d) => d.act).length;
+  const clearWeek = () => { if (filled === 0 || window.confirm("Очистити тиждень?")) commit({}); };
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Приємні активності" onExit={onExit} right={<span className="text-sm font-semibold tabular-nums text-slate-400">{filled}/7</span>} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Заплануй на кожен день тижня хоча б одну річ, на яку чекатимеш: щось ПРИЄМНЕ (П) — дзвінок подрузі, фільм, прогулянка — або щось, що дає відчуття МАЙСТЕРНОСТІ (М) — маленьке досягнення. Час признач заздалегідь, а після виконання оціни відчуття (0–100%). Так тиждень наповнюється точками радості, а не лише обов'язками.
+      </p>
+      <div className="mb-3 flex justify-end">
+        <button onClick={clearWeek} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50">Новий тиждень</button>
+      </div>
+      <div className="space-y-3">
+        {PLEASANT_DAYS.map((day, i) => {
+          const d = w[i] || { act: "", type: "P", time: "", rating: "" };
+          return (
+            <div key={day} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-green-100">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-bold text-slate-700">{day}</span>
+                <div className="flex gap-1">
+                  {[["P", "Приємне"], ["M", "Майстерність"]].map(([t, lbl]) => (
+                    <button key={t} onClick={() => setDay(i, { type: t })}
+                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold transition ${d.type === t ? "bg-green-600 text-white" : "bg-slate-100 text-slate-400"}`}>{lbl}</button>
+                  ))}
+                </div>
+              </div>
+              <input value={d.act} onChange={(e) => setDay(i, { act: e.target.value })} placeholder="Що зробиш? (напр.: подзвонити подрузі)"
+                className="mb-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-green-400 focus:outline-none" />
+              <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                <label className="flex items-center gap-1.5">
+                  <span className="text-xs text-slate-400">Час:</span>
+                  <input value={d.time} onChange={(e) => setDay(i, { time: e.target.value })} placeholder="17:00"
+                    className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-sm focus:border-green-400 focus:outline-none" />
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <span className="text-xs text-slate-400">Відчуття після:</span>
+                  <input type="number" min={0} max={100} value={d.rating} onChange={(e) => setDay(i, { rating: e.target.value })}
+                    className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm tabular-nums focus:border-green-400 focus:outline-none" />
+                  <span className="text-slate-400">%</span>
+                </label>
+                {d.rating !== "" && Number(d.rating) >= 60 && <span className="text-lg">🌟</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Активність має бути здоровою радістю (торт на весь вечір і скрол до 3-ї ночі не рахуються 😉). Оцінку став ПІСЛЯ виконання — часто вона приємно дивує. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- 9-column thought evaluation ---------- */
+function Eval9Journal({ entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const empty = { situation: "", emotion: "", emotionPct: "", thought: "", beliefPct: "", evFor: "", evAgainst: "", alternative: "", altPct: "", reEmotionPct: "", reBeliefPct: "", next: "" };
+  const [f, setF] = useState(empty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!f.thought.trim()) return;
+    onSave({ id: ruid("e9"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(empty); startRef.current = Date.now();
+  };
+  const Area = ({ label, hint, k, rows = 2 }) => (
+    <div>
+      <div className="text-sm font-semibold text-slate-700">{label}</div>
+      {hint && <div className="mb-1 text-xs text-slate-400">{hint}</div>}
+      <textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={rows}
+        className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-slate-400 focus:outline-none" />
+    </div>
+  );
+  const Pct = ({ label, k }) => (
+    <label className="flex items-center gap-2 text-sm text-slate-600">
+      <span>{label}</span>
+      <input type="number" min={0} max={100} value={f[k]} onChange={(e) => set(k, e.target.value)}
+        className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm tabular-nums focus:border-slate-400 focus:outline-none" />
+      <span className="text-slate-400">%</span>
+    </label>
+  );
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Оцінка думок" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">
+        Розширений розбір найдошкульнішої думки: зваж докази ЗА і ПРОТИ неї, знайди реалістичну (не «рожеву», а чесну) альтернативу — і подивись, чи змінилися віра в думку та сила емоції. Найкраще працює по гарячих слідах, одразу після події.
+      </p>
+      <div className="space-y-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <Area k="situation" label="1 · Ситуація" hint="Що сталося? Коротко, фактами." />
+        <div className="space-y-2 border-t border-slate-100 pt-4">
+          <Area k="emotion" label="2 · Емоція" hint="Що ти відчула?" rows={1} />
+          <Pct label="Сила емоції:" k="emotionPct" />
+        </div>
+        <div className="space-y-2 border-t border-slate-100 pt-4">
+          <Area k="thought" label="3 · Найдошкульніша думка" hint="Дослівно, як звучить у голові." />
+          <Pct label="Наскільки я в неї вірю:" k="beliefPct" />
+        </div>
+        <div className="border-t border-slate-100 pt-4">
+          <Area k="evFor" label="4 · Докази ЗА думку" hint="Звідки я зробила цей висновок? Що його підтверджує?" />
+        </div>
+        <div className="border-t border-slate-100 pt-4">
+          <Area k="evAgainst" label="5 · Докази ПРОТИ" hint="Якщо віра не 100% — значить, є сумнів: який? Що було минулого разу в такій ситуації? Чи є інше пояснення? Чи матиме це значення через роки?" rows={3} />
+        </div>
+        <div className="space-y-2 border-t border-slate-100 pt-4">
+          <Area k="alternative" label="6 · Альтернативна думка" hint="Не «мисли позитивно», а реалістично: подруга не прийшла — можливо, її затримала робота, а не «я їй набридла»." />
+          <Pct label="Віра в альтернативу:" k="altPct" />
+        </div>
+        <div className="space-y-2 border-t border-slate-100 pt-4">
+          <div className="text-sm font-semibold text-slate-700">7 · Переоцінка</div>
+          <Pct label="Віра в початкову думку тепер:" k="reBeliefPct" />
+          <Pct label="Сила емоції тепер:" k="reEmotionPct" />
+        </div>
+        <div className="border-t border-slate-100 pt-4">
+          <Area k="next" label="8 · Що далі" hint="Якщо мислення змінилось — що зробиш, коли ситуація повториться? (Напр.: «подзвоню сама і спитаю, чи все гаразд».)" rows={1} />
+        </div>
+        <button onClick={save} disabled={!f.thought.trim()}
+          className="w-full rounded-2xl bg-slate-700 py-3 font-bold text-white shadow-lg shadow-slate-700/25 transition hover:bg-slate-800 disabled:opacity-40">
+          Зберегти запис
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої записи</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e.thought}</span>
+                    <span className="text-xs text-slate-400">{e.date}{e.emotion ? ` · ${e.emotion}` : ""}</span>
+                  </span>
+                  {e.beliefPct !== "" && e.reBeliefPct !== "" && (
+                    <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-600">{e.beliefPct}% → {e.reBeliefPct}%</span>
+                  )}
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {[["Ситуація", e.situation], ["Емоція", e.emotion && `${e.emotion}${e.emotionPct !== "" ? ` (${e.emotionPct}%${e.reEmotionPct !== "" ? ` → ${e.reEmotionPct}%` : ""})` : ""}`], ["Докази за", e.evFor], ["Докази проти", e.evAgainst], ["Альтернатива", e.alternative && `${e.alternative}${e.altPct !== "" ? ` (віра ${e.altPct}%)` : ""}`], ["Що далі", e.next]]
+                      .filter(([, v]) => v && String(v).trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Виписані думки і відповіді працюють значно сильніше, ніж ті самі кроки «в голові». 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Generic simple journal driven by a spec ---------- */
+/* spec = { title, intro, color, titleKey, fields: [{k, label, hint, rows, type: "area"|"pct"|"select", options}] } */
+function SimpleJournal({ spec, entries = [], onExit, onSave, onDelete }) {
+  const startRef = useRef(Date.now());
+  const mkEmpty = () => Object.fromEntries(spec.fields.map((fl) => [fl.k, ""]));
+  const [f, setF] = useState(mkEmpty);
+  const [openId, setOpenId] = useState(null);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const save = () => {
+    if (!String(f[spec.titleKey] || "").trim()) return;
+    onSave({ id: ruid("sj"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(mkEmpty()); startRef.current = Date.now();
+  };
+  const c = spec.color;
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title={spec.title} onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">{spec.intro}</p>
+      <div className="space-y-4 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        {spec.fields.map((fl) => (
+          <div key={fl.k} className="border-t border-slate-100 pt-4 first:border-0 first:pt-0">
+            {fl.type === "pct" ? (
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <span>{fl.label}</span>
+                <input type="number" min={0} max={100} value={f[fl.k]} onChange={(e) => set(fl.k, e.target.value)}
+                  className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm tabular-nums focus:outline-none" />
+                <span className="font-normal text-slate-400">%</span>
+              </label>
+            ) : fl.type === "select" ? (
+              <div>
+                <div className="text-sm font-semibold text-slate-700">{fl.label}</div>
+                {fl.hint && <div className="mb-1 text-xs text-slate-400">{fl.hint}</div>}
+                <select value={f[fl.k]} onChange={(e) => set(fl.k, e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-600 focus:outline-none">
+                  <option value="">— обери —</option>
+                  {fl.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <div className="text-sm font-semibold text-slate-700">{fl.label}</div>
+                {fl.hint && <div className="mb-1 text-xs text-slate-400">{fl.hint}</div>}
+                <textarea value={f[fl.k]} onChange={(e) => set(fl.k, e.target.value)} rows={fl.rows || 2}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none" style={{ borderColor: undefined }} />
+              </div>
+            )}
+          </div>
+        ))}
+        <button onClick={save} disabled={!String(f[spec.titleKey] || "").trim()}
+          className="w-full rounded-2xl py-3 font-bold text-white shadow-lg transition disabled:opacity-40" style={{ backgroundColor: c }}>
+          Зберегти запис
+        </button>
+      </div>
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-bold text-slate-600">Мої записи</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-slate-700">{e[spec.titleKey]}</span>
+                    <span className="text-xs text-slate-400">{e.date}</span>
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+                </button>
+                {openId === e.id && (
+                  <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {spec.fields.filter((fl) => fl.k !== spec.titleKey && e[fl.k] && String(e[fl.k]).trim())
+                      .map((fl) => (
+                        <div key={fl.k}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{fl.label}</span><div className="whitespace-pre-wrap">{e[fl.k]}{fl.type === "pct" ? "%" : ""}</div></div>
+                      ))}
+                    <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {spec.footer && <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">{spec.footer}</p>}
+    </div>
+  );
+}
+
+const RABBIT_SPEC = {
+  title: "Реверс кролячої нори", titleKey: "negative", color: "#e11d48",
+  intro: "«А що як?» уміє за хвилину довести від легкого сумніву до катастрофи — це кроляча нора негативних сценаріїв. Реверс: на кожен поганий результат, який малює тривога, придумай ДОБРИЙ результат такої ж імовірності. Мозку корисно згадати, що майбутнє відкрите в обидва боки.",
+  footer: "Добрий сценарій не «обов'язково збудеться» — він просто так само можливий, як і поганий. Це і є чесний баланс. 💛",
+  fields: [
+    { k: "negative", label: "Негативний сценарій", hint: "Що малює тривога?" },
+    { k: "positive", label: "Рівно ймовірний позитивний", hint: "Такий самий за правдоподібністю, тільки добрий." },
+    { k: "negative2", label: "Ще один негативний (за бажанням)", rows: 1 },
+    { k: "positive2", label: "І його позитивний двійник", rows: 1 },
+    { k: "negative3", label: "І ще один (за бажанням)", rows: 1 },
+    { k: "positive3", label: "І його двійник", rows: 1 },
+  ],
+};
+const SOLVEFULL_SPEC = {
+  title: "Розв'язання проблеми", titleKey: "problem", color: "#065f46",
+  intro: "Повний цикл роботи з проблемою: назвати й розбити на кроки → накидати ідеї без цензури → зважити → обрати → спланувати → зробити → переглянути результат. Одна проблема — один запис; повертайся до нього на кроці ревізії.",
+  footer: "Навіть маленький прогрес — прогрес. Ревізія без самобичування: що вийшло, чого навчилась, що інакше наступного разу. 💛",
+  fields: [
+    { k: "problem", label: "1 · Проблема", hint: "Сформулюй і розбий на менші кроки. Що треба зробити першим?" },
+    { k: "ideas", label: "2 · Ідеї без цензури", hint: "Усі можливі рішення, навіть «дурні» — нічого не відкидай на цьому кроці.", rows: 3 },
+    { k: "proscons", label: "3 · Зваж наслідки", hint: "Плюси і мінуси кожного варіанта.", rows: 3 },
+    { k: "choice", label: "4 · Вибір", hint: "Який варіант найробочіший з огляду на плюси й мінуси?" },
+    { k: "decision", label: "5 · Рішення і дія", hint: "Що саме зробиш? Чому саме це?" },
+    { k: "plan", label: "6 · Покроковий план", hint: "Що? Коли? Як? З ким/чим? Що може завадити і як обійти? Чи реалістично?", rows: 3 },
+    { k: "review", label: "7 · Ревізія (після виконання)", hint: "Чи досягла задуманого? Якщо ні — що інакше? Який прогрес є? Чого навчилась?", rows: 2 },
+  ],
+};
+const COPING_SPEC = {
+  title: "Стрес і копінг", titleKey: "situation", color: "#c2410c",
+  intro: "Дві частини в одному записі. Спершу розпізнай: яка ситуація запускає стрес і як він проявляється в тілі та емоціях. Потім розділи: що в цій ситуації ти реально контролюєш, а що — ні, як справляєшся зараз — і який здоровіший спосіб можна спробувати.",
+  footer: "Енергію вкладай лише в те, що в колонці «можу контролювати». Решту — відпускай свідомо. 💛",
+  fields: [
+    { k: "situation", label: "Ситуація-тригер", hint: "«Коли я…» — напр.: отримую гору задач у понеділок зранку." },
+    { k: "physical", label: "Тілесні відчуття", hint: "«Я відчуваю…» — напр.: затиснуті плечі, важкість у грудях.", rows: 1 },
+    { k: "emotional", label: "Емоційні відчуття", hint: "Напр.: перевантаженість, роздратування, безпорадність.", rows: 1 },
+    { k: "stressPct", label: "Рівень стресу від цього тригера:", type: "pct" },
+    { k: "control", label: "Контроль: що можу і чого не можу", hint: "Напр.: не контролюю обсяг задач; контролюю порядок, темп і те, скільки реально зроблю.", rows: 3 },
+    { k: "current", label: "Як я справляюсь зараз", hint: "Чесно: «зараз я копінгую тим, що…» (понаднормово, солодке, скрол, зриви…).", rows: 2 },
+    { k: "adaptive", label: "Здоровіший копінг", hint: "Практичне і емоційне: пріоритезація, делегування, дроблення на підцілі, перерви, дихання, розмова.", rows: 3 },
+  ],
+};
+const FAULTY_STYLES = ["Самозвинувачення (я відповідальна за всіх)", "Жорстке мислення (я точно права)", "Персоналізація (все — про мене)", "Звинувачення інших", "Узагальнення з одного випадку", "Читання думок", "Перебільшення поганого + фільтр хорошого", "Все-або-нічого", "Катастрофізація"];
+const TRIGREC_SPEC = {
+  title: "Запис тригера", titleKey: "thoughts", color: "#b45309",
+  intro: "Коли реакція сильніша за ситуацію — перший крок: ПАУЗА. Потім розбери тригер по частинах, злови автоматичні думки, визнач стиль хибного мислення і заміни думку реалістичною.",
+  footer: "Пауза перед реакцією — половина перемоги. Що ближче до події заповниш — то точніше. 💛",
+  fields: [
+    { k: "trigger", label: "Тригер: хто або що це було?", hint: "Різкий коментар, погляд, повідомлення… Щось запустило непропорційну реакцію." },
+    { k: "when", label: "Коли це сталося?", rows: 1 },
+    { k: "where", label: "Де це сталося?", rows: 1 },
+    { k: "why", label: "Чому це сталося, як гадаєш?", rows: 1 },
+    { k: "thoughts", label: "Автоматичні думки", hint: "Найперші думки після тригера — дослівно." },
+    { k: "emotion", label: "Емоції та їх сила (1–10)", hint: "Напр.: злість 8, образа 6.", rows: 1 },
+    { k: "style", label: "Стиль хибного мислення", type: "select", options: FAULTY_STYLES },
+    { k: "alternative", label: "Альтернативні думки", hint: "Як можна переінтерпретувати те, що сталося, реалістичніше?" },
+    { k: "reEmotion", label: "Сила емоції тепер (1–10)", rows: 1 },
+  ],
+};
+const BEHEXP_SPEC = {
+  title: "Поведінковий експеримент", titleKey: "belief", color: "#7e22ce",
+  intro: "Страшні переконання найкраще перевіряти не суперечкою, а ДІЄЮ: сформулюй переконання, вибуди альтернативну гіпотезу, сплануй експеримент — і подивись, що покаже реальність.",
+  footer: "Реальність — найкращий психотерапевт. Один чесний експеримент вартий десяти вмовлянь. 💛",
+  fields: [
+    { k: "belief", label: "Початкове переконання", hint: "Напр.: «Якщо я попрошу про допомогу — всі подумають, що я некомпетентна»." },
+    { k: "beliefPct", label: "Наскільки вірю в нього:", type: "pct" },
+    { k: "hypothesis", label: "Гіпотеза-альтернатива", hint: "Напр.: «Можливо, більшість нормально реагує на прохання про допомогу»." },
+    { k: "altPct", label: "Наскільки вірю в альтернативу:", type: "pct" },
+    { k: "design", label: "План експерименту", hint: "Що має бути на місці? Куди піти, що зробити, за чим спостерігати?", rows: 3 },
+    { k: "result", label: "Що сталося насправді", hint: "Заповнюється після виконання: спостереження, реакції людей, факти.", rows: 3 },
+    { k: "reflection", label: "Висновок", hint: "Як початкове переконання витримало зустріч із реальністю?" },
+    { k: "rePct", label: "Віра в початкове переконання тепер:", type: "pct" },
+  ],
+};
+const REFRAME_SPEC = {
+  title: "Рефреймінг події", titleKey: "event", color: "#9333ea",
+  intro: "Коли щось уже сталося (і не так, як хотілося) — бити себе думками далі не обов'язково: подію не зміниш, а думки про неї — можна. Три колонки: подія → мої думки → як я можу переосмислити їх чесно і по-доброму до себе.",
+  footer: "Рефреймінг — не рожеві окуляри, а повернення до фактів: що я зробила добре, що вивчу, що зроблю далі. 💛",
+  fields: [
+    { k: "event", label: "Що сталося?", hint: "Напр.: «не склала іспит», «не отримала роботу»." },
+    { k: "thoughts", label: "Мої думки про подію", hint: "Дослівно, з усією драмою: «я нездара, нічого в мене не вийде…»" },
+    { k: "restructured", label: "Переосмислення", hint: "Чесна версія: що об'єктивно було ок? який запасний план? чого це мене вчить? (Напр.: «я добре підготувалась; не вийде тут — спробую перескласти або інший шлях».)", rows: 3 },
+  ],
+};
+const SOCRATIC_SPEC = {
+  title: "Сократівські питання", titleKey: "thought", color: "#0369a1",
+  intro: "Думки пролітають так швидко, що ми не встигаємо їх допитати. Злови одну підозрілу — і проведи чесний допит: факти за, факти проти, і серія питань, після яких думка або підтвердиться, або здується.",
+  footer: "Питання сильніші за заперечення: думка, яку ти сама допитала, більше не керує тобою потай. 💛",
+  fields: [
+    { k: "thought", label: "Що я думаю", hint: "Одна конкретна думка, яку підозрюю в ірраціональності." },
+    { k: "factsFor", label: "Факти НА КОРИСТЬ думки", rows: 2 },
+    { k: "factsAgainst", label: "Факти ПРОТИ думки", rows: 2 },
+    { k: "verdict", label: "Ця думка — доказ чи припущення?", type: "select", options: ["Спирається на факти", "Здебільшого припущення/звичка", "50/50 — треба більше фактів"] },
+    { k: "blackwhite", label: "Чи все справді «або-або»? Де відтінки?", rows: 1 },
+    { k: "otherview", label: "Як цю ситуацію побачили б інші?", rows: 1 },
+    { k: "allfacts", label: "Я дивлюсь на ВСІ факти чи лише на зручні для думки?", rows: 1 },
+    { k: "source", label: "Звідки ця думка? Наскільки надійне джерело?", rows: 1 },
+    { k: "likely", label: "Наскільки ймовірний цей сценарій насправді?", rows: 1 },
+  ],
+};
+const ABC_SPEC = {
+  title: "ABC-аналіз", titleKey: "behavior", color: "#1d4ed8",
+  intro: "Функційний аналіз поведінки: щоб зрозуміти, чому поведінка виникає і що її підтримує, розклади її на A (що передувало), B (що саме відбулося) і C (що вийшло після). Заповнюй якнайшвидше після епізоду, поки матеріал «свіжий». Починай із B, потім A, потім C.",
+  footer: "Наслідок із полегшенням — головна підказка: саме він змушує поведінку повторюватись. Знайшла потребу за поведінкою — придумай, як задовольнити її інакше. 💛",
+  fields: [
+    { k: "behavior", label: "B · Поведінка", hint: "Що саме відбулося? Це може бути видима дія (наїлась на ніч, посварилась) або внутрішня (накручування, самокритика). Максимально конкретно." },
+    { k: "antecedents", label: "A · Що передувало", hint: "Що відбувалося перед самим початком? Зовнішнє (події, місце, люди, час) і внутрішнє (думки, спогади, тілесні відчуття, настрій). Антецеденти бувають дуже тонкі — коротка хвиля напруги теж рахується.", rows: 3 },
+    { k: "consequences", label: "C · Наслідки", hint: "Що сталося після? Навмисне і ненавмисне, помічне і шкідливе, миттєве і відкладене. Окремо: коротко- і довгострокові ефекти.", rows: 3 },
+    { k: "need", label: "Яку потребу задовольняла ця поведінка?", hint: "Полегшення? Розрада? Відчуття прийняття? Відволікання від самотності чи нудьги? Це не сором — це ключ.", rows: 2 },
+    { k: "altResponses", label: "Якщо обставини повторяться — як ще можна відреагувати?", hint: "2–3 інші способи відповісти на ті самі антецеденти.", rows: 2 },
+    { k: "altNeeds", label: "Як ще можна задовольнити цю потребу?", hint: "Здоровіші способи отримати те саме (контакт, розраду, перепочинок).", rows: 2 },
+  ],
+};
+const WHATIF_SPEC = {
+  title: "Заміна «а що як»", titleKey: "whatifs", color: "#15803d",
+  intro: "Тривога говорить питаннями: «а що як не впораюсь?..» Питання не перевіриш — воно крутиться вічно. Хід: перетвори питання на ТВЕРДЖЕННЯ, перевір твердження фактами, збудуй зважену версію і план дій.",
+  footer: "Питання «а що як» не має відповіді — твердження має. Тому твердження можна перевірити і закрити. 💛",
+  fields: [
+    { k: "whatifs", label: "Мої «а що як»", hint: "Випиши тривожні питання: «а що як я провалю співбесіду?»" },
+    { k: "statements", label: "Перетворення на твердження", hint: "«Я провалю співбесіду» → тепер це твердження, яке можна перевіряти." },
+    { k: "challenge", label: "Перевірка фактами", hint: "Чи бувала я в подібному? Чим закінчилось? Звідки певність у поганому? Що б я сказала подрузі?", rows: 3 },
+    { k: "balanced", label: "Зважені твердження", hint: "На основі перевірки: «я добре готуюсь; досвід у мене є; зазвичай відгуки хороші»." },
+    { k: "actions", label: "Що зроблю далі", hint: "Конкретні дії підготовки: «почитаю про компанію, освіжу навички, спитаю в тих, хто там був»." },
+  ],
+};
+
+function CalmHeaderPlaceholder() {}
+
+function CalmHeader({ title, onExit, right }) {
+  return (
+    <div className="mb-5 flex items-center gap-3">
+      <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-teal-100"><ArrowLeft className="h-4 w-4" /></button>
+      <h1 className="flex-1 text-xl font-extrabold text-slate-900">{title}</h1>
+      {right}
+    </div>
+  );
+}
+
+/* ---------- Guided breathing ---------- */
+function BreathPractice({ settings, saveSettings, onExit, onDone, auto }) {
+  const [patternId, setPatternId] = useState(auto?.patternId || settings.pattern || "box");
+  const [mode, setMode] = useState(auto?.mode || "cycles");
+  const [cycles, setCycles] = useState(auto?.cycles || 6);
+  const [minutes, setMinutes] = useState(auto?.minutes || 3);
+  const [tick, setTick] = useState(auto ? false : settings.tick !== false);
+  const [run, setRun] = useState(null); // {phaseIdx, remaining, cyclesDone, elapsed, scale}
+  const raf = useRef(null);
+  const started = !!run;
+
+  const pattern = BREATH_PATTERNS.find((p) => p.id === patternId) || BREATH_PATTERNS[0];
+  const cycleSecs = pattern.phases.reduce((s, [, sec]) => s + sec, 0);
+  const target = mode === "cycles" ? cycles : Math.max(1, Math.round((minutes * 60) / cycleSecs));
+
+  useEffect(() => { if (auto) start(); return () => clearInterval(raf.current); /* eslint-disable-next-line */ }, []);
+
+  const start = () => {
+    const first = pattern.phases[0];
+    setRun({ phaseIdx: 0, remaining: first[1], cyclesDone: 0, elapsed: 0, scale: first[0] === "in" ? 1 : 0.5, dur: first[1] });
+    if (tick) calmTick(520);
+    clearInterval(raf.current);
+    raf.current = setInterval(() => {
+      setRun((r) => {
+        if (!r) return r;
+        let remaining = r.remaining - 0.1;
+        let elapsed = r.elapsed + 0.1;
+        if (remaining > 0.001) return { ...r, remaining, elapsed };
+        // advance phase
+        let idx = r.phaseIdx + 1, cyclesDone = r.cyclesDone;
+        if (idx >= pattern.phases.length) { idx = 0; cyclesDone += 1; }
+        if (cyclesDone >= target) { clearInterval(raf.current); setTimeout(() => onDone(Math.round(elapsed)), 10); return null; }
+        const [key, sec] = pattern.phases[idx];
+        if (tick) calmTick(key === "in" ? 520 : key === "out" ? 400 : 460);
+        const scale = key === "in" ? 1 : key === "out" ? 0.5 : r.scale;
+        return { phaseIdx: idx, remaining: sec, elapsed, cyclesDone, scale, dur: key === "hold" ? 0 : sec };
+      });
+    }, 100);
+  };
+  const stop = () => { clearInterval(raf.current); if (run && run.elapsed > 5) onDone(Math.round(run.elapsed)); else { setRun(null); onExit(); } };
+
+  if (!started) {
+    return (
+      <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+        <CalmHeader title="Дихання з підказкою" onExit={onExit} />
+        <div className="space-y-4">
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Патерн</div>
+            <div className="space-y-2">
+              {BREATH_PATTERNS.map((p) => (
+                <button key={p.id} onClick={() => setPatternId(p.id)} className={`flex w-full items-center justify-between rounded-2xl border p-3 text-left transition ${patternId === p.id ? "border-sky-400 bg-sky-50 ring-2 ring-sky-100" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+                  <span><span className="block font-bold text-slate-800">{p.name}</span><span className="block text-xs text-slate-400">{p.desc}</span></span>
+                  {patternId === p.id && <CheckCircle2 className="h-5 w-5 text-sky-500" />}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Тривалість</div>
+            <div className="mb-2 flex gap-2">
+              <button onClick={() => setMode("cycles")} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${mode === "cycles" ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-500"}`}>Цикли</button>
+              <button onClick={() => setMode("minutes")} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${mode === "minutes" ? "bg-sky-500 text-white" : "bg-slate-100 text-slate-500"}`}>Хвилини</button>
+            </div>
+            {mode === "cycles"
+              ? <div className="flex items-center gap-2"><input type="number" min={1} max={50} value={cycles} onChange={(e) => setCycles(Math.max(1, Math.min(50, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">циклів (~{Math.round(cycles * cycleSecs / 60 * 10) / 10} хв)</span></div>
+              : <div className="flex items-center gap-2"><input type="number" min={1} max={60} value={minutes} onChange={(e) => setMinutes(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">хвилин</span></div>}
+          </div>
+          <label className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+            <span className="text-sm font-medium text-slate-700">М'який звук-підказка</span>
+            <input type="checkbox" checked={tick} onChange={(e) => { setTick(e.target.checked); saveSettings({ tick: e.target.checked }); }} className="h-4 w-4 accent-sky-500" />
+          </label>
+          <button onClick={() => { saveSettings({ pattern: patternId }); start(); }} className="w-full rounded-2xl bg-sky-500 py-3.5 font-bold text-white shadow-lg shadow-sky-500/20 transition hover:bg-sky-600">Почати</button>
+        </div>
+      </div>
+    );
+  }
+
+  const [phaseKey] = pattern.phases[run.phaseIdx];
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
+      <div className="mb-8 w-full"><CalmHeader title="Дихання" onExit={stop} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{run.cyclesDone + 1}/{target}</span>} /></div>
+      <div className="relative my-6 grid h-72 w-72 place-items-center">
+        <div className="absolute rounded-full bg-gradient-to-br from-sky-300 to-teal-300 opacity-70"
+          style={{ width: 260, height: 260, transform: `scale(${run.scale})`, transition: `transform ${run.dur}s ease-in-out` }} />
+        <div className="absolute rounded-full bg-gradient-to-br from-sky-400 to-teal-400"
+          style={{ width: 180, height: 180, transform: `scale(${run.scale})`, transition: `transform ${run.dur}s ease-in-out` }} />
+        <div className="relative z-10 text-center text-white">
+          <div className="text-2xl font-bold drop-shadow">{PHASE_TEXT[phaseKey]}</div>
+          <div className="text-5xl font-extrabold tabular-nums drop-shadow">{Math.ceil(run.remaining)}</div>
+        </div>
+      </div>
+      <button onClick={stop} className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> Завершити</button>
+    </div>
+  );
+}
+
+/* ---------- Progressive muscle relaxation ---------- */
+function PMRPractice({ onExit, onDone }) {
+  const [run, setRun] = useState(null); // {idx, phase:'tense'|'release', remaining, elapsed}
+  const timer = useRef(null);
+  const totalSec = MUSCLE_GROUPS.length * (PMR_TENSE + PMR_RELEASE);
+
+  const start = () => {
+    setRun({ idx: 0, phase: "tense", remaining: PMR_TENSE, elapsed: 0 });
+    calmTick(500);
+    clearInterval(timer.current);
+    timer.current = setInterval(() => {
+      setRun((r) => {
+        if (!r) return r;
+        let remaining = r.remaining - 0.1, elapsed = r.elapsed + 0.1;
+        if (remaining > 0.001) return { ...r, remaining, elapsed };
+        if (r.phase === "tense") { calmTick(400); return { ...r, phase: "release", remaining: PMR_RELEASE, elapsed }; }
+        // release done -> next group
+        const idx = r.idx + 1;
+        if (idx >= MUSCLE_GROUPS.length) { clearInterval(timer.current); setTimeout(() => onDone(Math.round(elapsed)), 10); return null; }
+        calmTick(520);
+        return { idx, phase: "tense", remaining: PMR_TENSE, elapsed };
+      });
+    }, 100);
+  };
+  const stop = () => { clearInterval(timer.current); if (run && run.elapsed > 8) onDone(Math.round(run.elapsed)); else onExit(); };
+  useEffect(() => () => clearInterval(timer.current), []);
+
+  if (!run) return (
+    <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+      <CalmHeader title="Розслаблення м'язів" onExit={onExit} />
+      <div className="rounded-3xl bg-white p-5 text-center shadow-sm ring-1 ring-teal-100">
+        <HeartPulse className="mx-auto h-10 w-10 text-teal-500" />
+        <p className="mt-3 text-sm text-slate-500">Пройдемося по 12 групах м'язів — від голови до п'ят. Для кожної: <b>напруж ~10 с</b>, тоді <b>відпусти ~15 с</b>. Сядь зручно і повністю відпускай на видиху.</p>
+        <p className="mt-2 text-xs text-slate-400">Приблизно {Math.round(totalSec / 60)} хв.</p>
+        <button onClick={start} className="mt-4 w-full rounded-2xl bg-teal-500 py-3.5 font-bold text-white shadow-lg shadow-teal-500/20 hover:bg-teal-600">Почати</button>
+      </div>
+    </div>
+  );
+
+  const isTense = run.phase === "tense";
+  const overall = (run.elapsed / totalSec) * 100;
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col px-4 pb-16 pt-6">
+      <CalmHeader title="Розслаблення м'язів" onExit={stop} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{run.idx + 1}/{MUSCLE_GROUPS.length}</span>} />
+      <div className="mb-4 h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-teal-500 transition-all" style={{ width: `${overall}%` }} /></div>
+      <div className={`grid place-items-center rounded-3xl p-8 text-center transition-colors ${isTense ? "bg-orange-50" : "bg-teal-50"}`}>
+        <div className="text-xs font-semibold uppercase tracking-widest text-slate-400">Зараз</div>
+        <div className="mt-1 text-3xl font-extrabold text-slate-900">{MUSCLE_GROUPS[run.idx]}</div>
+        <div className={`mt-4 grid h-32 w-32 place-items-center rounded-full text-white ${isTense ? "bg-orange-400" : "bg-teal-400"}`} style={{ transform: `scale(${isTense ? 1 : 0.9})`, transition: "transform .4s" }}>
+          <div><div className="text-lg font-bold">{isTense ? "Напруж…" : "Відпусти…"}</div><div className="text-3xl font-extrabold tabular-nums">{Math.ceil(run.remaining)}</div></div>
+        </div>
+        <div className="mt-4 text-sm text-slate-500">{isTense ? "Стисни цю групу м'язів — не до болю, просто відчутно." : "Повністю відпусти. Відчуй, яка вона мʼяка."}</div>
+      </div>
+      <button onClick={stop} className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> Завершити</button>
+    </div>
+  );
+}
+
+/* ---------- Grounding 5-4-3-2-1 ---------- */
+const GROUND_SENSES = [
+  { key: "see", n: 5, label: "речей, які бачиш", emoji: "👀" },
+  { key: "hear", n: 4, label: "звуки, які чуєш", emoji: "👂" },
+  { key: "touch", n: 3, label: "речі, яких торкаєшся", emoji: "✋" },
+  { key: "smell", n: 2, label: "запахи, які відчуваєш", emoji: "👃" },
+  { key: "taste", n: 1, label: "смак, який відчуваєш", emoji: "👅" },
+];
+function GroundingPractice({ onExit, onDone }) {
+  const [filled, setFilled] = useState({});
+  const startRef = useRef(Date.now());
+  const total = GROUND_SENSES.reduce((s, x) => s + x.n, 0);
+  const doneCount = Object.values(filled).reduce((s, arr) => s + (arr?.length || 0), 0);
+  const tap = (key, i) => { calmTick(480); setFilled((f) => { const arr = f[key] || []; const has = arr.includes(i); return { ...f, [key]: has ? arr.filter((x) => x !== i) : [...arr, i] }; }); };
+  const complete = doneCount >= total;
+
+  return (
+    <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+      <CalmHeader title="Заземлення 5-4-3-2-1" onExit={onExit} right={<span className="text-sm font-semibold text-slate-400 tabular-nums">{doneCount}/{total}</span>} />
+      <p className="mb-4 text-sm text-slate-500">Помічай кожне поволі. Тапай, коли знайшла. Без поспіху.</p>
+      <div className="space-y-4">
+        {GROUND_SENSES.map((s) => (
+          <div key={s.key} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
+            <div className="mb-2 flex items-center gap-2"><span className="text-xl">{s.emoji}</span><span className="font-bold text-slate-800">{s.n} {s.label}</span></div>
+            <div className="flex flex-wrap gap-2">
+              {Array.from({ length: s.n }).map((_, i) => {
+                const on = (filled[s.key] || []).includes(i);
+                return <button key={i} onClick={() => tap(s.key, i)} className={`grid h-10 w-10 place-items-center rounded-full border-2 transition ${on ? "border-transparent bg-rose-500 text-white" : "border-rose-200 text-rose-300 hover:border-rose-400"}`}>{on ? <Check className="h-5 w-5" /> : <Circle className="h-4 w-4" />}</button>;
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      {complete && (
+        <button onClick={() => onDone(Math.round((Date.now() - startRef.current) / 1000))} className="mt-5 w-full rounded-2xl bg-rose-500 py-3.5 font-bold text-white shadow-lg shadow-rose-500/20 hover:bg-rose-600">Готово — я більше тут 🌿</button>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Thought record (CBT) ---------- */
+// Stable, module-level field so the textarea keeps focus while typing whole sentences.
+function TRField({ label, hint, rows = 2, value, onChange }) {
+  return (
+    <label className="block"><span className="mb-1 block text-sm font-semibold text-slate-700">{label}</span>{hint && <span className="mb-1 block text-xs text-slate-400">{hint}</span>}
+      <textarea value={value} onChange={onChange} rows={rows} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100" /></label>
+  );
+}
+
+// "How it works" guide — collapsible, calm, verbatim CBT walkthrough.
+function ThoughtGuide() {
+  const rows = [
+    ["Ситуація", "сухо й конкретно, що сталося, як зняла б камера. Не «все жахливо», а «написала колезі о 14:00, він не відповів дві години». Тільки факти, без тлумачень."],
+    ["Автоматична думка", "що миттєво промайнуло в голові, дослівно: «він на мене злий», «я всіх підвела». Саме цю думку будемо перевіряти. Часто вона категорична — «завжди», «ніколи», «всі»."],
+    ["Емоція + %", "назви почуття (тривога, сором, злість) і постав інтенсивність повзунком. Це точка «до». Наприкінці порівняєш — і майже завжди відсоток падає, навіть якщо думка не зникла повністю."],
+    ["Докази за", "чесно: що реально підтверджує думку? Тільки факти, не здогади. Часто виявляється, що «за» — це сама тривога, а твердих фактів обмаль."],
+    ["Докази проти", "серце техніки, тут не лінуйся. Що суперечить думці? Що я забуваю, коли панікую? Опори: чи є інші пояснення? чи бувало інакше й обійшлося? що б я сказала подрузі з такою думкою? найгірший сценарій справді ймовірний — чи просто можливий?"],
+    ["Врівноважена думка", "не «все чудово!» (це фальш, мозок не повірить), а тверезіший, добріший погляд, що враховує і «за», і «проти»: не «він мене ненавидить», а «можливо, він зайнятий; якщо є проблема — з'ясую, коли відповість»."],
+  ];
+  return (
+    <div className="mt-3 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-pink-100">
+      <h2 className="text-lg font-extrabold text-slate-900">Як працювати з журналом думок</h2>
+      <p className="mt-2 text-sm leading-relaxed text-slate-600">Це техніка з когнітивно-поведінкової терапії. Тривожна думка здається фактом, а насправді це лише одна з версій. Коли ти виносиш її на папір і розкладаєш по поличках — вона втрачає владу.</p>
+      <p className="mt-3 text-sm leading-relaxed text-slate-600"><b className="font-semibold text-slate-800">Головне:</b> заповнюй у момент, коли накрило, або одразу після — не «колись увечері». Свіжа емоція і є той матеріал, з яким працюєш. Іди полями зверху вниз.</p>
+      <div className="mt-3 space-y-2.5">
+        {rows.map(([name, body]) => (
+          <div key={name} className="rounded-xl bg-pink-50/60 p-3">
+            <span className="text-sm font-bold text-pink-800">{name}</span>
+            <span className="text-sm leading-relaxed text-slate-600"> — {body}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-sm leading-relaxed text-slate-600"><b className="font-semibold text-slate-800">Наприкінці:</b> ще раз глянь на емоцію — скільки % тепер? Це зниження і є результат.</p>
+      <p className="mt-3 text-sm leading-relaxed text-slate-600"><b className="font-semibold text-slate-800">Два моменти:</b> не пиши ідеально — криві формулювання нормально, сенс у тому, щоб витягти думку з голови, а не скласти твір. І веди регулярно — на дистанції побачиш, які думки й ситуації запускають тебе найчастіше.</p>
+      <p className="mt-4 border-t border-slate-100 pt-3 text-xs leading-relaxed text-slate-400">Журнал думок добре доповнює терапію, але не замінює її. Якщо тривога тримається тижнями або заважає функціонувати — це сигнал звернутися до фахівця, а не слабкість.</p>
+    </div>
+  );
+}
+
+function ThoughtRecord({ thoughts, onExit, onSave, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ situation: "", thought: "", emotion: "", intensity: 60, forEv: "", against: "", balanced: "" });
+  const [guideOpen, setGuideOpen] = useState(false);
+  const startRef = useRef(Date.now());
+  useEffect(() => { let on = true; store.get("calm:trGuideOpen", false).then((v) => { if (on) setGuideOpen(!!v); }); return () => { on = false; }; }, []);
+  const toggleGuide = () => setGuideOpen((v) => { const nv = !v; store.set("calm:trGuideOpen", nv); return nv; });
+  const setField = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }));
+  const save = () => {
+    if (!f.thought.trim() && !f.situation.trim()) return;
+    onSave({ id: ruid("tr"), date: dateKey(Date.now()), ...f }, Math.round((Date.now() - startRef.current) / 1000));
+    setOpen(false); setF({ situation: "", thought: "", emotion: "", intensity: 60, forEv: "", against: "", balanced: "" });
+  };
+
+  if (open) return (
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <CalmHeader title="Журнал думок" onExit={() => setOpen(false)} />
+      <div className="space-y-3">
+        <TRField label="Ситуація" hint="Що відбувалося?" value={f.situation} onChange={setField("situation")} />
+        <TRField label="Автоматична думка" hint="Що промайнуло в голові?" value={f.thought} onChange={setField("thought")} />
+        <div className="rounded-xl bg-white p-3 ring-1 ring-slate-100">
+          <div className="mb-1 flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Емоція</span><span className="text-sm font-bold text-pink-600 tabular-nums">{f.intensity}%</span></div>
+          <input value={f.emotion} onChange={(e) => setF((s) => ({ ...s, emotion: e.target.value }))} placeholder="напр. тривога, сум" className="mb-2 w-full rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />
+          <input type="range" min={0} max={100} value={f.intensity} onChange={(e) => setF((s) => ({ ...s, intensity: +e.target.value }))} className="w-full accent-pink-500" />
+        </div>
+        <TRField label="Докази за цю думку" value={f.forEv} onChange={setField("forEv")} />
+        <TRField label="Докази проти неї" value={f.against} onChange={setField("against")} />
+        <TRField label="Врівноважена думка" hint="Добріший, реалістичніший погляд" value={f.balanced} onChange={setField("balanced")} />
+        <button onClick={save} className="w-full rounded-2xl bg-pink-500 py-3 font-bold text-white hover:bg-pink-600">Зберегти запис</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <CalmHeader title="Журнал думок" onExit={onExit} right={<button onClick={() => { startRef.current = Date.now(); setOpen(true); }} className="inline-flex items-center gap-1 rounded-full bg-pink-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-pink-600"><Plus className="h-4 w-4" /> Новий</button>} />
+      <button onClick={toggleGuide} className="mb-1 inline-flex items-center gap-1 text-sm font-semibold text-pink-600 hover:text-pink-700">
+        <Info className="h-4 w-4" /> Як це працює {guideOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+      </button>
+      {guideOpen && <ThoughtGuide />}
+      <div className="mt-3" />
+      {thoughts.length === 0 ? (
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-pink-50">Записів ще немає. Злови тривожну думку і розплутай її.</div>
+      ) : (
+        <div className="space-y-3">
+          {thoughts.map((t) => (
+            <div key={t.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-50">
+              <div className="mb-1 flex items-center justify-between"><span className="text-xs font-medium text-slate-400">{t.date}{t.emotion ? ` · ${t.emotion} ${t.intensity}%` : ""}</span><button onClick={() => onDelete(t.id)} className="text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button></div>
+              {t.thought && <div className="font-semibold text-slate-800">“{t.thought}”</div>}
+              {t.balanced && <div className="mt-1 rounded-lg bg-pink-50 px-3 py-2 text-sm text-pink-800">↪ {t.balanced}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Fear ladder ---------- */
+function FearLadder({ fears, onExit, onSave, onLog, flash }) {
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState("");
+  const [intensity, setIntensity] = useState(50);
+  const [logId, setLogId] = useState(null);
+  const [before, setBefore] = useState(50);
+  const [after, setAfter] = useState(30);
+  const [note, setNote] = useState("");
+  const [guideOpen, setGuideOpen] = useState(false);
+
+  const sorted = [...fears].sort((a, b) => a.intensity - b.intensity);
+  const nowLevel = (f) => { const a = f.attempts || []; return a.length ? a[a.length - 1].after : f.intensity; };
+  const isMastered = (f) => (f.attempts || []).length > 0 && nowLevel(f) <= 20;
+  // "твоя сходинка зараз" = найлегша ще не приборкана
+  const currentStepId = sorted.find((f) => !isMastered(f))?.id;
+  const addFear = () => { if (!title.trim()) return; onSave([...fears, { id: ruid("f"), title: title.trim(), intensity, created: Date.now(), attempts: [] }]); setTitle(""); setIntensity(50); setAdding(false); };
+  const saveAttempt = () => {
+    const next = fears.map((f) => f.id === logId ? { ...f, attempts: [...(f.attempts || []), { date: dateKey(Date.now()), before, after, note: note.trim() }] } : f);
+    onSave(next); onLog(120, { fearId: logId });
+    if (after < before) flash("Крок уперед — молодець 🌱"); else flash("Записано. Будь до себе лагідною.");
+    setLogId(null); setNote(""); setBefore(50); setAfter(30);
+  };
+  const removeFear = (id) => onSave(fears.filter((f) => f.id !== id));
+
+  const logFear = fears.find((f) => f.id === logId);
+
+  return (
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <CalmHeader title="Сходинки страху" onExit={onExit} right={<button onClick={() => setAdding(true)} className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-600"><Plus className="h-4 w-4" /> Додати</button>} />
+
+      {/* how exposure works */}
+      <div className="mb-4 overflow-hidden rounded-2xl bg-amber-50 ring-1 ring-amber-100">
+        <button onClick={() => setGuideOpen((v) => !v)} className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-bold text-amber-800">
+          <HelpCircle className="h-4 w-4 shrink-0" /> Як страх «розчиняється» (2 хв читання)
+          {guideOpen ? <ChevronDown className="ml-auto h-4 w-4" /> : <ChevronRight className="ml-auto h-4 w-4" />}
+        </button>
+        {guideOpen && (
+          <div className="space-y-3 px-3 pb-3 text-xs leading-relaxed text-amber-900">
+            <p><b>Уникання годує страх.</b> Коли ми тікаємо від того, що лякає, мозок «запам'ятовує»: це було небезпечно. Страх міцнішає. Експозиція робить навпаки — ти лишаєшся в ситуації, тривога піднімається і сама спадає, і мозок вчиться: нічого страшного не сталося.</p>
+            <p><b>Тривога має піднятися — це і є робота.</b> «У спокійному стані» не означає бути розслабленою перед спробою — інакше це й не була б експозиція. Це означає підходити при ясній голові: не в гострій паніці, не під алкоголем чи заспокійливими, не в момент, коли й так усе валиться. А під час спроби тривога росте — і має рости. Ось твоя крива: пік, потім спад, і наступного разу пік нижчий.</p>
+            <div className="rounded-xl bg-white/70 p-2">
+              <div className="mb-1 text-[11px] font-bold text-amber-700">Крива тривоги за кілька спроб ↓</div>
+              <svg viewBox="0 0 220 60" className="w-full">
+                <path d="M0,50 C18,10 30,10 45,34 C60,50 62,50 70,52" fill="none" stroke="#f59e0b" strokeWidth="2.5" />
+                <path d="M70,52 C86,26 96,26 108,42 C120,52 122,52 130,53" fill="none" stroke="#fb923c" strokeWidth="2.5" opacity="0.8" />
+                <path d="M130,53 C144,40 152,40 162,49 C172,55 176,55 220,55" fill="none" stroke="#34d399" strokeWidth="2.5" opacity="0.85" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-bold">Головне — не панікувати й не тікати, а не «бути спокійною».</p>
+              <p className="mt-1">Є різниця між двома речами:</p>
+              <ul className="mt-1.5 space-y-1.5">
+                <li className="flex gap-2"><span className="shrink-0">✅</span><span><b>Працює:</b> ти спокійно вирішуєш зайти на сходинку → тривога всередині росте → ти лишаєшся й даєш їй піднятись і спасти, не тікаючи. Мозок вчиться: «я витримала».</span></li>
+                <li className="flex gap-2"><span className="shrink-0">⛔</span><span><b>Не працює:</b> ти зненацька, на піку паніки опиняєшся в найстрашнішому → тривога зашкалює → ти тікаєш. Мозок запам'ятовує «було жахливо, добре що втекла» — і страх закріплюється.</span></li>
+              </ul>
+              <p className="mt-1.5">Тому не кидайся в найстрашніше раптово й на піку паніки. Драбина для того й потрібна: щоб на кожній сходинці тривога була керована — досить сильна, щоб вчитися, але не така, що ти вилітаєш.</p>
+            </div>
+            <div>
+              <p className="font-bold">Три ознаки, що спроба та сама, що треба:</p>
+              <ul className="mt-1.5 space-y-1">
+                <li className="flex gap-2"><span className="mt-px shrink-0 text-amber-500">•</span><span>ти сама обрала зайти, а не тебе загнало в кут зненацька;</span></li>
+                <li className="flex gap-2"><span className="mt-px shrink-0 text-amber-500">•</span><span>тривога піднімається, але ти лишаєшся й даєш їй спасти, а не тікаєш на піку;</span></li>
+                <li className="flex gap-2"><span className="mt-px shrink-0 text-amber-500">•</span><span>після можеш сказати «було важко, але я витримала», а не «це був жах, більше ніколи».</span></li>
+              </ul>
+            </div>
+            <p><b>Якщо накрило панікою і втримати не вийшло</b> — це не провал і не «я роблю неправильно». Це означає, що сходинка завелика. Розбий її на дрібнішу: не «виступ перед залою», а «сказати одну фразу вголос при одній людині». Драбина працює, коли кроки достатньо малі, щоб тривога лишалася в зоні «важко, але терпимо».</p>
+            <p><b>Навіщо тоді дихання і заземлення?</b> Не щоб зробити спробу непотрібно спокійною. А щоб зайти при ясній голові (а не на піку паніки) і щоб лишитися на сходинці, коли тривога росте, замість тікати. Не прибрати тривогу — а витримати її. 🧡</p>
+          </div>
+        )}
+      </div>
+
+      {adding && (
+        <div className="mb-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Страх чи тривога…" className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" />
+          <div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">Наскільки страшно зараз?</span><span className="font-bold text-amber-600 tabular-nums">{intensity}</span></div>
+          <input type="range" min={0} max={100} value={intensity} onChange={(e) => setIntensity(+e.target.value)} className="w-full accent-amber-500" />
+          <div className="mt-3 flex gap-2"><button onClick={addFear} className="flex-1 rounded-xl bg-amber-500 py-2 font-semibold text-white hover:bg-amber-600">Додати до сходинок</button><button onClick={() => setAdding(false)} className="rounded-xl px-4 py-2 text-sm text-slate-500">Скасувати</button></div>
+        </div>
+      )}
+
+      {sorted.length === 0 && !adding ? (
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-amber-50">Додай кілька тривог — ми розкладемо їх від найлегшої до найважчої.</div>
+      ) : (
+        <div className="space-y-2">
+          <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400"><span>↑ важче</span><span>рухайся знизу вгору</span></div>
+          {[...sorted].reverse().map((f, ri) => {
+            const step = sorted.length - ri;
+            const atts = f.attempts || [];
+            const now = nowLevel(f);
+            const start = f.intensity;
+            const drop = Math.max(0, start - now);
+            const mastered = isMastered(f);
+            const isCurrent = f.id === currentStepId;
+            const pct = Math.max(0, Math.min(100, now));
+            const startPct = Math.max(0, Math.min(100, start));
+            const barColor = now <= 20 ? "bg-green-500" : now <= 45 ? "bg-amber-400" : "bg-orange-500";
+            return (
+              <div key={f.id} className={`rounded-2xl bg-white p-4 shadow-sm ring-1 transition ${mastered ? "ring-green-100" : isCurrent ? "ring-2 ring-amber-300" : "ring-amber-50"}`}>
+                <div className="flex items-center gap-2">
+                  <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm font-bold ${mastered ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>{mastered ? <Check className="h-4 w-4" /> : step}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5"><span className="truncate font-bold text-slate-800">{f.title}</span>
+                      {mastered ? <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-bold text-green-700">приборкано</span>
+                        : isCurrent ? <span className="shrink-0 rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-white">твоя сходинка</span>
+                        : atts.length ? <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">в роботі</span>
+                        : <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">попереду</span>}
+                    </div>
+                    <div className="text-xs text-slate-400">{atts.length ? `${atts.length} ${atts.length === 1 ? "спроба" : atts.length < 5 ? "спроби" : "спроб"}` : "ще не пробувала"}{drop > 0 ? ` · впала на ${drop}` : ""}</div>
+                  </div>
+                  <button onClick={() => { setLogId(f.id); setBefore(now); }} className="shrink-0 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600">Записати спробу</button>
+                  <button onClick={() => { if (confirm("Прибрати цей страх?")) removeFear(f.id); }} className="shrink-0 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                </div>
+                {/* vector: anxiety from start → now, aiming for 0 */}
+                <div className="mt-2.5">
+                  <div className="relative h-2 rounded-full bg-slate-100">
+                    <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                    {atts.length > 0 && startPct > pct && <div className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-slate-300" style={{ left: `${startPct}%` }} title={`старт ${start}`} />}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[10px] font-medium text-slate-400"><span>тривога зараз <b className="text-slate-600">{now}</b>/100</span><span>ціль ≤ 20</span></div>
+                </div>
+                {atts.length > 1 && (
+                  <div className="mt-2 flex items-end gap-1" title="кожна спроба: тривога після">
+                    {atts.slice(-14).map((a, i) => <div key={i} title={`${a.date}: ${a.before}→${a.after}`} className={`flex-1 rounded-t ${a.after <= 20 ? "bg-green-400" : "bg-amber-300"}`} style={{ height: Math.max(4, (a.after / 100) * 32) }} />)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {logFear && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={() => setLogId(null)}>
+          <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-1 text-lg font-bold text-slate-900">Записати спробу</h3>
+            <p className="mb-4 text-sm text-slate-500">“{logFear.title}”</p>
+            <div className="mb-3"><div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">Тривога до</span><span className="font-bold text-slate-700 tabular-nums">{before}</span></div><input type="range" min={0} max={100} value={before} onChange={(e) => setBefore(+e.target.value)} className="w-full accent-amber-500" /></div>
+            <div className="mb-3"><div className="mb-1 flex justify-between text-sm"><span className="font-medium text-slate-600">Тривога після</span><span className="font-bold text-teal-600 tabular-nums">{after}</span></div><input type="range" min={0} max={100} value={after} onChange={(e) => setAfter(+e.target.value)} className="w-full accent-teal-500" /></div>
+            <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Як усе пройшло? (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" />
+            <button onClick={saveAttempt} className="w-full rounded-2xl bg-amber-500 py-3 font-bold text-white hover:bg-amber-600">Зберегти спробу</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Focus timer (Pomodoro w/ calming breath) ---------- */
+function FocusTimer({ settings, onExit, onDone }) {
+  const [workMin, setWorkMin] = useState(25);
+  const [breakMin, setBreakMin] = useState(5);
+  const [stage, setStage] = useState("config"); // config | breathe | work | break | done
+  const [remaining, setRemaining] = useState(0);
+  const [breatheLeft, setBreatheLeft] = useState(3);
+  const timer = useRef(null);
+  const workedRef = useRef(0);
+
+  useEffect(() => () => clearInterval(timer.current), []);
+
+  const startBreath = () => { setStage("breathe"); setBreatheLeft(3); clearInterval(timer.current); calmTick(520);
+    timer.current = setInterval(() => setBreatheLeft((b) => { if (b <= 1) { clearInterval(timer.current); startWork(); return 0; } calmTick(480); return b - 1; }), 4000);
+  };
+  const startWork = () => { setStage("work"); setRemaining(workMin * 60); tickDown("work"); };
+  const startBreak = () => { setStage("break"); setRemaining(breakMin * 60); tickDown("break"); };
+  const tickDown = (which) => {
+    clearInterval(timer.current);
+    timer.current = setInterval(() => setRemaining((r) => {
+      if (r <= 1) {
+        clearInterval(timer.current);
+        if (which === "work") { workedRef.current += workMin * 60; calmTick(560); setStage("break"); setRemaining(breakMin * 60); tickDown("break"); return breakMin * 60; }
+        else { calmTick(520); onDone(workedRef.current || workMin * 60); return 0; }
+      }
+      return r - 1;
+    }), 1000);
+  };
+  const stop = () => { clearInterval(timer.current); const worked = workedRef.current + (stage === "work" ? (workMin * 60 - remaining) : 0); if (worked > 20) onDone(worked); else onExit(); };
+
+  if (stage === "config") return (
+    <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+      <CalmHeader title="Таймер фокусу" onExit={onExit} />
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100">
+        <p className="mb-4 text-sm text-slate-500">Почнемо з трьох повільних вдихів, тоді — блок зосередженої роботи, а потім коротка перерва.</p>
+        <div className="mb-3 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Робота</span><span className="flex items-center gap-2"><input type="number" min={1} max={120} value={workMin} onChange={(e) => setWorkMin(Math.max(1, Math.min(120, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">хв</span></span></div>
+        <div className="mb-4 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Перерва</span><span className="flex items-center gap-2"><input type="number" min={1} max={60} value={breakMin} onChange={(e) => setBreakMin(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">хв</span></span></div>
+        <button onClick={startBreath} className="w-full rounded-2xl bg-emerald-500 py-3.5 font-bold text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-600">Почати</button>
+      </div>
+    </div>
+  );
+
+  if (stage === "breathe") return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
+      <div className="w-full"><CalmHeader title="Налаштуйся" onExit={stop} /></div>
+      <div className="my-10 grid h-56 w-56 place-items-center rounded-full bg-gradient-to-br from-emerald-300 to-teal-300 text-white">
+        <div className="text-center"><div className="text-lg font-bold">Дихай повільно</div><div className="text-5xl font-extrabold tabular-nums">{breatheLeft}</div></div>
+      </div>
+      <p className="text-sm text-slate-500">Кілька спокійних вдихів перед фокусом…</p>
+    </div>
+  );
+
+  const isWork = stage === "work";
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
+      <div className="w-full"><CalmHeader title={isWork ? "Фокус" : "Перерва"} onExit={stop} /></div>
+      <div className={`my-10 grid h-64 w-64 place-items-center rounded-full text-white ${isWork ? "bg-gradient-to-br from-emerald-400 to-teal-400" : "bg-gradient-to-br from-sky-300 to-teal-300"}`}>
+        <div className="text-center"><div className="text-sm font-semibold uppercase tracking-widest text-white/80">{isWork ? "Фокус" : "Відпочинок"}</div><div className="text-6xl font-extrabold tabular-nums">{fmtClock(remaining)}</div></div>
+      </div>
+      <button onClick={stop} className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Pause className="h-4 w-4" /> Завершити</button>
+    </div>
+  );
+}
+
+/* ---------- Worry time ---------- */
+function WorryTimer({ onExit, onDone }) {
+  const [min, setMin] = useState(10);
+  const [remaining, setRemaining] = useState(0);
+  const [running, setRunning] = useState(false);
+  const timer = useRef(null);
+  useEffect(() => () => clearInterval(timer.current), []);
+  const start = () => { setRunning(true); setRemaining(min * 60); clearInterval(timer.current); timer.current = setInterval(() => setRemaining((r) => { if (r <= 1) { clearInterval(timer.current); calmTick(440); onDone(min * 60); return 0; } return r - 1; }), 1000); };
+  const stop = () => { clearInterval(timer.current); const spent = min * 60 - remaining; if (spent > 20) onDone(spent); else onExit(); };
+
+  if (!running) return (
+    <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+      <CalmHeader title="Час для тривоги" onExit={onExit} />
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-pink-100">
+        <p className="mb-3 text-sm leading-relaxed text-slate-600">Це <b>свідомо виділений, обмежений у часі</b> проміжок, щоб дозволити собі потривожитись навмисне. Постав таймер, тривожся вільно — пиши, думай, відчувай це — а коли час вийде, м'яко відклади це вбік. Це техніка, щоб <i>вмістити</i> тривогу, а не занурюватись у неї.</p>
+        <div className="mb-4 flex items-center justify-between"><span className="text-sm font-medium text-slate-700">Скільки часу?</span><span className="flex items-center gap-2"><input type="number" min={1} max={60} value={min} onChange={(e) => setMin(Math.max(1, Math.min(60, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm" /><span className="text-sm text-slate-400">хв</span></span></div>
+        <button onClick={start} className="w-full rounded-2xl bg-pink-500 py-3.5 font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-600">Почати час для тривоги</button>
+      </div>
+    </div>
+  );
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center px-4 pb-16 pt-6">
+      <div className="w-full"><CalmHeader title="Час для тривоги" onExit={stop} /></div>
+      <div className="my-10 grid h-64 w-64 place-items-center rounded-full bg-gradient-to-br from-pink-300 to-red-300 text-white"><div className="text-6xl font-extrabold tabular-nums">{fmtClock(remaining)}</div></div>
+      <p className="mb-4 max-w-xs text-center text-sm text-slate-500">Хай усе підніметься зараз. Коли таймер закінчиться — ми зачинимо ці двері. Поки що.</p>
+      <button onClick={stop} className="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50"><Check className="h-4 w-4" /> Я закінчила</button>
+    </div>
+  );
+}
+
+/* ---------- Before-work chain ---------- */
+function BeforeWork({ onExit, onDone }) {
+  const [step, setStep] = useState("intro"); // intro | breath | ground | done
+  const acc = useRef(0);
+  return (
+    <div className="min-h-full">
+      {step === "intro" && (
+        <div className="mx-auto w-full max-w-md px-4 pb-16 pt-6">
+          <CalmHeader title="Перед роботою" onExit={onExit} />
+          <div className="rounded-3xl bg-white p-6 text-center shadow-sm ring-1 ring-teal-100">
+            <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-teal-100 text-teal-600"><Sparkle className="h-7 w-7" /></span>
+            <h2 className="mt-3 text-xl font-bold text-slate-900">М'яке перезавантаження</h2>
+            <p className="mt-2 text-sm text-slate-500">Дві хвилини дихання, потім швидке заземлення. І ти будеш готова почати — спокійно й ясно.</p>
+            <button onClick={() => setStep("breath")} className="mt-5 w-full rounded-2xl bg-teal-500 py-3.5 font-bold text-white shadow-lg shadow-teal-500/20 hover:bg-teal-600">Почати</button>
+          </div>
+        </div>
+      )}
+      {step === "breath" && <BreathPractice auto={{ patternId: "relax", mode: "minutes", minutes: 2 }} settings={{ tick: false }} saveSettings={() => {}} onExit={onExit} onDone={(sec) => { acc.current += sec; setStep("ground"); }} />}
+      {step === "ground" && <GroundingPractice onExit={onExit} onDone={(sec) => { acc.current += sec; setStep("done"); }} />}
+      {step === "done" && (
+        <div className="mx-auto w-full max-w-md px-4 pb-16 pt-16 text-center">
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-teal-100 text-teal-600"><Check className="h-8 w-8" /></div>
+          <h2 className="mt-4 text-2xl font-bold text-slate-900">Ти готова ✨</h2>
+          <p className="mt-1 text-sm text-slate-500">Спокійно й ясно. Крок за кроком, по одній справі.</p>
+          <button onClick={() => onDone(acc.current)} className="mt-6 rounded-2xl bg-teal-500 px-8 py-3 font-bold text-white hover:bg-teal-600">Почати мій день</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Calm stats ---------- */
+function CalmStats({ sessions, onExit }) {
+  const [monthOffset, setMonthOffset] = useState(0);
+  const minutes = calmMinutes(sessions);
+  const streak = calmStreak(sessions);
+  const byType = {};
+  for (const s of sessions) byType[s.type] = (byType[s.type] || 0) + 1;
+
+  const now = new Date();
+  const view = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const year = view.getFullYear(), month = view.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startPad = (new Date(year, month, 1).getDay() + 6) % 7;
+  const dayCount = {};
+  for (const s of sessions) dayCount[s.date] = (dayCount[s.date] || 0) + 1;
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-6">
+      <CalmHeader title="Твоя практика спокою" onExit={onExit} />
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">🌿</div><div className="text-2xl font-extrabold tabular-nums text-teal-600">{streak}</div><div className="text-[11px] text-slate-400">днів поспіль</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">⏱️</div><div className="text-2xl font-extrabold tabular-nums text-sky-600">{minutes}</div><div className="text-[11px] text-slate-400">хвилин</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-100"><div className="text-3xl">🧘</div><div className="text-2xl font-extrabold tabular-nums text-emerald-500">{sessions.length}</div><div className="text-[11px] text-slate-400">сесій</div></div>
+      </div>
+
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-teal-100">
+        <h2 className="mb-3 text-sm font-bold text-slate-700">За практикою</h2>
+        {Object.keys(byType).length === 0 ? <p className="text-sm text-slate-400">Сесій ще немає.</p> : (
+          <div className="space-y-2">
+            {Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([type, n]) => {
+              const T = CALM_TECHNIQUES[type] || { label: type, icon: Leaf };
+              const max = Math.max(...Object.values(byType));
+              return <div key={type} className="flex items-center gap-2"><T.icon className="h-4 w-4 shrink-0 text-teal-500" /><span className="w-36 shrink-0 truncate text-sm text-slate-600">{T.label}</span><div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-teal-400" style={{ width: `${(n / max) * 100}%` }} /></div><span className="w-6 text-right text-xs font-semibold tabular-nums text-slate-500">{n}</span></div>;
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-teal-100">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-700">{view.toLocaleDateString("uk-UA", { month: "long", year: "numeric" })}</h2>
+          <div className="flex gap-1">
+            <button onClick={() => setMonthOffset((m) => m - 1)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" /></button>
+            <button onClick={() => setMonthOffset(0)} disabled={monthOffset === 0} className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40">Сьогодні</button>
+            <button onClick={() => setMonthOffset((m) => Math.min(0, m + 1))} disabled={monthOffset === 0} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-40"><ArrowRight className="h-4 w-4" /></button>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 gap-1.5">
+          {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"].map((w, i) => <div key={i} className="pb-1 text-center text-[10px] font-semibold text-slate-400">{w}</div>)}
+          {Array.from({ length: startPad }).map((_, i) => <div key={"p" + i} />)}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const d = i + 1; const ds = dateKey(new Date(year, month, d).getTime()); const c = dayCount[ds] || 0;
+            const bg = !c ? "#eef2f5" : c >= 3 ? "#0d9488" : c === 2 ? "#2dd4bf" : "#99f6e4";
+            return <div key={ds} className="grid aspect-square place-items-center rounded-lg text-[10px] font-medium" style={{ backgroundColor: bg, color: c ? "#fff" : "#94a3b8" }} title={`${ds}: ${c}`}>{d}</div>;
+          })}
+        </div>
+      </div>
+
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">Інструменти самодопомоги, а не заміна професійної підтримки. Якщо стає важко — звернутися до когось справді може допомогти. 💛</p>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* FASTING — section UI                                               */
+/* ================================================================== */
+function FastingSection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [fview, setFview] = useState("timer"); // timer | ladder | diary | overview | reference
+  const [goals, setGoals] = useState({ startWeight: null, targetWeight: null, protocol: "16:8", startDate: dateKey(Date.now()) });
+  const [diary, setDiary] = useState([]);
+  const [current, setCurrent] = useState(null);
+  const [eating, setEating] = useState(null); // { startTs, windowHrs, protocol } — вікно їжі після фасту
+  const [diaryEditor, setDiaryEditor] = useState(null); // {entry} | {entry:null}
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [toast, setToast] = useState(null);
+  const [now, setNow] = useState(Date.now());
+
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2400); }, []);
+
+  const reload = useCallback(async () => {
+    const d = await loadFastingData();
+    setGoals(d.goals); setDiary(d.diary); setCurrent(d.current); setEating(d.eating); setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => { setGoals({ startWeight: null, targetWeight: null, protocol: "16:8", startDate: dateKey(Date.now()) }); setDiary([]); setCurrent(null); setEating(null); setFview("timer"); };
+    window.addEventListener("fasting-reset", onReset);
+    return () => window.removeEventListener("fasting-reset", onReset);
+  }, [reload]);
+
+  // tick while a fast or an eating window is running
+  useEffect(() => {
+    if (!current && !eating) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    setNow(Date.now());
+    return () => clearInterval(t);
+  }, [current, eating]);
+
+  const saveGoals = useCallback(async (patch) => { const next = { ...goals, ...patch }; setGoals(next); await store.set(FKEYS.goals, next); }, [goals]);
+  const saveDiary = useCallback(async (next) => { setDiary(next); await store.set(FKEYS.diary, next); }, []);
+  const saveCurrent = useCallback(async (val) => { setCurrent(val); await store.set(FKEYS.current, val); }, []);
+  const saveEating = useCallback(async (val) => { setEating(val); await store.set(FKEYS.eating, val); }, []);
+
+  const protocol = getProtocol(goals.protocol);
+
+  const startFast = useCallback(async (customTs) => {
+    const startTs = (typeof customTs === "number" && !isNaN(customTs)) ? Math.min(customTs, Date.now()) : Date.now();
+    await saveCurrent({ startTs, targetHrs: protocol.hrs, protocol: protocol.id });
+    if (eating) await saveEating(null); // starting a fast closes the eating window
+    flash(`Пішов відлік — ціль ${protocol.hrs} год 💪`);
+  }, [saveCurrent, protocol, eating, saveEating, flash]);
+
+  const setStartTs = useCallback(async (ts) => { if (current) await saveCurrent({ ...current, startTs: ts }); }, [current, saveCurrent]);
+
+  const endFast = useCallback(async () => {
+    if (!current) return;
+    const actualHrs = Math.round(((Date.now() - current.startTs) / 3600000) * 10) / 10;
+    const entry = {
+      id: ruid("d"), date: dateKey(current.startTs), ts: current.startTs,
+      protocol: current.protocol, targetHrs: current.targetHrs, actualHrs,
+      goalMet: actualHrs + 0.05 >= current.targetHrs,
+      weight: null, waist: null, energy: null, hunger: null, wellbeing: "", notes: "",
+    };
+    await saveDiary([...diary, entry]);
+    await saveCurrent(null);
+    // open the eating window for protocols that have one (16:8 → 8 год, 18:6 → 6 год…)
+    const win = getProtocol(current.protocol).window || 0;
+    if (win > 0) await saveEating({ startTs: Date.now(), windowHrs: win, protocol: current.protocol });
+    setDiaryEditor({ entry });
+    setFview("diary");
+    const winMsg = win > 0 ? ` Вікно їжі відкрито — ${win} год 🍽️` : "";
+    flash((entry.goalMet ? "Ціль досягнута! ✓" : "Голодування записано.") + winMsg);
+  }, [current, diary, saveDiary, saveCurrent, saveEating, flash]);
+
+  const saveEntry = useCallback(async (entry, id) => {
+    if (id) await saveDiary(diary.map((r) => (r.id === id ? { ...r, ...entry } : r)));
+    else await saveDiary([...diary, { id: ruid("d"), ts: Date.now(), ...entry }]);
+    setDiaryEditor(null); flash("Збережено");
+  }, [diary, saveDiary, flash]);
+  const deleteEntry = useCallback(async (id) => { await saveDiary(diary.filter((r) => r.id !== id)); flash("Видалено"); }, [diary, saveDiary, flash]);
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-orange-400"><div className="flex flex-col items-center gap-3"><Hourglass className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  const NAV = [
+    { id: "timer", label: "Таймер", icon: Timer },
+    { id: "ladder", label: "Драбина", icon: TrendingUp },
+    { id: "plan", label: "План", icon: Target },
+    { id: "diary", label: "Щоденник", icon: NotebookPen },
+    { id: "overview", label: "Огляд", icon: Scale },
+    { id: "reference", label: "Довідник", icon: Info },
+  ];
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-amber-50 via-orange-50/40 to-white">
+      <header className="sticky top-0 z-20 border-b border-amber-100 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-1 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-amber-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          {NAV.map((n) => <NavButton key={n.id} active={fview === n.id} onClick={() => setFview(n.id)} icon={n.icon}>{n.label}</NavButton>)}
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-6">
+        {fview === "timer" && <FastTimer current={current} eating={eating} now={now} protocol={protocol} onStart={startFast} onEnd={endFast} onSetStart={setStartTs} onChangeProtocol={() => setFview("ladder")} />}
+        {fview === "ladder" && <ProtocolLadder goals={goals} diary={diary} onSaveGoals={saveGoals} onSet={(id) => { saveGoals({ protocol: id, protocolSince: dateKey(Date.now()), stepUpDismissed: null }); flash(`Протокол: ${getProtocol(id).label}`); setFview("timer"); }} />}
+        {fview === "plan" && <FastPlan goals={goals} diary={diary} onSaveGoals={saveGoals} onGoLog={() => setDiaryEditor({ entry: null })} />}
+        {fview === "diary" && <FastDiary diary={diary} onNew={() => setDiaryEditor({ entry: null })} onEdit={(e) => setDiaryEditor({ entry: e })} onDelete={deleteEntry} />}
+        {fview === "overview" && <FastOverview goals={goals} diary={diary} onSaveGoals={saveGoals} />}
+        {fview === "reference" && <FastReference />}
+      </main>
+
+      {diaryEditor && <DiaryForm entry={diaryEditor.entry} defaultProtocol={goals.protocol} onClose={() => setDiaryEditor(null)} onSave={(e) => saveEntry(e, diaryEditor.entry?.id)} />}
+      {toast && <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+/* ---------- Live timer ---------- */
+function FastRing({ pct, size = 240, stroke = 16, color = "#f97316", children }) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r, off = c * (1 - Math.max(0, Math.min(1, pct)));
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#fdead1" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" style={{ transition: "stroke-dashoffset 1s linear" }} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">{children}</div>
+    </div>
+  );
+}
+function FastTimer({ current, eating, now, protocol, onStart, onEnd, onSetStart, onChangeProtocol }) {
+  const [editing, setEditing] = useState(false);
+  const [startPick, setStartPick] = useState(false);
+  const [customStart, setCustomStart] = useState("");
+  const elapsedMs = current ? now - current.startTs : 0;
+  const elapsedH = elapsedMs / 3600000;
+  const targetH = current ? current.targetHrs : protocol.hrs;
+  const pct = current ? elapsedMs / (targetH * 3600000) : 0;
+  const stage = stageForHours(elapsedH);
+  const projEnd = current ? new Date(current.startTs + targetH * 3600000) : null;
+  const startDate = current ? new Date(current.startTs) : null;
+  const p = current ? getProtocol(current.protocol) : protocol;
+
+  // eating window (only meaningful when no fast is running)
+  const eatingActive = !current && !!eating;
+  const eatEndTs = eatingActive ? eating.startTs + eating.windowHrs * 3600000 : 0;
+  const eatLeftMs = eatingActive ? Math.max(0, eatEndTs - now) : 0;
+  const eatOver = eatingActive && eatLeftMs <= 0;
+  const eatPct = eatingActive ? Math.max(0, Math.min(1, (now - eating.startTs) / (eating.windowHrs * 3600000))) : 0;
+  const eatEndLabel = eatingActive ? new Date(eatEndTs).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+
+  return (
+    <div className="flex flex-col items-center">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="rounded-full px-3 py-1 text-sm font-bold text-white" style={{ backgroundColor: protocolColor(p.level) }}>{p.label}</span>
+        <button onClick={onChangeProtocol} className="rounded-full bg-white px-3 py-1 text-sm font-medium text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50">змінити</button>
+      </div>
+
+      <FastRing
+        pct={current ? pct : eatingActive ? eatPct : 0}
+        color={current ? stage.color : eatingActive ? (eatOver ? "#f97316" : "#22c55e") : "#fb923c"}
+      >
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">{current ? "Голодування" : eatingActive ? (eatOver ? "Вікно закрите" : "Вікно їжі") : "Готова почати"}</div>
+        <div className="text-4xl font-extrabold tabular-nums text-slate-900">{current ? fmtHMS(elapsedMs) : eatingActive ? fmtHM(eatLeftMs) : fmtHM(elapsedMs)}</div>
+        <div className="mt-1 text-sm text-slate-400">
+          {current ? `ціль ${targetH} год · ${(pct * 100).toFixed(1)}%` : eatingActive ? (eatOver ? "час починати голодування" : `їж до ${eatEndLabel}`) : `ціль ${targetH} год`}
+        </div>
+      </FastRing>
+
+      {eatingActive && (
+        <div className={`mt-4 rounded-xl px-4 py-2 text-center text-sm font-medium ${eatOver ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>
+          {eatOver
+            ? "Вікно їжі закінчилось — час починати наступне голодування 💪"
+            : `Вікно їжі відкрите ще ${fmtHM(eatLeftMs)} · закриється о ${eatEndLabel} 🍽️`}
+        </div>
+      )}
+
+      {current ? (
+        <>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm text-slate-500">
+            <span>Старт: {startDate.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+            <span className="text-slate-300">·</span>
+            <span>Ціль: {projEnd.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+            <button onClick={() => setEditing((v) => !v)} className="text-orange-500 hover:text-orange-600"><Pencil className="h-3.5 w-3.5" /></button>
+          </div>
+          {editing && (
+            <div className="mt-2 flex items-center gap-2 rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-amber-100">
+              <span className="text-xs text-slate-500">Час старту</span>
+              <input type="datetime-local" value={toLocalInput(current.startTs)} onChange={(e) => { const t = new Date(e.target.value).getTime(); if (!isNaN(t)) onSetStart(t); }} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+            </div>
+          )}
+          <button onClick={onEnd} className="mt-6 rounded-2xl bg-slate-800 px-10 py-3.5 font-bold text-white shadow-lg transition hover:bg-slate-900">Завершити голодування</button>
+        </>
+      ) : (
+        <>
+          <button onClick={() => onStart(startPick && customStart ? new Date(customStart).getTime() : undefined)} className="mt-6 rounded-2xl bg-orange-500 px-12 py-3.5 font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600">Почати голодування</button>
+          {!startPick ? (
+            <button onClick={() => { setStartPick(true); setCustomStart(toLocalInput(Date.now())); }} className="mt-3 text-sm font-medium text-orange-500 hover:text-orange-600">Почала раніше? Вказати час старту</button>
+          ) : (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-amber-100">
+              <span className="text-xs text-slate-500">Старт о</span>
+              <input type="datetime-local" max={toLocalInput(Date.now())} value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+              <button onClick={() => setStartPick(false)} className="text-xs font-medium text-slate-400 hover:text-slate-600">зараз</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* stage timeline */}
+      <div className="mt-8 w-full">
+        <div className="mb-2 text-sm font-semibold text-slate-600">Що відбувається в тілі</div>
+        <div className="space-y-2">
+          {FAST_STAGES.map((s) => {
+            const active = current && elapsedH >= s.from && elapsedH < s.to;
+            const past = current && elapsedH >= s.to;
+            const label = s.to >= 999 ? `${s.from}+ год` : `${s.from}–${s.to} год`;
+            return (
+              <div key={s.title} className={`flex items-center gap-3 rounded-2xl border p-3 transition ${active ? "border-transparent shadow-md" : "border-slate-100 bg-white"}`} style={active ? { backgroundColor: s.color + "18", borderColor: s.color } : {}}>
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white" style={{ backgroundColor: past ? "#cbd5e1" : s.color }}>{past ? <Check className="h-4 w-4" /> : <span className="text-[11px] font-bold">{s.from}</span>}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2"><span className="font-bold text-slate-800">{s.title}</span><span className="text-[11px] font-medium text-slate-400">{label}</span>{active && <span className="rounded-full bg-white/70 px-2 text-[10px] font-bold" style={{ color: s.color }}>зараз</span>}</div>
+                  <div className="text-xs text-slate-500">{s.desc}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-center text-[11px] text-slate-400">Орієнтовні етапи для розуміння процесу — не медичні твердження. Час індивідуальний.</p>
+      </div>
+    </div>
+  );
+}
+function toLocalInput(ts) { const d = new Date(ts - new Date().getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); }
+
+/* ---------- Protocol ladder ---------- */
+function ProtocolLadder({ goals, diary, onSet, onSaveGoals }) {
+  const cur = getProtocol(goals.protocol);
+  const nextP = PROTOCOLS.find((p) => p.level === cur.level + 1);
+  const stepUpDays = goals.stepUpDays || 14;
+  const since = goals.protocolSince || goals.startDate || dateKey(Date.now());
+  // consistency: distinct days you actually completed this protocol since you settled on it
+  const daysDone = new Set(diary.filter((r) => r.protocol === goals.protocol && r.goalMet && r.date >= since).map((r) => r.date)).size;
+  const remaining = Math.max(0, stepUpDays - daysDone);
+  const reached = daysDone >= stepUpDays && !!nextP;
+  const dismissed = goals.stepUpDismissed === goals.protocol;
+  const pctToStep = Math.min(1, stepUpDays ? daysDone / stepUpDays : 0);
+  const highlightNext = reached && !dismissed && nextP;
+  const setStepDays = (d) => onSaveGoals({ stepUpDays: Math.max(3, Math.min(60, d)) });
+
+  return (
+    <div>
+      <h1 className="text-xl font-extrabold text-slate-900">Драбина протоколів</h1>
+      <p className="mt-1 rounded-2xl bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-800">
+        Починай з найм'якшого щабля й піднімайся <b>поступово</b> — тільки коли поточний рівень дається легко й приємно. Немає «єдино правильного» рівня; сталість важливіша за інтенсивність. Жодного поспіху.
+      </p>
+
+      {/* recommendation */}
+      {nextP ? (
+        highlightNext ? (
+          <div className="mt-3 rounded-2xl border border-green-200 bg-green-50 p-4">
+            <div className="flex items-start gap-3">
+              <Sparkle className="mt-0.5 h-5 w-5 shrink-0 text-green-500" />
+              <div className="flex-1">
+                <p className="text-sm text-green-800">Ти освоїла <b>{cur.label}</b> — вже {daysDone} {daysDone === 1 ? "день" : daysDone < 5 ? "дні" : "днів"} на цьому рівні. Коли відчуєш готовність, можна спробувати <b>{nextP.label}</b>. Без поспіху 💛</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button onClick={() => onSet(nextP.id)} className="rounded-full bg-green-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Спробувати {nextP.label}</button>
+                  <button onClick={() => onSaveGoals({ stepUpDismissed: goals.protocol })} className="rounded-full bg-white px-4 py-1.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50">Поки лишити {cur.label}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm text-slate-600">Ти на <b>{cur.label}</b> вже <b>{daysDone}</b> {daysDone === 1 ? "день" : daysDone < 5 ? "дні" : "днів"}.{dismissed ? " Лишаєшся на цьому рівні 👍" : ` Орієнтир: ще ~${remaining} дн на цьому рівні, перш ніж пробувати ${nextP.label}.`}</p>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full transition-all" style={{ width: `${pctToStep * 100}%`, backgroundColor: protocolColor(cur.level) }} /></div>
+            <div className="mt-2 flex items-center gap-2 text-xs text-slate-400">
+              <span>Орієнтир переходу:</span>
+              <button onClick={() => setStepDays(stepUpDays - 1)} className="grid h-6 w-6 place-items-center rounded-full bg-slate-100 font-bold text-slate-500 hover:bg-slate-200">−</button>
+              <span className="font-semibold tabular-nums text-slate-600">{stepUpDays} дн</span>
+              <button onClick={() => setStepDays(stepUpDays + 1)} className="grid h-6 w-6 place-items-center rounded-full bg-slate-100 font-bold text-slate-500 hover:bg-slate-200">+</button>
+              {dismissed && <button onClick={() => onSaveGoals({ stepUpDismissed: null })} className="ml-auto font-medium text-slate-400 underline hover:text-slate-600">повернути підказку</button>}
+            </div>
+          </div>
+        )
+      ) : (
+        <div className="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">Ти на найвищому щаблі драбини. Слухай своє тіло й лишайся на комфортному рівні 💛</div>
+      )}
+      <p className="mt-2 px-1 text-[11px] leading-relaxed text-slate-400">Це загальний орієнтир, а не медична порада. Немає єдино правильного темпу — рухайся вгору лише коли готова, і слухай своє тіло.</p>
+
+      <div className="mt-4 space-y-2">
+        {[...PROTOCOLS].reverse().map((p) => {
+          const active = p.id === goals.protocol;
+          const isNext = highlightNext && p.id === nextP.id;
+          const color = protocolColor(p.level);
+          return (
+            <div key={p.id} className={`flex items-start gap-3 rounded-2xl border p-4 transition ${active ? "shadow-md" : isNext ? "border-green-300 bg-green-50/60 ring-2 ring-green-200" : "border-slate-100 bg-white"}`} style={active ? { borderColor: color, backgroundColor: color + "12" } : {}}>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-sm font-extrabold text-white" style={{ backgroundColor: color }}>{p.hrs}г</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold text-slate-900">{p.label}</span>
+                  <span className="text-xs text-slate-400">вікно {p.window} год · {p.freq}</span>
+                  {active && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white" style={{ backgroundColor: color }}>мій зараз</span>}
+                  {isNext && <span className="rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold text-white">рекомендовано</span>}
+                </div>
+                <p className="mt-0.5 text-sm text-slate-500">{p.note}</p>
+              </div>
+              {!active && <button onClick={() => onSet(p.id)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold text-white ${isNext ? "bg-green-600 hover:bg-green-700" : "bg-slate-800 hover:bg-slate-900"}`}>Обрати</button>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Overview: goals + metrics + charts ---------- */
+/* ---------- Fasting: gradual weight-loss plan ---------- */
+function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
+  const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+  const months = goals.planMonths || 12;
+  const startW = goals.startWeight;
+  const targetW = goals.targetWeight;
+  const startDate = goals.planStart || goals.startDate || dateKey(Date.now());
+  const weighed = (diary || []).filter((r) => r.weight != null).sort((a, b) => a.date.localeCompare(b.date));
+  const currentW = weighed.length ? weighed[weighed.length - 1].weight : startW;
+
+  const ready = startW != null && targetW != null && startW > targetW;
+  const totalLoss = ready ? startW - targetW : 0;
+  const perMonth = ready ? totalLoss / months : 0;
+  const perWeek = ready ? totalLoss / (months * 4.345) : 0;
+  const lostSoFar = (startW != null && currentW != null) ? Math.round((startW - currentW) * 10) / 10 : 0;
+  const pctDone = totalLoss > 0 ? Math.max(0, Math.min(1, lostSoFar / totalLoss)) : 0;
+
+  // elapsed months since start → expected weight now
+  const elapsedMs = Date.now() - new Date(startDate + "T00:00:00").getTime();
+  const elapsedMonths = Math.max(0, elapsedMs / (30.44 * 86400000));
+  const expectedNow = ready ? Math.max(targetW, startW - perMonth * elapsedMonths) : null;
+  const delta = (ready && currentW != null && expectedNow != null) ? Math.round((currentW - expectedNow) * 10) / 10 : null; // >0 = behind plan
+
+  const milestones = [];
+  if (ready) {
+    const d0 = new Date(startDate + "T00:00:00");
+    for (let i = 1; i <= months; i++) { const d = new Date(d0); d.setMonth(d.getMonth() + i); milestones.push({ i, w: Math.round((startW - perMonth * i) * 10) / 10, date: `${d.getMonth() + 1}.${d.getFullYear()}` }); }
+    if (milestones.length) milestones[milestones.length - 1].w = targetW;
+  }
+  const paceOk = perWeek > 0 && perWeek <= 1;
+
+  // ---- КБЖУ + activity calculator (Mifflin-St Jeor BMR → TDEE → deficit) ----
+  const h = goals.heightCm, age = goals.age, sex = goals.sex || "f";
+  const activity = goals.activity || 1.375;
+  const w = currentW ?? startW;
+  const canKcal = w != null && h != null && age != null;
+  const bmr = canKcal ? Math.round(10 * w + 6.25 * h - 5 * age + (sex === "m" ? 5 : -161)) : null;
+  const tdee = bmr != null ? Math.round(bmr * activity) : null;
+  const dailyDeficit = ready ? Math.round((perWeek * 7700) / 7) : 0; // 1 кг жиру ≈ 7700 ккал
+  const floorKcal = sex === "m" ? 1500 : 1200;
+  const rawTarget = tdee != null ? tdee - dailyDeficit : null;
+  const kcalTarget = rawTarget != null ? Math.max(floorKcal, rawTarget) : null;
+  const belowFloor = rawTarget != null && rawTarget < floorKcal;
+  const refW = targetW || w; // білок/жир рахуємо від цільової ваги
+  const proteinG = refW != null ? Math.round(1.8 * refW) : null;
+  const fatG = refW != null ? Math.max(40, Math.round(0.8 * refW)) : null;
+  const carbsG = (kcalTarget != null && proteinG != null && fatG != null) ? Math.max(30, Math.round((kcalTarget - proteinG * 4 - fatG * 9) / 4)) : null;
+  const waterL = w != null ? Math.round((w * 33) / 100) / 10 : null;
+  const macro = (g, kcalPer) => (kcalTarget ? Math.round((g * kcalPer / kcalTarget) * 100) : 0);
+  const ACTS = [[1.2, "Сидячий"], [1.375, "Легкий (1–3 трен.)"], [1.55, "Помірний (3–5)"], [1.725, "Активний (6+)"]];
+
+  const TIPS = [
+    { emoji: "⚖️", title: "Темп", body: "≈0.5–0.7 кг/тиждень — стало й безпечно. Швидше = більше втрати м'язів і гірше підтягується шкіра. Повільніше — краще для тіла й шкіри." },
+    { emoji: "🔥", title: "Голодування", body: "Піднімайся драбиною протоколів поступово (16:8 → 18:6 …), без форсування. Щоденне 16:8 уже добре працює — сталість важливіша за екстрим." },
+    { emoji: "💪", title: "Рух — головне для тонусу", body: "Силові 2–3 рази/тиждень — саме вони дають підкачане тіло й допомагають шкірі підтягнутись (м'язи заповнюють об'єм). Плюс 8–10 тис кроків на день." },
+    { emoji: "🍽️", title: "Харчування", body: "Достатньо білка (≈1.6–2 г на кг ваги — зберігає м'язи), овочі, вода 2+ л. Дефіцит помірний, не «голод до нуля» — інакше тіло їсть м'язи." },
+    { emoji: "🧴", title: "Щоб шкіра втягнулась", body: "Повільна втрата + білок + силові + вода + сон + час. Колаген/вітамін C. Нікотин руйнує колаген — це ще одна причина кидати (див. Відновлення). Еластичність повертається місяцями." },
+  ];
+
+  return (
+    <div>
+      <div className="rounded-3xl bg-gradient-to-br from-orange-400 to-red-400 p-5 text-white shadow-sm">
+        <div className="text-sm font-semibold text-white/90">План — плавно й надовго</div>
+        <div className="text-2xl font-extrabold">−{totalLoss || 30} кг за {months} міс</div>
+        {ready ? <div className="text-sm text-white/90">≈ {perMonth.toFixed(1)} кг/міс · {perWeek.toFixed(2)} кг/тиждень {paceOk ? "✓ безпечний темп" : "⚠️ швидкувато"}</div>
+          : <div className="text-sm text-white/90">Впиши стартову й цільову вагу нижче — і зʼявиться графік по місяцях.</div>}
+      </div>
+
+      {/* weight goals */}
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Старт, кг</span><input type="number" step="0.1" value={goals.startWeight ?? ""} onChange={(e) => onSaveGoals({ startWeight: num(e.target.value) })} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Ціль, кг</span><input type="number" step="0.1" value={goals.targetWeight ?? ""} onChange={(e) => onSaveGoals({ targetWeight: num(e.target.value) })} placeholder={startW != null ? String(Math.round(startW - 30)) : ""} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Місяців</span><input type="number" min={3} max={24} value={months} onChange={(e) => onSaveGoals({ planMonths: Math.max(3, Math.min(24, +e.target.value || 12)) })} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+      </div>
+
+      {/* personal data for the calorie calc */}
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50">
+        <div className="mb-2 text-sm font-bold text-slate-700">Твої дані <span className="font-normal text-slate-400">— щоб порахувати КБЖУ</span></div>
+        <div className="grid grid-cols-3 gap-2">
+          <label className="block"><span className="mb-1 block text-[11px] text-slate-400">Зріст, см</span><input type="number" value={goals.heightCm ?? ""} onChange={(e) => onSaveGoals({ heightCm: num(e.target.value) })} placeholder="напр. 165" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-[11px] text-slate-400">Вік</span><input type="number" value={goals.age ?? ""} onChange={(e) => onSaveGoals({ age: num(e.target.value) })} placeholder="напр. 30" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+          <div><span className="mb-1 block text-[11px] text-slate-400">Стать</span><div className="flex gap-1">{[["f", "Ж"], ["m", "Ч"]].map(([v, l]) => <button key={v} onClick={() => onSaveGoals({ sex: v })} className={`flex-1 rounded-lg py-1.5 text-sm font-semibold transition ${sex === v ? "bg-orange-500 text-white" : "bg-slate-100 text-slate-500"}`}>{l}</button>)}</div></div>
+        </div>
+        <div className="mt-2"><span className="mb-1 block text-[11px] text-slate-400">Активність</span><div className="flex flex-wrap gap-1.5">{ACTS.map(([v, l]) => <button key={v} onClick={() => onSaveGoals({ activity: v })} className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 transition ${Math.abs(activity - v) < 0.01 ? "bg-orange-500 text-white ring-orange-500" : "bg-white text-slate-500 ring-slate-200"}`}>{l}</button>)}</div></div>
+      </div>
+
+      {/* КБЖУ per day */}
+      {canKcal && ready ? (
+        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
+          <div className="flex items-end justify-between">
+            <div><div className="text-sm font-bold text-slate-700">Скільки їсти щодня</div><div className="text-[11px] text-slate-400">щоб втрачати ≈ {perWeek.toFixed(2)} кг/тиждень</div></div>
+            <div className="text-right"><div className="text-3xl font-extrabold tabular-nums text-orange-600">{kcalTarget}</div><div className="text-[11px] text-slate-400">ккал / день</div></div>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            {[["Білки", proteinG, macro(proteinG, 4), "bg-rose-50 text-rose-600"], ["Жири", fatG, macro(fatG, 9), "bg-amber-50 text-amber-600"], ["Вуглеводи", carbsG, macro(carbsG, 4), "bg-sky-50 text-sky-600"]].map(([l, g, pct, cls]) => (
+              <div key={l} className={`rounded-2xl p-3 ${cls}`}><div className="text-[11px] font-medium opacity-80">{l}</div><div className="text-lg font-extrabold tabular-nums">{g} г</div><div className="text-[10px] opacity-70">{pct}%</div></div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">BMR ≈ {bmr}</span>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">Витрата ≈ {tdee}</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">Дефіцит −{dailyDeficit}</span>
+            <span className="rounded-full bg-sky-50 px-2.5 py-1 font-semibold text-sky-700">💧 вода ≈ {waterL} л</span>
+          </div>
+          {belowFloor && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">⚠️ Для такого темпу калорій вийшло б менше безпечного мінімуму ({floorKcal} ккал), тож я підняла до {floorKcal}. Щоб не голодувати — краще розтягнути план на більше місяців (втрата буде трохи повільніша, але здоровіша).</p>}
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-400">Білок високий, щоб зберегти м'язи; решта калорій — вуглеводи й жири. Овочі та клітковина — понад норму, їх не рахуємо жорстко.</p>
+        </div>
+      ) : ready ? (
+        <div className="mt-3 rounded-2xl bg-orange-50/70 p-4 text-center text-sm text-orange-700 ring-1 ring-orange-100">Впиши зріст, вік і стать вище — і я порахую твої калорії та БЖУ на день. 🍽️</div>
+      ) : null}
+
+      {/* activity targets */}
+      {ready && (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50 text-center"><div className="text-2xl">🚶‍♀️</div><div className="mt-1 text-xl font-extrabold text-slate-800">8–10 тис</div><div className="text-[11px] text-slate-400">кроків на день</div></div>
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50 text-center"><div className="text-2xl">💪</div><div className="mt-1 text-xl font-extrabold text-slate-800">2–3</div><div className="text-[11px] text-slate-400">силові / тиждень (+ ходьба)</div></div>
+        </div>
+      )}
+
+      {/* fasting integration */}
+      {ready && (
+        <div className="mt-3 rounded-2xl bg-gradient-to-br from-orange-50 to-white p-4 shadow-sm ring-1 ring-orange-100">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-800"><Hourglass className="h-4 w-4 text-orange-500" /> Як вписати в голодування</div>
+          <p className="mt-1 text-sm leading-relaxed text-slate-600">На 16:8 усі {kcalTarget || "твої"} ккал з'їдай у вікні 8 год — зазвичай 2–3 прийоми. Почни їжу з білка й овочів (ситніше). Поза вікном — вода, чай, кава без цукру. Дефіцит створюєш калоріями, а голодування лише допомагає легше в нього вкластись — не «голодуй + майже не їж», це забагато.</p>
+        </div>
+      )}
+
+      {ready && (
+        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
+          <div className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">Зараз {currentW} кг · скинуто {lostSoFar} кг з {totalLoss}</span>{delta != null && <span className={`font-bold ${delta <= 0.5 ? "text-green-600" : "text-amber-600"}`}>{delta <= 0.5 ? "у графіку ✓" : `+${delta} кг до плану`}</span>}</div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-orange-50"><div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-red-400 transition-all" style={{ width: `${pctDone * 100}%` }} /></div>
+          <button onClick={onGoLog} className="mt-2 text-xs font-semibold text-orange-600">+ записати вагу сьогодні</button>
+        </div>
+      )}
+
+      {ready && milestones.length > 0 && (
+        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
+          <div className="mb-2 text-sm font-bold text-slate-700">Орієнтири по місяцях</div>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            {milestones.map((m) => { const hit = currentW != null && currentW <= m.w; return (
+              <div key={m.i} className={`rounded-xl px-3 py-2 text-center ${hit ? "bg-green-50 ring-1 ring-green-200" : "bg-slate-50"}`}>
+                <div className="text-[10px] text-slate-400">міс {m.i} · {m.date}</div>
+                <div className={`text-sm font-extrabold tabular-nums ${hit ? "text-green-600" : "text-slate-700"}`}>{m.w} кг</div>
+              </div>
+            ); })}
+          </div>
+        </div>
+      )}
+
+      {/* guidance */}
+      <div className="mt-3 space-y-2">
+        {TIPS.map((t) => (
+          <div key={t.title} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50">
+            <div className="flex items-center gap-2 text-sm font-bold text-slate-800"><span className="text-lg">{t.emoji}</span> {t.title}</div>
+            <p className="mt-1 text-sm leading-relaxed text-slate-600">{t.body}</p>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
+        ⚠️ Це загальні орієнтири, а не медична порада. 30 кг — суттєва зміна, тож варто йти під наглядом лікаря чи дієтолога, особливо з голодуванням. Слухай тіло: запаморочення, слабкість, випадіння волосся — сигнал сповільнитись. Ціль не «швидко», а щоб було стало, здорово й із гарним самопочуттям. 💛
+      </p>
+    </div>
+  );
+}
+
+function FastOverview({ goals, diary, onSaveGoals }) {
+  const m = fastingMetrics(goals, diary);
+  const rows = diarySorted(diary);
+  const weightData = rows.filter((r) => r.weight != null).map((r) => ({ date: r.date.slice(5), weight: r.weight }));
+  const hoursData = rows.filter((r) => r.actualHrs != null).slice(-14).map((r) => ({ date: r.date.slice(5), hrs: r.actualHrs, met: r.goalMet }));
+  const streak = fastingStreak(diary);
+
+  const start = goals.startWeight, target = goals.targetWeight, cur = m.currentWeight;
+  let pct = 0;
+  if (start != null && target != null && cur != null && start !== target) pct = Math.max(0, Math.min(1, (start - cur) / (start - target)));
+
+  const num = (v) => (v == null || v === "" ? null : parseFloat(v));
+
+  return (
+    <div className="space-y-5">
+      <h1 className="text-xl font-extrabold text-slate-900">Огляд</h1>
+
+      {/* goals setup */}
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+        <div className="mb-3 text-sm font-bold text-slate-700">🎯 Мої цілі</div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Стартова вага, кг</span><input type="number" step="0.1" value={goals.startWeight ?? ""} onChange={(e) => onSaveGoals({ startWeight: num(e.target.value) })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Цільова вага, кг</span><input type="number" step="0.1" value={goals.targetWeight ?? ""} onChange={(e) => onSaveGoals({ targetWeight: num(e.target.value) })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Основний протокол</span>
+            <select value={goals.protocol} onChange={(e) => onSaveGoals({ protocol: e.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none">{PROTOCOLS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select>
+          </label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Дата старту</span><input type="date" value={goals.startDate || ""} onChange={(e) => onSaveGoals({ startDate: e.target.value })} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none" /></label>
+        </div>
+        {start != null && target != null && (
+          <div className="mt-4">
+            <div className="mb-1 flex justify-between text-xs text-slate-500"><span>{start} кг</span><span className="font-semibold text-orange-600">{cur ?? start} кг</span><span>{target} кг</span></div>
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-green-400 transition-all" style={{ width: `${pct * 100}%` }} /></div>
+            <div className="mt-1 text-center text-xs text-slate-400">{Math.round(pct * 100)}% шляху до цілі</div>
+          </div>
+        )}
+      </div>
+
+      {/* metric cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <Metric label="Поточна вага" value={m.currentWeight != null ? `${m.currentWeight}` : "—"} unit="кг" />
+        <Metric label="Зміна ваги" value={m.weightChange != null ? `${m.weightChange > 0 ? "+" : ""}${m.weightChange}` : "—"} unit="кг" tint={m.weightChange != null && m.weightChange < 0 ? "text-green-600" : "text-slate-700"} />
+        <Metric label="До цілі" value={m.remaining != null ? `${m.remaining}` : "—"} unit="кг" />
+        <Metric label="Всього голодувань" value={m.totalFasts} />
+        <Metric label="Середня тривалість" value={m.avgHrs} unit="год" />
+        <Metric label="Найдовше" value={m.longestHrs} unit="год" />
+        <Metric label="Всього годин" value={m.totalHrs} unit="год" />
+        <Metric label="Серія" value={streak} unit="дн" tint="text-orange-500" />
+      </div>
+
+      {/* weight chart */}
+      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-amber-100">
+        <h2 className="mb-3 text-sm font-bold text-slate-700">Вага в часі</h2>
+        {weightData.length < 2 ? <p className="py-8 text-center text-sm text-slate-400">Додай кілька записів ваги у щоденнику.</p> : (
+          <div className="h-56 w-full"><ResponsiveContainer width="100%" height="100%">
+            <LineChart data={weightData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#fef3e2" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#b08968" }} axisLine={false} tickLine={false} />
+              <YAxis domain={["dataMin - 1", "dataMax + 1"]} tick={{ fontSize: 11, fill: "#b08968" }} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={{ borderRadius: 10, border: "1px solid #fed7aa", fontSize: 12 }} />
+              <Line type="monotone" dataKey="weight" stroke="#f97316" strokeWidth={2.5} dot={{ r: 3, fill: "#f97316" }} />
+            </LineChart>
+          </ResponsiveContainer></div>
+        )}
+      </div>
+
+      {/* hours chart */}
+      <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-amber-100">
+        <h2 className="mb-3 text-sm font-bold text-slate-700">Години голодування</h2>
+        {hoursData.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Записів ще немає.</p> : (
+          <div className="h-52 w-full"><ResponsiveContainer width="100%" height="100%">
+            <BarChart data={hoursData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#fef3e2" vertical={false} />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#b08968" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: "#b08968" }} axisLine={false} tickLine={false} />
+              <Tooltip cursor={{ fill: "#fff7ed" }} contentStyle={{ borderRadius: 10, border: "1px solid #fed7aa", fontSize: 12 }} formatter={(v) => [`${v} год`, "факт"]} />
+              <Bar dataKey="hrs" radius={[5, 5, 0, 0]}>{hoursData.map((d, i) => <Cell key={i} fill={d.met ? "#22c55e" : "#fb923c"} />)}</Bar>
+            </BarChart>
+          </ResponsiveContainer></div>
+        )}
+      </div>
+
+      <FastHeatmap diary={diary} />
+    </div>
+  );
+}
+function Metric({ label, value, unit, tint = "text-slate-800" }) {
+  return <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-amber-100"><div className={`text-xl font-extrabold tabular-nums ${tint}`}>{value}{unit && <span className="ml-0.5 text-xs font-medium text-slate-400">{unit}</span>}</div><div className="mt-0.5 text-[11px] text-slate-400">{label}</div></div>;
+}
+function FastHeatmap({ diary }) {
+  const [mo, setMo] = useState(0);
+  const now = new Date(); const view = new Date(now.getFullYear(), now.getMonth() + mo, 1);
+  const year = view.getFullYear(), month = view.getMonth();
+  const days = new Date(year, month + 1, 0).getDate();
+  const pad = (new Date(year, month, 1).getDay() + 6) % 7;
+  const byDate = {}; for (const r of diary) if (r.actualHrs) byDate[r.date] = Math.max(byDate[r.date] || 0, r.goalMet ? 2 : 1);
+  const col = (v) => (!v ? "#f5f0e8" : v === 2 ? "#22c55e" : "#fdba74");
+  return (
+    <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-amber-100">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-slate-700">{view.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
+        <div className="flex gap-1"><button onClick={() => setMo((x) => x - 1)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" /></button><button onClick={() => setMo(0)} disabled={mo === 0} className="rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 disabled:opacity-40">Зараз</button><button onClick={() => setMo((x) => Math.min(0, x + 1))} disabled={mo === 0} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-40"><ArrowRight className="h-4 w-4" /></button></div>
+      </div>
+      <div className="grid grid-cols-7 gap-1.5">
+        {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"].map((w, i) => <div key={i} className="pb-1 text-center text-[10px] font-semibold text-slate-400">{w}</div>)}
+        {Array.from({ length: pad }).map((_, i) => <div key={"p" + i} />)}
+        {Array.from({ length: days }).map((_, i) => { const d = i + 1; const ds = dateKey(new Date(year, month, d).getTime()); const v = byDate[ds] || 0; return <div key={ds} className="grid aspect-square place-items-center rounded-lg text-[10px] font-medium" style={{ backgroundColor: col(v), color: v ? "#fff" : "#94a3b8" }} title={ds}>{d}</div>; })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Diary ---------- */
+function FastDiary({ diary, onNew, onEdit, onDelete }) {
+  const rows = diarySorted(diary).reverse();
+  const dow = (ds) => WD_UA[new Date(ds + "T00:00:00").getDay()];
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <h1 className="text-xl font-extrabold text-slate-900">Щоденник</h1>
+        <button onClick={onNew} className="inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"><Plus className="h-4 w-4" /> Запис</button>
+      </div>
+      {rows.length === 0 ? (
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-amber-50">Записів ще немає. Заверши голодування на таймері — і рядок з'явиться сам.</div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r) => (
+            <button key={r.id} onClick={() => onEdit(r)} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left shadow-sm ring-1 ring-amber-50 transition hover:ring-amber-200">
+              <div className="w-14 shrink-0 text-center"><div className="text-xs font-semibold text-slate-400">{dow(r.date)}</div><div className="text-sm font-bold text-slate-700">{r.date.slice(5)}</div></div>
+              <span className="rounded-full px-2 py-0.5 text-[11px] font-bold text-white" style={{ backgroundColor: protocolColor(getProtocol(r.protocol).level) }}>{getProtocol(r.protocol).label}</span>
+              <div className="min-w-0 flex-1 text-sm">
+                <span className="font-semibold text-slate-800">{r.actualHrs ?? "—"}</span><span className="text-slate-400">/{r.targetHrs ?? "—"} год</span>
+                {r.goalMet ? <Check className="ml-1 inline h-4 w-4 text-green-500" /> : <span className="ml-1 text-slate-300">✗</span>}
+                {r.weight != null && <span className="ml-2 text-slate-500">{r.weight} кг{r.weightChange != null ? ` (${r.weightChange > 0 ? "+" : ""}${r.weightChange})` : ""}</span>}
+                {r.notes && <div className="truncate text-xs text-slate-400">{r.notes}</div>}
+              </div>
+              <span onClick={(e) => { e.stopPropagation(); if (confirm("Видалити запис?")) onDelete(r.id); }} className="rounded p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function DiaryForm({ entry, defaultProtocol, onClose, onSave }) {
+  const [f, setF] = useState({
+    date: entry?.date || dateKey(Date.now()), protocol: entry?.protocol || defaultProtocol || "16:8",
+    targetHrs: entry?.targetHrs ?? getProtocol(entry?.protocol || defaultProtocol || "16:8").hrs,
+    actualHrs: entry?.actualHrs ?? "", weight: entry?.weight ?? "", waist: entry?.waist ?? "",
+    energy: entry?.energy ?? "", hunger: entry?.hunger ?? "", wellbeing: entry?.wellbeing || "", notes: entry?.notes || "",
+  });
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const num = (v) => (v === "" || v == null ? null : parseFloat(v));
+  const save = () => {
+    const targetHrs = num(f.targetHrs), actualHrs = num(f.actualHrs);
+    onSave({ date: f.date, protocol: f.protocol, targetHrs, actualHrs, goalMet: actualHrs != null && targetHrs != null && actualHrs + 0.05 >= targetHrs, weight: num(f.weight), waist: num(f.waist), energy: num(f.energy), hunger: num(f.hunger), wellbeing: f.wellbeing.trim(), notes: f.notes.trim() });
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[94vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">{entry ? "Запис щоденника" : "Новий запис"}</h2><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Дата</span><input type="date" value={f.date} onChange={(e) => set("date", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Протокол</span><select value={f.protocol} onChange={(e) => { set("protocol", e.target.value); set("targetHrs", getProtocol(e.target.value).hrs); }} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{PROTOCOLS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Ціль, год</span><input type="number" step="0.5" value={f.targetHrs} onChange={(e) => set("targetHrs", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Факт, год</span><input type="number" step="0.5" value={f.actualHrs} onChange={(e) => set("actualHrs", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Вага, кг</span><input type="number" step="0.1" value={f.weight} onChange={(e) => set("weight", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Талія, см</span><input type="number" step="0.5" value={f.waist} onChange={(e) => set("waist", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Енергія 1-5</span><input type="number" min="1" max="5" value={f.energy} onChange={(e) => set("energy", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Голод 1-5</span><input type="number" min="1" max="5" value={f.hunger} onChange={(e) => set("hunger", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+        </div>
+        <label className="mt-3 block"><span className="mb-1 block text-xs text-slate-500">Сон / самопочуття</span><input value={f.wellbeing} onChange={(e) => set("wellbeing", e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+        <label className="mt-3 block"><span className="mb-1 block text-xs text-slate-500">Нотатки</span><textarea rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+        <div className="mt-5 flex justify-end gap-3"><button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Скасувати</button><button onClick={save} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-2.5 font-semibold text-white hover:bg-orange-600"><Check className="h-4 w-4" /> Зберегти</button></div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Reference: drinks, tips, safety ---------- */
+const DRINKS = [
+  { t: "Вода (звичайна, газована)", ok: "yes", c: "Основа. Пий багато. Можна дрібку морської солі для електролітів." },
+  { t: "Чорна кава (без цукру)", ok: "yes", c: "Притупляє голод. Без цукру й молока." },
+  { t: "Чай (зелений, чорний, трав'яний)", ok: "yes", c: "Без цукру. Гарячий чай добре відволікає від голоду." },
+  { t: "Кістковий бульйон", ok: "yes", c: "Особливо при довгих голодуваннях — дає сіль і електроліти." },
+  { t: "Морська / гімалайська сіль", ok: "yes", c: "Дрібка у воду проти головного болю й слабкості." },
+  { t: "Трохи вершків / олії в каві", ok: "warn", c: "Технічно перериває «чисте» голодування; ок для довгих фаз, не для строгого." },
+  { t: "Штучні підсолоджувачі", ok: "warn", c: "Можуть провокувати інсулін і апетит. Фанг радить уникати." },
+  { t: "Соки, смузі, молоко", ok: "no", c: "Калорії/цукор — перериває голодування." },
+  { t: "Будь-яка їжа, снек", ok: "no", c: "Навіть маленький перекус зупиняє голодування." },
+];
+const TIPS = [
+  ["Пий воду", "Починай ранок з великої склянки води. Гідратація зменшує відчуття голоду."],
+  ["Будь зайнятим", "Голод приходить хвилями. Зайнятий день відволікає — час минає непомітно."],
+  ["Пий каву", "Чорна кава притупляє апетит і додає бадьорості."],
+  ["Пам'ятай: голод минає", "Голод не наростає нескінченно, а йде хвилями. Перечекай хвилю — і вона спаде."],
+  ["Не всім розповідай", "Менше зайвих порад і тиску оточення — легше дотримуватись плану."],
+  ["Дай собі місяць", "Тілу потрібен час на адаптацію. Перші тижні найважчі, далі легшає."],
+  ["Їж низьковуглеводно", "У вікні їжі менше цукру й рафінованих вуглеводів = стабільніший інсулін і менший голод."],
+  ["Виходь з голоду м'яко", "Не переїдай одразу. Почни з невеликої порції, щоб не навантажити шлунок."],
+  ["Не привід їсти сміття", "Голодування не скасовує якість їжі. Поєднуй його зі здоровим харчуванням."],
+  ["Слухай своє тіло", "Якщо стало по-справжньому погано — зупинись і поїж. Здоров'я важливіше за план."],
+];
+const NO_FAST = [
+  "Вагітні та жінки, що годують груддю",
+  "Діти й підлітки, що ростуть",
+  "Люди з дефіцитом ваги (ІМТ < 18.5)",
+  "Розлади харчової поведінки (анорексія, булімія) в анамнезі",
+  "Діабет 1 типу або прийом інсуліну / цукрознижувальних — лише під наглядом лікаря",
+  "Будь-які хронічні хвороби чи регулярні ліки — спершу консультація лікаря",
+];
+const SIDE_FX = [
+  ["Голод", "Вода, кава або чай. Перечекай хвилю — голод спаде."],
+  ["Головний біль", "Часто через нестачу солі. Дрібка солі у воду + більше пити."],
+  ["Запаморочення, слабкість", "Сіль і вода. Не вставай різко. Якщо не минає — поїж."],
+  ["Судоми м'язів", "Магній (добавка або багата на магній їжа у вікні)."],
+  ["Печія", "Не лягай одразу, пий воду, уникай гострого у вікні їжі."],
+  ["Дратівливість («hangry»)", "Зазвичай минає з адаптацією за 2–4 тижні."],
+  ["Запор", "Більше клітковини й води у вікні їжі."],
+];
+function FastReference() {
+  const okIcon = { yes: "✅", warn: "⚠️", no: "❌" };
+  const okColor = { yes: "bg-green-50", warn: "bg-amber-50", no: "bg-red-50" };
+  return (
+    <div className="space-y-5">
+      <h1 className="text-xl font-extrabold text-slate-900">Довідник</h1>
+
+      {/* SAFETY — prominent, first */}
+      <div className="rounded-2xl border-2 border-red-200 bg-red-50/60 p-4">
+        <div className="mb-2 flex items-center gap-2 text-red-700"><ShieldAlert className="h-5 w-5" /><h2 className="font-bold">Застереження та безпека</h2></div>
+        <div className="text-sm font-semibold text-slate-700">Кому НЕ можна голодувати (або лише під наглядом лікаря):</div>
+        <ul className="mt-1 space-y-1">{NO_FAST.map((x, i) => <li key={i} className="flex gap-2 text-sm text-slate-600"><span className="text-red-400">•</span>{x}</li>)}</ul>
+        <div className="mt-4 overflow-hidden rounded-xl ring-1 ring-red-100">
+          <div className="grid grid-cols-2 bg-red-100/70 px-3 py-1.5 text-xs font-bold text-red-700"><span>Симптом</span><span>Що робити</span></div>
+          {SIDE_FX.map(([s, w], i) => <div key={i} className={`grid grid-cols-2 gap-2 px-3 py-2 text-sm ${i % 2 ? "bg-white" : "bg-red-50/40"}`}><span className="font-semibold text-slate-700">{s}</span><span className="text-slate-600">{w}</span></div>)}
+        </div>
+        <p className="mt-3 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white">❗ Негайно припини голодування і звернись по допомогу при: сильній слабкості, плутанині свідомості, серцебитті, непритомності.</p>
+        <p className="mt-2 text-xs text-slate-500">Це освітній матеріал за книгами д-ра Дж. Фанга, не медична порада. Перед голодуванням порадься з лікарем.</p>
+      </div>
+
+      {/* Drinks */}
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+        <div className="mb-2 flex items-center gap-2 text-slate-700"><GlassWater className="h-5 w-5 text-sky-500" /><h2 className="font-bold">Що можна пити під час голодування</h2></div>
+        <div className="space-y-1.5">{DRINKS.map((d, i) => (
+          <div key={i} className={`flex items-start gap-2 rounded-xl px-3 py-2 ${okColor[d.ok]}`}>
+            <span>{okIcon[d.ok]}</span><div><div className="text-sm font-semibold text-slate-800">{d.t}</div><div className="text-xs text-slate-500">{d.c}</div></div>
+          </div>
+        ))}</div>
+      </div>
+
+      {/* Tips */}
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+        <div className="mb-2 flex items-center gap-2 text-slate-700"><Coffee className="h-5 w-5 text-amber-600" /><h2 className="font-bold">10 порад Фанга, як витримати голодування</h2></div>
+        <div className="space-y-2">{TIPS.map(([t, e], i) => (
+          <div key={i} className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-100 text-sm font-bold text-amber-700">{i + 1}</span><div><div className="text-sm font-semibold text-slate-800">{t}</div><div className="text-xs text-slate-500">{e}</div></div></div>
+        ))}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* MANAGEMENT — "Manage It!" book notes reader                        */
+/* ================================================================== */
+function mdInline(str, keyBase = "") {
+  const out = [];
+  const re = /\*\*(.+?)\*\*|`([^`]+)`|\[(.+?)\]\((.+?)\)/g;
+  let last = 0, m, k = 0;
+  while ((m = re.exec(str))) {
+    if (m.index > last) out.push(str.slice(last, m.index));
+    if (m[1] != null) out.push(<strong key={keyBase + k++} className="font-semibold text-slate-900">{m[1]}</strong>);
+    else if (m[2] != null) out.push(<code key={keyBase + k++} className="rounded bg-slate-100 px-1 py-0.5 text-[0.85em] text-rose-700">{m[2]}</code>);
+    else out.push(<span key={keyBase + k++} className="font-medium text-rose-600">{m[3]}</span>);
+    last = re.lastIndex;
+  }
+  if (last < str.length) out.push(str.slice(last));
+  return out;
+}
+function mdBlocks(text) {
+  const lines = (text || "").replace(/\r/g, "").split("\n");
+  const els = [];
+  let para = [], list = null, quote = null;
+  const flushPara = () => { if (para.length) { els.push(<p key={els.length} className="mb-3 leading-relaxed text-slate-600">{mdInline(para.join(" "), els.length + "p")}</p>); para = []; } };
+  const flushList = () => {
+    if (!list) return;
+    if (list.type === "ul") els.push(<ul key={els.length} className="mb-3 space-y-1.5">{list.items.map((it, i) => <li key={i} className="flex gap-2.5 text-slate-600"><span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-rose-300" /><span className="leading-relaxed">{mdInline(it, els.length + "u" + i)}</span></li>)}</ul>);
+    else els.push(<ol key={els.length} className="mb-3 space-y-2">{list.items.map((it, i) => <li key={i} className="flex gap-2.5 text-slate-600"><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-rose-100 text-[11px] font-bold text-rose-600">{i + 1}</span><span className="leading-relaxed">{mdInline(it, els.length + "o" + i)}</span></li>)}</ol>);
+    list = null;
+  };
+  const flushQuote = () => { if (quote) { els.push(<blockquote key={els.length} className="mb-3 rounded-r-xl border-l-4 border-amber-300 bg-amber-50/70 px-4 py-2.5 text-slate-700">{mdInline(quote.join(" "), els.length + "q")}</blockquote>); quote = null; } };
+  const flushAll = () => { flushPara(); flushList(); flushQuote(); };
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line.trim()) { flushAll(); continue; }
+    if (/^---+$/.test(line.trim())) { flushAll(); continue; }
+    const q = line.match(/^>\s?(.*)/); if (q) { flushPara(); flushList(); (quote = quote || []).push(q[1]); continue; }
+    const ul = line.match(/^[-*]\s+(.*)/); if (ul) { flushPara(); flushQuote(); if (!list || list.type !== "ul") { flushList(); list = { type: "ul", items: [] }; } list.items.push(ul[1]); continue; }
+    const ol = line.match(/^\d+\.\s+(.*)/); if (ol) { flushPara(); flushQuote(); if (!list || list.type !== "ol") { flushList(); list = { type: "ol", items: [] }; } list.items.push(ol[1]); continue; }
+    flushList(); flushQuote(); para.push(line.trim());
+  }
+  flushAll();
+  return els;
+}
+function parseSections(body) {
+  const parts = (body || "").split(/\n### /);
+  const lead = parts[0].trim();
+  const sections = [];
+  for (let i = 1; i < parts.length; i++) {
+    const nl = parts[i].indexOf("\n");
+    sections.push({ heading: parts[i].slice(0, nl).trim(), content: parts[i].slice(nl + 1) });
+  }
+  return { lead, sections };
+}
+function parseManageIt(md) {
+  const blocks = md.replace(/\r/g, "").split(/\n## /);
+  const intro = blocks[0];
+  const chapters = [];
+  for (let i = 1; i < blocks.length; i++) {
+    const nl = blocks[i].indexOf("\n");
+    const heading = blocks[i].slice(0, nl).trim();
+    const body = blocks[i].slice(nl + 1);
+    if (/^Зміст/.test(heading)) continue;
+    const m = heading.match(/^Глава\s+(\d+)\.\s+(.*)/);
+    const { lead, sections } = parseSections(body);
+    let preview = "";
+    const about = sections.find((s) => /Про що глава/i.test(s.heading));
+    if (about) preview = about.content.replace(/\r/g, "").split("\n").find((l) => l.trim()) || "";
+    chapters.push({ num: m ? m[1] : null, title: m ? m[2] : heading, heading, lead, sections, preview });
+  }
+  return { intro, chapters };
+}
+
+function ManagementSection({ name, onRename }) {
+  const [doc, setDoc] = useState(null);
+  const [error, setError] = useState("");
+  const [view, setView] = useState("toc"); // toc | number index
+  const [mtab, setMtab] = useState("book"); // book | career
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/manage-it.md").then((r) => { if (!r.ok) throw new Error("not found"); return r.text(); })
+      .then((t) => { if (alive) setDoc(parseManageIt(t)); })
+      .catch(() => { if (alive) setError("Не вдалося завантажити конспект."); });
+    return () => { alive = false; };
+  }, []);
+  useEffect(() => { document.querySelector("main")?.scrollTo?.(0, 0); window.scrollTo(0, 0); }, [view]);
+
+  if (error) return <div className="flex flex-1 items-center justify-center text-slate-400">{error}</div>;
+  if (!doc) return <div className="flex flex-1 items-center justify-center text-rose-400"><div className="flex flex-col items-center gap-3"><BookMarked className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження конспекту…</span></div></div>;
+
+  const chapters = doc.chapters;
+  const open = (i) => setView(i);
+  const chapter = typeof view === "number" ? chapters[view] : null;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-rose-50/50 via-slate-50 to-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-40 rounded-lg border border-rose-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          {mtab === "book" && view !== "toc" && <button onClick={() => setView("toc")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"><ListTree className="h-4 w-4" /> Зміст</button>}
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-6">
+        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-rose-100">
+          <button onClick={() => setMtab("book")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${mtab === "book" ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><BookMarked className="h-4 w-4" /> Книга</button>
+          <button onClick={() => setMtab("career")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${mtab === "career" ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><TrendingUp className="h-4 w-4" /> Кар'єра</button>
+        </div>
+        {mtab === "career" ? <CareerView /> : view === "toc" ? (
+          <>
+            {/* book hero from intro */}
+            <div className="mb-6 rounded-3xl border border-rose-100 bg-white p-6 shadow-sm">
+              <div className="flex items-start gap-4">
+                <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-rose-600 text-white"><BookMarked className="h-7 w-7" /></span>
+                <div className="min-w-0">
+                  <h1 className="text-2xl font-extrabold leading-tight text-slate-900">Manage It!</h1>
+                  <p className="text-sm font-medium text-slate-500">Johanna Rothman · конспект і лайфхаки по кожній главі</p>
+                </div>
+              </div>
+              <div className="mt-4 text-[15px]">{mdBlocks(introBody(doc.intro))}</div>
+            </div>
+
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-400"><ListTree className="h-4 w-4" /> Зміст — {chapters.length} розділів</h2>
+            <div className="space-y-2">
+              {chapters.map((c, i) => {
+                const special = !c.num;
+                return (
+                  <button key={i} onClick={() => open(i)} className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md ${special ? "border-amber-200 bg-amber-50/60 hover:border-amber-300" : "border-slate-100 bg-white hover:border-rose-200"}`}>
+                    <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-extrabold ${special ? "bg-amber-400 text-white" : "bg-rose-100 text-rose-700"}`}>{special ? "🎯" : c.num}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-bold text-slate-800">{c.title}</span>
+                      {c.preview && <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-slate-400">{c.preview.replace(/\*\*/g, "")}</span>}
+                    </span>
+                    <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <ChapterReader chapter={chapter} index={view} total={chapters.length} onNav={setView} onToc={() => setView("toc")} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+// pull the intro's description + idea blockquote (drop the "# title" line and author line)
+function introBody(intro) {
+  const lines = (intro || "").replace(/\r/g, "").split("\n");
+  return lines.filter((l) => !/^#\s/.test(l) && !/^\*\*Джоанна|^\*\*Johanna/i.test(l.trim())).join("\n").trim();
+}
+
+function ChapterReader({ chapter, index, total, onNav, onToc }) {
+  if (!chapter) return null;
+  const secStyle = (h) => {
+    if (/🔑/.test(h)) return { wrap: "rounded-2xl border border-amber-200 bg-amber-50/60 p-4", icon: Lightbulb, iconCls: "text-amber-500", title: "text-amber-900" };
+    if (/🧭/.test(h)) return { wrap: "rounded-2xl border border-sky-200 bg-sky-50/50 p-4", icon: Compass, iconCls: "text-sky-500", title: "text-sky-900" };
+    if (/Про що глава/i.test(h)) return { wrap: "rounded-2xl bg-slate-100/70 p-4", icon: Info, iconCls: "text-slate-400", title: "text-slate-700" };
+    return { wrap: "", icon: null, iconCls: "", title: "text-slate-800" };
+  };
+  const cleanH = (h) => h.replace(/🔑|🧭/g, "").trim();
+  return (
+    <div>
+      <div className="mb-5 flex items-center gap-3">
+        {chapter.num && <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-600 text-lg font-extrabold text-white">{chapter.num}</span>}
+        <h1 className="text-2xl font-extrabold leading-tight text-slate-900">{chapter.title}</h1>
+      </div>
+
+      {chapter.lead && <div className="mb-4">{mdBlocks(chapter.lead)}</div>}
+
+      <div className="space-y-4">
+        {chapter.sections.map((s, i) => {
+          const st = secStyle(s.heading);
+          return (
+            <section key={i} className={st.wrap}>
+              <h3 className={`mb-2 flex items-center gap-2 text-base font-bold ${st.title}`}>{st.icon && <st.icon className={`h-5 w-5 ${st.iconCls}`} />}{cleanH(s.heading)}</h3>
+              <div className="text-[15px]">{mdBlocks(s.content)}</div>
+            </section>
+          );
+        })}
+      </div>
+
+      {/* prev / next */}
+      <div className="mt-8 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
+        <button disabled={index <= 0} onClick={() => onNav(index - 1)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Назад</button>
+        <button onClick={onToc} className="text-sm font-medium text-slate-400 hover:text-slate-600">Зміст</button>
+        <button disabled={index >= total - 1} onClick={() => onNav(index + 1)} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* TOOLKIT — section UI                                               */
+/* ================================================================== */
+/* ================================================================== */
+/* BUDGET — monthly shopping list + budget tracker (budget:* keys)     */
+/* ================================================================== */
+const BKEYS = {
+  cats: "budget:categories",   // [{id, emoji, name}]
+  items: "budget:items",       // [{id, catId, name, qty, unit, price, notes}]
+  bought: "budget:bought",     // { [month]: { [itemId]: true } } — куплено цього місяця
+  stock: "budget:stock",       // { [month]: { [itemId]: true } } — вже є в запасі, докуповувати не треба
+  actuals: "budget:actuals",   // { [month]: { [itemId]: number } } — скільки насправді витрачено
+  budgets: "budget:budgets",   // { [month]: number }
+  month: "budget:month",       // "2026-07"
+  history: "budget:history",   // [{ month, planned, spent }]
+  settings: "budget:settings", // { name }
+  seeded: "budget:seeded",
+};
+const MONTHS_UA = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
+const budMonthLabel = (m) => { const [y, mo] = (m || "").split("-").map(Number); return MONTHS_UA[(mo || 1) - 1] + " " + (y || ""); };
+const budDefaultMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+const budShiftMonth = (m, delta) => { let [y, mo] = m.split("-").map(Number); mo += delta; while (mo > 12) { mo -= 12; y += 1; } while (mo < 1) { mo += 12; y -= 1; } return `${y}-${String(mo).padStart(2, "0")}`; };
+const budFmt = (n) => { const r = Math.round((n + Number.EPSILON) * 100) / 100; const s = (Number.isInteger(r) ? r : r.toFixed(2)).toLocaleString ? (Number.isInteger(r) ? r.toLocaleString("uk-UA") : r.toFixed(2)) : String(r); return s + " ₴"; };
+const budLineSum = (it) => (Number(it.qty) || 0) * (Number(it.price) || 0);
+// stock value: legacy `true` = fully in stock (1); a number 0..1 = fraction already on hand
+const budStockFrac = (v) => (v === true ? 1 : (typeof v === "number" ? Math.max(0, Math.min(1, v)) : 0));
+const budFracLabel = (f) => (f >= 1 ? "усе" : Math.abs(f - 0.25) < 0.01 ? "¼" : Math.abs(f - 0.5) < 0.01 ? "½" : Math.abs(f - 0.75) < 0.01 ? "¾" : `${Math.round(f * 100)}%`);
+// Human-readable "how often" for amortized fractional quantities (qty = share per month).
+// 0.12/міс → куплю раз на ~8 місяців.
+function budFreqHint(qty) {
+  const q = Number(qty) || 0;
+  if (q <= 0 || q >= 1) return "";
+  const months = Math.round(1 / q);
+  if (months <= 1) return "";
+  if (months < 12) return `≈ раз на ${months} міс`;
+  const years = Math.round(months / 12);
+  if (years <= 1) return "≈ раз на рік";
+  const w = years >= 2 && years <= 4 ? "роки" : "років";
+  return `≈ раз на ${years} ${w}`;
+}
+
+async function loadBudgetData() {
+  const cats = await store.get(BKEYS.cats, null);
+  const items = await store.get(BKEYS.items, null);
+  const bought = await store.get(BKEYS.bought, {});
+  const stock = await store.get(BKEYS.stock, {});
+  const actuals = await store.get(BKEYS.actuals, {});
+  const budgets = await store.get(BKEYS.budgets, {});
+  const month = await store.get(BKEYS.month, budDefaultMonth());
+  const history = await store.get(BKEYS.history, []);
+  const settings = await store.get(BKEYS.settings, { name: "Budget" });
+  return { cats, items, bought, stock, actuals, budgets, month, history, settings };
+}
+async function collectBudgetExport() {
+  const d = await loadBudgetData();
+  return { cats: d.cats || [], items: d.items || [], bought: d.bought, stock: d.stock, actuals: d.actuals, budgets: d.budgets, month: d.month, history: d.history, settings: d.settings };
+}
+async function clearBudgetData() { for (const k of Object.values(BKEYS)) await store.remove(k); }
+
+// Parse a shopping-list .xlsx following the category-block layout → { cats, items }
+function parseBudgetWorkbook(wb) {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: "" });
+  const cats = [], items = [];
+  let cur = null;
+  const num = (v) => { const n = Number(v); return isNaN(n) ? 0 : n; };
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    const c0 = (r[0] ?? "").toString().trim();
+    if (!c0 || c0 === "Товар" || c0.startsWith("Разом")) continue;
+    const onlyC0 = (r[1] ?? "") === "" && (r[2] ?? "") === "" && (r[3] ?? "") === "" && (r[4] ?? "") === "";
+    if (onlyC0 && /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(c0)) {
+      if (/СПИСОК ПОКУПОК|ЗАГАЛОМ|Залишок/i.test(c0)) { cur = null; continue; }
+      const sp = c0.indexOf(" ");
+      const emoji = sp > 0 ? c0.slice(0, sp) : "🛒";
+      const name = sp > 0 ? c0.slice(sp + 1).trim() : c0;
+      cur = cats.find((x) => x.name === name);
+      if (!cur) { cur = { id: ruid("bc"), emoji, name }; cats.push(cur); }
+      continue;
+    }
+    if (cur && c0) {
+      if (items.some((it) => it.catId === cur.id && it.name === c0)) continue;
+      items.push({ id: ruid("bi"), catId: cur.id, name: c0, qty: num(r[1]), unit: (r[2] ?? "").toString().trim(), price: num(r[3]), notes: (r[6] ?? "").toString().trim() });
+    }
+  }
+  return { cats, items };
+}
+
+function MoneyToggle({ active, onSet }) {
+  return (
+    <div className="flex max-w-full gap-1 overflow-x-auto rounded-full bg-slate-100 p-0.5">
+      <button onClick={() => onSet("overview")} className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold transition ${active === "overview" ? "bg-emerald-500 text-white" : "text-slate-500"}`}>Огляд</button>
+      <button onClick={() => onSet("budget")} className={`rounded-full px-2.5 py-1 text-xs font-bold transition ${active === "budget" ? "bg-emerald-500 text-white" : "text-slate-500"}`}>🛒 Покупки</button>
+      <button onClick={() => onSet("finance")} className={`rounded-full px-2.5 py-1 text-xs font-bold transition ${active === "finance" ? "bg-emerald-500 text-white" : "text-slate-500"}`}>💳 Фінанси</button>
+    </div>
+  );
+}
+function MoneySection({ budgetName, renameBudget, financeName, renameFinance, onGo }) {
+  const [mv, setMv] = useState("overview");
+  if (mv === "budget") return <BudgetSection name={budgetName} onRename={renameBudget} moneyTab={mv} onMoneyTab={setMv} />;
+  if (mv === "finance") return <FinanceSection name={financeName} onRename={renameFinance} onGo={onGo} moneyTab={mv} onMoneyTab={setMv} />;
+  return <MoneyOverview moneyTab={mv} onMoneyTab={setMv} />;
+}
+
+function BudgetSection({ name, onRename, moneyTab, onMoneyTab }) {
+  const [loading, setLoading] = useState(true);
+  const [bview, setBview] = useState("list"); // list | shop | chart
+  const [cats, setCats] = useState([]);
+  const [items, setItems] = useState([]);
+  const [bought, setBought] = useState({});
+  const [stock, setStock] = useState({});
+  const [actuals, setActuals] = useState({});
+  const [budgets, setBudgets] = useState({});
+  const [month, setMonth] = useState(budDefaultMonth());
+  const [history, setHistory] = useState([]);
+  const [collapsed, setCollapsed] = useState({});
+  const [itemEditor, setItemEditor] = useState(null); // {item, catId}
+  const [catMgr, setCatMgr] = useState(false);
+  const [newMonthOpen, setNewMonthOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [chartMode, setChartMode] = useState("planned"); // planned | spent
+  const [shopFilter, setShopFilter] = useState(false); // hide bought
+  const [shopFlat, setShopFlat] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [toast, setToast] = useState(null);
+  const fileRef = useRef(null);
+
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2200); }, []);
+
+  const reload = useCallback(async () => {
+    let d = await loadBudgetData();
+    if (d.cats === null && d.items === null) {
+      try {
+        const res = await fetch("/budget-seed.json");
+        const seed = await res.json();
+        const c = [], it = [];
+        for (const sc of seed.categories) {
+          const cid = ruid("bc"); c.push({ id: cid, emoji: sc.emoji, name: sc.name });
+          for (const si of sc.items) it.push({ id: ruid("bi"), catId: cid, name: si.name, qty: si.qty, unit: si.unit, price: si.price, notes: si.notes || "" });
+        }
+        await store.set(BKEYS.cats, c); await store.set(BKEYS.items, it); await store.set(BKEYS.seeded, true);
+        d = await loadBudgetData();
+      } catch (e) { d.cats = d.cats || []; d.items = d.items || []; }
+    }
+    setCats(d.cats || []); setItems(d.items || []); setBought(d.bought || {}); setStock(d.stock || {}); setActuals(d.actuals || {}); setBudgets(d.budgets || {});
+    setMonth(d.month || budDefaultMonth()); setHistory(d.history || []);
+    setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("budget-reset", onReset);
+    return () => window.removeEventListener("budget-reset", onReset);
+  }, [reload]);
+
+  const saveCats = useCallback(async (next) => { setCats(next); await store.set(BKEYS.cats, next); }, []);
+  const saveItems = useCallback(async (next) => { setItems(next); await store.set(BKEYS.items, next); }, []);
+  const saveBought = useCallback(async (next) => { setBought(next); await store.set(BKEYS.bought, next); }, []);
+  const saveBudgets = useCallback(async (next) => { setBudgets(next); await store.set(BKEYS.budgets, next); }, []);
+  const saveMonth = useCallback(async (m) => { setMonth(m); await store.set(BKEYS.month, m); }, []);
+  const saveHistory = useCallback(async (next) => { setHistory(next); await store.set(BKEYS.history, next); }, []);
+
+  const boughtMap = bought[month] || {};
+  const stockMap = stock[month] || {};
+  const actualMap = actuals[month] || {};
+  // фактично витрачено на позицію: введена сума, інакше планова (для купленого)
+  const spentOf = (it) => (boughtMap[it.id] ? (actualMap[it.id] != null ? actualMap[it.id] : budLineSum(it)) : 0);
+  const setActual = (id, raw) => setActuals((prev) => {
+    const mm = { ...(prev[month] || {}) };
+    const n = parseFloat(raw);
+    if (raw === "" || isNaN(n)) delete mm[id]; else mm[id] = Math.max(0, n);
+    const next = { ...prev, [month]: mm };
+    store.set(BKEYS.actuals, next);
+    return next;
+  });
+  const setBoughtItem = (id) => {
+    const turningOn = !boughtMap[id];
+    setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (mm[id]) delete mm[id]; else mm[id] = true; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
+    // куплено ↔ в запасі взаємовиключні: якщо позначили купленим, знімаємо «в запасі»
+    if (turningOn) setStock((prev) => { const mm = { ...(prev[month] || {}) }; if (!mm[id]) return prev; delete mm[id]; const next = { ...prev, [month]: mm }; store.set(BKEYS.stock, next); return next; });
+  };
+  const setStockItem = (id) => {
+    const on = budStockFrac(stockMap[id]) > 0;
+    setStock((prev) => { const mm = { ...(prev[month] || {}) }; if (on) delete mm[id]; else mm[id] = 1; const next = { ...prev, [month]: mm }; store.set(BKEYS.stock, next); return next; });
+    if (!on) setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (!mm[id]) return prev; delete mm[id]; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
+  };
+  const setStockFrac = (id, frac) => {
+    const f = Math.max(0, Math.min(1, frac));
+    setStock((prev) => { const mm = { ...(prev[month] || {}) }; if (f <= 0) delete mm[id]; else mm[id] = f; const next = { ...prev, [month]: mm }; store.set(BKEYS.stock, next); return next; });
+    if (f > 0) setBought((prev) => { const mm = { ...(prev[month] || {}) }; if (!mm[id]) return prev; delete mm[id]; const next = { ...prev, [month]: mm }; store.set(BKEYS.bought, next); return next; });
+  };
+
+  const itemsOf = (cid) => items.filter((it) => it.catId === cid);
+  const planned = useMemo(() => items.reduce((s, it) => s + budLineSum(it), 0), [items]);
+  const spent = useMemo(() => items.reduce((s, it) => s + spentOf(it), 0), [items, boughtMap, actualMap]);
+  // partial stock counts proportionally: half in stock → half its cost is "already covered"
+  const inStockSum = useMemo(() => items.reduce((s, it) => s + budStockFrac(stockMap[it.id]) * budLineSum(it), 0), [items, stockMap]);
+  const toBuy = useMemo(() => items.reduce((s, it) => s + (boughtMap[it.id] ? 0 : (1 - budStockFrac(stockMap[it.id])) * budLineSum(it)), 0), [items, boughtMap, stockMap]);
+  const budgetAmt = budgets[month] ?? 0;
+  const remaining = budgetAmt - spent;
+
+  const setBudgetAmt = (v) => saveBudgets({ ...budgets, [month]: Math.max(0, v) });
+
+  // item CRUD
+  const upsertItem = (meta, id, catId) => {
+    if (id) saveItems(items.map((it) => (it.id === id ? { ...it, ...meta } : it)));
+    else saveItems([...items, { id: ruid("bi"), catId, ...meta }]);
+  };
+  const deleteItem = (id) => saveItems(items.filter((it) => it.id !== id));
+
+  // category CRUD
+  const addCat = (emoji, nm) => saveCats([...cats, { id: ruid("bc"), emoji: emoji || "🛒", name: nm.trim() || "Нова категорія" }]);
+  const renameCat = (id, patch) => saveCats(cats.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  const deleteCat = (id) => { saveCats(cats.filter((c) => c.id !== id)); saveItems(items.filter((it) => it.catId !== id)); };
+  const moveCat = (id, dir) => { const i = cats.findIndex((c) => c.id === id); const j = i + dir; if (i < 0 || j < 0 || j >= cats.length) return; const next = cats.slice(); [next[i], next[j]] = [next[j], next[i]]; saveCats(next); };
+
+  const startNewMonth = async (keepBudget) => {
+    const nm = budShiftMonth(month, 1);
+    // snapshot current month into history
+    const hist = history.filter((h) => h.month !== month);
+    hist.push({ month, planned, spent });
+    await saveHistory(hist.sort((a, b) => a.month.localeCompare(b.month)));
+    if (keepBudget) await saveBudgets({ ...budgets, [nm]: budgetAmt });
+    await saveMonth(nm); // bought[nm] is empty → all unchecked
+    setNewMonthOpen(false); flash(`Новий місяць: ${budMonthLabel(nm)} — усі позначки скинуто`);
+  };
+
+  const onImportFile = async (file) => {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const parsed = parseBudgetWorkbook(wb);
+      if (!parsed.cats.length) { flash("Не вдалося розпізнати файл"); return; }
+      await saveCats(parsed.cats); await saveItems(parsed.items);
+      flash(`Імпортовано: ${parsed.cats.length} категорій, ${parsed.items.length} товарів`);
+    } catch (e) { flash("Помилка імпорту"); }
+  };
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-emerald-500"><div className="flex flex-col items-center gap-3"><ShoppingCart className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  const overBudget = budgetAmt > 0 && spent > budgetAmt;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-emerald-50/60 to-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-emerald-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          {onMoneyTab && <MoneyToggle active={moneyTab} onSet={onMoneyTab} />}
+          <div className="relative">
+            <button onClick={() => setMenuOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100"><Settings className="h-4 w-4" /></button>
+            {menuOpen && (<>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-11 z-20 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                <button onClick={() => { setCatMgr(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><ListTree className="h-4 w-4 text-slate-400" /> Категорії</button>
+                <button onClick={() => { setNewMonthOpen(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><CalendarDays className="h-4 w-4 text-slate-400" /> Почати новий місяць</button>
+                <button onClick={() => { fileRef.current?.click(); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><Upload className="h-4 w-4 text-slate-400" /> Імпорт з Excel</button>
+              </div>
+            </>)}
+          </div>
+        </div>
+      </header>
+      <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onImportFile(f); e.target.value = ""; }} />
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-5">
+        {/* summary */}
+        <BudgetSummary month={month} onMonth={(d) => saveMonth(budShiftMonth(month, d))} budgetAmt={budgetAmt} onBudget={setBudgetAmt} planned={planned} spent={spent} remaining={remaining} overBudget={overBudget} toBuy={toBuy} inStockSum={inStockSum} />
+
+        {/* view nav */}
+        <div className="mb-4 mt-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-emerald-100">
+          {[["list", "Список", ListChecks], ["shop", "Покупки", ShoppingCart], ["chart", "Аналітика", BarChart3]].map(([k, label, Icon]) => (
+            <button key={k} onClick={() => setBview(k)} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${bview === k ? "bg-emerald-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4" /> {label}</button>
+          ))}
+        </div>
+
+        {bview === "list" && (
+          <div className="space-y-3">
+            {cats.length === 0 ? (
+              <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-emerald-50">Список порожній. Додай категорію в меню ⚙️ або імпортуй Excel.</div>
+            ) : cats.map((c) => (
+              <CategoryBlock key={c.id} cat={c} items={itemsOf(c.id)} boughtMap={boughtMap} stockMap={stockMap} actualMap={actualMap} collapsed={!!collapsed[c.id]}
+                onToggleCollapse={() => setCollapsed((m) => ({ ...m, [c.id]: !m[c.id] }))}
+                onToggleBought={setBoughtItem} onToggleStock={setStockItem} onStockFrac={setStockFrac} onActual={setActual} onAddItem={() => setItemEditor({ item: null, catId: c.id })}
+                onEditItem={(it) => setItemEditor({ item: it, catId: c.id })} onDeleteItem={deleteItem} />
+            ))}
+            <button onClick={() => setCatMgr(true)} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-emerald-300 py-3 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Категорія</button>
+          </div>
+        )}
+
+        {bview === "shop" && (
+          <ShoppingView cats={cats} items={items} boughtMap={boughtMap} stockMap={stockMap} actualMap={actualMap} onToggle={setBoughtItem} onToggleStock={setStockItem} onStockFrac={setStockFrac} onActual={setActual}
+            filter={shopFilter} setFilter={setShopFilter} flat={shopFlat} setFlat={setShopFlat} />
+        )}
+
+        {bview === "chart" && (
+          <BudgetChart cats={cats} items={items} boughtMap={boughtMap} actualMap={actualMap} mode={chartMode} setMode={setChartMode} planned={planned} spent={spent} history={history} />
+        )}
+      </main>
+
+      {itemEditor && <BudgetItemEditor item={itemEditor.item} cats={cats} catId={itemEditor.catId}
+        onClose={() => setItemEditor(null)} onDelete={itemEditor.item ? () => { deleteItem(itemEditor.item.id); setItemEditor(null); } : null}
+        onSave={(meta, catId) => { upsertItem(meta, itemEditor.item?.id, catId); setItemEditor(null); }} />}
+      {catMgr && <BudgetCatManager cats={cats} onClose={() => setCatMgr(false)} onAdd={addCat} onRename={renameCat} onDelete={deleteCat} onMove={moveCat} />}
+      {newMonthOpen && <NewMonthModal month={month} next={budShiftMonth(month, 1)} planned={planned} spent={spent} onClose={() => setNewMonthOpen(false)} onConfirm={startNewMonth} />}
+
+      {toast && <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg lg:bottom-6">{toast}</div>}
+    </div>
+  );
+}
+
+function BudgetSummary({ month, onMonth, budgetAmt, onBudget, planned, spent, remaining, overBudget, toBuy, inStockSum }) {
+  return (
+    <div className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+      <div className="flex items-center justify-between">
+        <button onClick={() => onMonth(-1)} className="grid h-8 w-8 place-items-center rounded-full text-slate-400 hover:bg-slate-100"><ChevronLeft className="h-4 w-4" /></button>
+        <div className="text-center"><div className="text-lg font-extrabold text-slate-900">{budMonthLabel(month)}</div></div>
+        <button onClick={() => onMonth(1)} className="grid h-8 w-8 place-items-center rounded-full text-slate-400 hover:bg-slate-100"><ChevronRight className="h-4 w-4" /></button>
+      </div>
+      <label className="mt-3 flex items-center justify-between gap-2 rounded-2xl bg-emerald-50/70 px-3 py-2">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-emerald-800"><Wallet className="h-4 w-4" /> Бюджет</span>
+        <span className="flex items-center gap-1"><input type="number" min={0} value={budgetAmt || ""} onChange={(e) => onBudget(Math.max(0, +e.target.value || 0))} placeholder="0" className="w-28 rounded-lg border border-emerald-200 bg-white px-2 py-1 text-right text-sm font-bold tabular-nums focus:border-emerald-400 focus:outline-none" /><span className="text-sm font-bold text-emerald-800">₴</span></span>
+      </label>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-2xl bg-slate-50 p-3"><div className="text-[11px] font-medium text-slate-400">Заплановано</div><div className="mt-0.5 text-base font-extrabold tabular-nums text-slate-700">{budFmt(planned)}</div></div>
+        <div className="rounded-2xl bg-sky-50 p-3"><div className="text-[11px] font-medium text-sky-500">Витрачено</div><div className="mt-0.5 text-base font-extrabold tabular-nums text-sky-600">{budFmt(spent)}</div></div>
+        <div className={`rounded-2xl p-3 ${overBudget ? "bg-amber-50" : "bg-emerald-50"}`}><div className={`text-[11px] font-medium ${overBudget ? "text-amber-600" : "text-emerald-600"}`}>{overBudget ? "Понад бюджет" : "Залишок"}</div><div className={`mt-0.5 text-base font-extrabold tabular-nums ${overBudget ? "text-amber-600" : "text-emerald-600"}`}>{budFmt(Math.abs(remaining))}</div></div>
+      </div>
+      {(toBuy > 0 || inStockSum > 0) && (
+        <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-slate-600"><ShoppingCart className="h-3.5 w-3.5" /> Ще купити: <span className="tabular-nums text-slate-800">{budFmt(toBuy)}</span></span>
+          {inStockSum > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-amber-700"><Package className="h-3.5 w-3.5" /> В запасі: <span className="tabular-nums">{budFmt(inStockSum)}</span></span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CategoryBlock({ cat, items, boughtMap, stockMap, actualMap, collapsed, onToggleCollapse, onToggleBought, onToggleStock, onStockFrac, onActual, onAddItem, onEditItem, onDeleteItem }) {
+  const subtotal = items.reduce((s, it) => s + budLineSum(it), 0);
+  const boughtCount = items.filter((it) => boughtMap[it.id]).length;
+  const stockCount = items.filter((it) => budStockFrac(stockMap[it.id]) > 0).length;
+  return (
+    <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-50">
+      <button onClick={onToggleCollapse} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
+        <span className="text-xl">{cat.emoji}</span>
+        <span className="min-w-0 flex-1"><span className="block truncate font-bold text-slate-800">{cat.name}</span><span className="block text-xs text-slate-400">{boughtCount} з {items.length} куплено{stockCount ? ` · ${stockCount} в запасі` : ""}</span></span>
+        <span className="text-sm font-bold tabular-nums text-slate-600">{budFmt(subtotal)}</span>
+        {collapsed ? <ChevronRight className="h-4 w-4 text-slate-300" /> : <ChevronDown className="h-4 w-4 text-slate-300" />}
+      </button>
+      {!collapsed && (
+        <div className="divide-y divide-slate-50 border-t border-slate-100">
+          {items.map((it) => <BudgetItemRow key={it.id} item={it} bought={!!boughtMap[it.id]} stockFrac={budStockFrac(stockMap[it.id])} actual={actualMap[it.id]} onToggle={() => onToggleBought(it.id)} onToggleStock={() => onToggleStock(it.id)} onStockFrac={(f) => onStockFrac(it.id, f)} onActual={(v) => onActual(it.id, v)} onEdit={() => onEditItem(it)} onDelete={() => onDeleteItem(it.id)} />)}
+          <button onClick={onAddItem} className="flex w-full items-center gap-1.5 px-4 py-2.5 text-left text-sm font-medium text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Товар</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BudgetItemRow({ item, bought, stockFrac = 0, actual, onToggle, onToggleStock, onStockFrac, onActual, onEdit, onDelete }) {
+  const [showNotes, setShowNotes] = useState(false);
+  const inStock = stockFrac > 0;
+  const nameCls = bought ? "text-slate-400 line-through" : inStock ? "text-amber-600" : "text-slate-800";
+  const planned = budLineSum(item);
+  const delta = actual != null ? Math.round((actual - planned) * 100) / 100 : 0;
+  return (
+    <div className="group px-4 py-2.5">
+      <div className="flex items-center gap-3">
+        <button onClick={onToggle} className={`grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 transition ${bought ? "border-transparent bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400"}`}>{bought && <Check className="h-4 w-4" />}</button>
+        <button onClick={onEdit} className="min-w-0 flex-1 text-left">
+          <div className={`flex items-center gap-1.5 truncate text-sm font-medium ${nameCls}`}>{item.name}{inStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі {stockFrac < 1 ? budFracLabel(stockFrac) : ""}</span>}</div>
+          <div className="text-xs text-slate-400 tabular-nums">{item.qty} {item.unit} × {budFmt(item.price)} = <span className="font-semibold text-slate-500">{budFmt(planned)}</span></div>
+          {budFreqHint(item.qty) && <div className="text-[11px] text-slate-400">{budFreqHint(item.qty)}</div>}
+        </button>
+        <button onClick={onToggleStock} title="Вже є в запасі — докуповувати не треба" className={`shrink-0 rounded-md p-1 transition ${inStock ? "text-amber-500" : "text-slate-300 hover:text-amber-500"}`}><Package className="h-4 w-4" /></button>
+        {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-emerald-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
+        <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
+      </div>
+      {inStock && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-9">
+          <span className="text-xs font-medium text-slate-400">Скільки вже є:</span>
+          {[[0.25, "¼"], [0.5, "½"], [0.75, "¾"], [1, "усе"]].map(([v, l]) => (
+            <button key={v} onClick={() => onStockFrac(v)} className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 transition ${Math.abs(stockFrac - v) < 0.01 ? "bg-amber-400 text-white ring-amber-400" : "bg-white text-slate-500 ring-slate-200 hover:ring-amber-300"}`}>{l}</button>
+          ))}
+          {stockFrac < 1 && <span className="text-[11px] text-slate-400">→ докупити {budFmt((1 - stockFrac) * planned)}</span>}
+        </div>
+      )}
+      {bought && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-9">
+          <span className="text-xs font-medium text-slate-400">Насправді витрачено:</span>
+          <span className="relative inline-flex items-center">
+            <input type="number" step="any" min={0} value={actual ?? ""} onChange={(e) => onActual(e.target.value)} placeholder={String(Math.round(planned))} className="w-24 rounded-lg border border-slate-200 bg-white py-1 pl-2 pr-5 text-right text-xs font-semibold tabular-nums text-emerald-700 focus:border-emerald-400 focus:outline-none" />
+            <span className="pointer-events-none absolute right-2 text-xs text-slate-400">₴</span>
+          </span>
+          {actual != null && delta !== 0 && <span className={`text-[11px] font-semibold ${delta > 0 ? "text-red-500" : "text-emerald-600"}`}>{delta > 0 ? "+" : "−"}{budFmt(Math.abs(delta))} {delta > 0 ? "над план" : "менше плану"}</span>}
+        </div>
+      )}
+      {showNotes && item.notes && <div className="mt-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">{item.notes}</div>}
+    </div>
+  );
+}
+
+function ShoppingView({ cats, items, boughtMap, stockMap, actualMap, onToggle, onToggleStock, onStockFrac, onActual, filter, setFilter, flat, setFlat }) {
+  const total = items.length;
+  const done = items.filter((it) => boughtMap[it.id]).length;
+  const stockCount = items.filter((it) => budStockFrac(stockMap[it.id]) > 0).length;
+  const spentOf = (it) => (boughtMap[it.id] ? (actualMap[it.id] != null ? actualMap[it.id] : budLineSum(it)) : 0);
+  const cartTotal = items.reduce((s, it) => s + spentOf(it), 0);
+  // "Лишилось купити" ховає куплене й ПОВНІСТЮ наявне; часткове лишається (треба докупити решту)
+  const visible = (list) => (filter ? list.filter((it) => !boughtMap[it.id] && budStockFrac(stockMap[it.id]) < 1) : list);
+  const Row = (it) => {
+    const isBought = !!boughtMap[it.id], sf = budStockFrac(stockMap[it.id]), isStock = sf > 0;
+    const planned = budLineSum(it), actual = actualMap[it.id];
+    return (
+      <div key={it.id} className={`rounded-2xl p-4 shadow-sm ring-1 transition ${isBought ? "bg-emerald-50 ring-emerald-100" : sf >= 1 ? "bg-amber-50/70 ring-amber-100" : "bg-white ring-slate-100 hover:ring-emerald-200"}`}>
+        <div className="flex items-center gap-3">
+          <button onClick={() => onToggle(it.id)} className={`grid h-9 w-9 shrink-0 place-items-center rounded-full border-2 transition ${isBought ? "border-transparent bg-emerald-500 text-white" : "border-slate-300 hover:border-emerald-400"}`}>{isBought && <Check className="h-5 w-5" />}</button>
+          <button onClick={() => onToggle(it.id)} className="min-w-0 flex-1 text-left"><span className={`flex items-center gap-1.5 truncate font-bold ${isBought ? "text-slate-400 line-through" : isStock ? "text-amber-600" : "text-slate-800"}`}>{it.name}{isStock && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">в запасі {sf < 1 ? budFracLabel(sf) : ""}</span>}</span><span className="block text-xs text-slate-400 tabular-nums">{it.qty} {it.unit} × {budFmt(it.price)}{sf > 0 && sf < 1 ? ` · докупити ${budFmt((1 - sf) * planned)}` : ""}</span></button>
+          <button onClick={() => onToggleStock(it.id)} title="Вже є в запасі" className={`shrink-0 rounded-md p-1.5 transition ${isStock ? "text-amber-500" : "text-slate-300 hover:text-amber-500"}`}><Package className="h-4 w-4" /></button>
+          <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{budFmt(planned)}</span>
+        </div>
+        {isStock && sf < 1 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-12">
+            <span className="text-xs font-medium text-slate-400">Вже є:</span>
+            {[[0.25, "¼"], [0.5, "½"], [0.75, "¾"], [1, "усе"]].map(([v, l]) => (
+              <button key={v} onClick={() => onStockFrac(it.id, v)} className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 transition ${Math.abs(sf - v) < 0.01 ? "bg-amber-400 text-white ring-amber-400" : "bg-white text-slate-500 ring-slate-200 hover:ring-amber-300"}`}>{l}</button>
+            ))}
+          </div>
+        )}
+        {isBought && (
+          <div className="mt-2 flex items-center gap-2 pl-12">
+            <span className="text-xs font-medium text-slate-400">Насправді:</span>
+            <span className="relative inline-flex items-center">
+              <input type="number" step="any" min={0} value={actual ?? ""} onChange={(e) => onActual(it.id, e.target.value)} placeholder={String(Math.round(planned))} className="w-24 rounded-lg border border-slate-200 bg-white py-1 pl-2 pr-5 text-right text-xs font-semibold tabular-nums text-emerald-700 focus:border-emerald-400 focus:outline-none" />
+              <span className="pointer-events-none absolute right-2 text-xs text-slate-400">₴</span>
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  };
+  return (
+    <div>
+      <div className="sticky top-14 z-10 -mx-4 mb-3 bg-gradient-to-b from-emerald-50/60 to-transparent px-4 pb-2 pt-1">
+        <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-100">
+          <div className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">Куплено {done} з {total}{stockCount ? ` · ${stockCount} в запасі` : ""}</span><span className="font-bold tabular-nums text-emerald-600">У кошику: {budFmt(cartTotal)}</span></div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-emerald-50"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${total ? (done / total) * 100 : 0}%` }} /></div>
+          <div className="mt-2 flex gap-2">
+            <button onClick={() => setFilter(!filter)} className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${filter ? "bg-emerald-500 text-white ring-emerald-500" : "bg-white text-slate-500 ring-slate-200"}`}>Лишилось купити</button>
+            <button onClick={() => setFlat(!flat)} className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${flat ? "bg-slate-800 text-white ring-slate-800" : "bg-white text-slate-500 ring-slate-200"}`}>{flat ? "Одним списком" : "За категоріями"}</button>
+          </div>
+        </div>
+      </div>
+      {flat ? (
+        <div className="space-y-2">{visible(items).map(Row)}</div>
+      ) : (
+        <div className="space-y-4">
+          {cats.map((c) => { const list = visible(items.filter((it) => it.catId === c.id)); if (!list.length) return null; return (
+            <div key={c.id}><div className="mb-1.5 flex items-center gap-1.5 px-1 text-sm font-bold text-slate-600"><span>{c.emoji}</span> {c.name}</div><div className="space-y-2">{list.map(Row)}</div></div>
+          ); })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const BUD_COLORS = ["#10b981", "#0ea5e9", "#8b5cf6", "#f59e0b", "#ec4899", "#14b8a6", "#ef4444", "#84cc16", "#6366f1", "#f97316", "#06b6d4"];
+function BudgetChart({ cats, items, boughtMap, actualMap, mode, setMode, planned, spent, history }) {
+  const spentOf = (it) => (boughtMap[it.id] ? ((actualMap && actualMap[it.id] != null) ? actualMap[it.id] : budLineSum(it)) : 0);
+  const data = cats.map((c, i) => {
+    const list = items.filter((it) => it.catId === c.id);
+    const val = mode === "planned" ? list.reduce((s, it) => s + budLineSum(it), 0) : list.reduce((s, it) => s + spentOf(it), 0);
+    return { name: `${c.emoji} ${c.name}`, value: Math.round(val), color: BUD_COLORS[i % BUD_COLORS.length] };
+  }).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+  const totalVal = mode === "planned" ? planned : spent;
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        {[["planned", "Заплановано"], ["spent", "Витрачено"]].map(([k, label]) => (
+          <button key={k} onClick={() => setMode(k)} className={`flex-1 rounded-xl py-2 text-sm font-bold ring-1 transition ${mode === k ? "bg-emerald-500 text-white ring-emerald-500" : "bg-white text-slate-500 ring-slate-200"}`}>{label}</button>
+        ))}
+      </div>
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+        <div className="mb-2 text-sm font-bold text-slate-700">{mode === "planned" ? "Куди йде бюджет" : "Куди пішли гроші"} · {budFmt(totalVal)}</div>
+        {data.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Немає даних.</p> : (
+          <div style={{ height: Math.max(200, data.length * 38) }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
+                <XAxis type="number" hide />
+                <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 11, fill: "#64748b" }} />
+                <Tooltip formatter={(v) => budFmt(v)} cursor={{ fill: "#f1f5f9" }} />
+                <Bar dataKey="value" radius={[0, 6, 6, 0]}>{data.map((d, i) => <Cell key={i} fill={d.color} />)}</Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+      {history.length > 0 && (
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+          <div className="mb-2 text-sm font-bold text-slate-700">Минулі місяці</div>
+          <div className="space-y-1.5">
+            {history.slice().reverse().map((h) => (
+              <div key={h.month} className="flex items-center justify-between text-sm"><span className="text-slate-500">{budMonthLabel(h.month)}</span><span className="tabular-nums text-slate-600">витрачено <b>{budFmt(h.spent)}</b> з {budFmt(h.planned)}</span></div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BudgetItemEditor({ item, cats, catId, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(item?.name || "");
+  const [qty, setQty] = useState(item?.qty ?? 1);
+  const [unit, setUnit] = useState(item?.unit || "шт");
+  const [price, setPrice] = useState(item?.price ?? 0);
+  const [notes, setNotes] = useState(item?.notes || "");
+  const [cid, setCid] = useState(catId || item?.catId || cats[0]?.id);
+  const sum = (Number(qty) || 0) * (Number(price) || 0);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{item ? "Редагувати товар" : "Новий товар"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва товару" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-emerald-400 focus:outline-none" />
+        <div className="mb-3 grid grid-cols-3 gap-2">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">К-сть</span><input type="number" min={0} step="any" value={qty} onChange={(e) => setQty(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Од.</span><input value={unit} onChange={(e) => setUnit(e.target.value)} list="bud-units" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /><datalist id="bud-units">{["шт", "уп", "кг", "л", "міс", "пара", "пачка", "компл", "поїздка"].map((u) => <option key={u} value={u} />)}</datalist></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Ціна ₴</span><input type="number" min={0} step="any" value={price} onChange={(e) => setPrice(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+        </div>
+        <div className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm"><div className="flex items-center justify-between"><span className="font-semibold text-emerald-800">Сума</span><span className="font-extrabold tabular-nums text-emerald-700">{budFmt(sum)}</span></div>{budFreqHint(qty) && <div className="mt-0.5 text-[11px] text-emerald-600">дробова к-сть — це «частка на місяць»: {budFreqHint(qty)}</div>}</div>
+        <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Категорія</span><select value={cid} onChange={(e) => setCid(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{cats.map((c) => <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>)}</select></label>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Нотатки (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+        <div className="flex gap-2">
+          <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), qty: Number(qty) || 0, unit: unit.trim(), price: Number(price) || 0, notes: notes.trim() }, cid); }} className="flex-1 rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Зберегти</button>
+          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-red-50 px-4 py-3 font-semibold text-red-500 hover:bg-red-100"><Trash2 className="h-5 w-5" /></button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BudgetCatManager({ cats, onClose, onAdd, onRename, onDelete, onMove }) {
+  const [emoji, setEmoji] = useState("🛒");
+  const [nm, setNm] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">Категорії</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="space-y-2">
+          {cats.map((c, i) => (
+            <div key={c.id} className="flex items-center gap-2 rounded-xl bg-slate-50 px-2 py-2">
+              <input value={c.emoji} onChange={(e) => onRename(c.id, { emoji: e.target.value.slice(0, 2) })} className="w-9 rounded-lg border border-slate-200 bg-white px-1 py-1 text-center text-lg" />
+              <input value={c.name} onChange={(e) => onRename(c.id, { name: e.target.value })} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-medium focus:border-emerald-400 focus:outline-none" />
+              <div className="flex shrink-0 flex-col">
+                <button onClick={() => onMove(c.id, -1)} disabled={i === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 -rotate-90" /></button>
+                <button onClick={() => onMove(c.id, 1)} disabled={i === cats.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 rotate-90" /></button>
+              </div>
+              <button onClick={() => { if (confirm(`Видалити «${c.name}» і всі її товари?`)) onDelete(c.id); }} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-slate-300 p-2">
+          <input value={emoji} onChange={(e) => setEmoji(e.target.value.slice(0, 2))} className="w-9 rounded-lg border border-slate-200 px-1 py-1 text-center text-lg" />
+          <input value={nm} onChange={(e) => setNm(e.target.value)} placeholder="Нова категорія" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" />
+          <button onClick={() => { if (nm.trim()) { onAdd(emoji, nm); setNm(""); setEmoji("🛒"); } }} className="shrink-0 rounded-full bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-900">Додати</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function NewMonthModal({ month, next, planned, spent, onClose, onConfirm }) {
+  const [keepBudget, setKeepBudget] = useState(true);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-t-3xl bg-white p-6 text-center shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="text-4xl">🗓️</div>
+        <h3 className="mt-2 text-lg font-extrabold text-slate-900">Почати {budMonthLabel(next)}?</h3>
+        <p className="mt-1 text-sm text-slate-500">Список товарів, ціни й категорії лишаться. Усі позначки «куплено» скинуться — почнеш місяць з чистого аркуша.</p>
+        <div className="my-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">{budMonthLabel(month)}: витрачено <b>{budFmt(spent)}</b> з {budFmt(planned)} — збережу в історію.</div>
+        <label className="mb-4 flex items-center justify-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={keepBudget} onChange={(e) => setKeepBudget(e.target.checked)} className="h-4 w-4 accent-emerald-500" /> Перенести суму бюджету</label>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 rounded-2xl bg-slate-100 py-3 font-semibold text-slate-500">Скасувати</button>
+          <button onClick={() => onConfirm(keepBudget)} className="flex-1 rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Почати</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* INVENTORY — home checklist (rooms → sections → items)               */
+/* ================================================================== */
+const IKEYS = {
+  rooms: "inventory:rooms",       // [{id, name, sections:[{id,name}]}]
+  items: "inventory:items",       // [{id, roomId, secId, name, rec, where, status, notes, price}]
+  settings: "inventory:settings", // {name}
+  seeded: "inventory:seeded",
+};
+const INV_DEFAULT_PRICES = {
+  "Бильце": 1500, "Наматрацник": 1500, "Кабель-канали або органайзери для кабелів": 500,
+  "Кошик для білизни": 700, "Органайзери для дрібниць": 1200, "Коробки/контейнери для сезонних речей": 1800,
+  "Коробки для сезонних речей": 1500,
+  "Контейнери для кабелів та адаптерів": 700, "Килимок біля ліжка": 1200, "Серветки сухі": 100,
+  "Аптечка": 1500, "Спрей для тканин/освіжувач": 250, "Серветка або ганчірка для пилу": 150,
+  "Пилосос ручний або мініпилосос": 2000, "Подовжувач для прибирання/зарядки техніки": 600,
+  "Телевізор або проєктор": 15000, "Серветки для взуття": 120, "Дезодорант для взуття": 180,
+  "Малий органайзер для засобів догляду": 400, "Килимок біля входу зовнішній/внутрішній": 1000,
+  "Нічник або світильник з датчиком руху": 500, "Домофон/відеодзвінок": 4000,
+  "Датчик диму/протікання": 800, "Санітайзер": 150, "Органайзер для документів/перепусток": 500,
+  "Маленький смітник": 400, "Вологі серветки": 120, "Ганчірка для взуття/підлоги": 100,
+  "Освіжувач повітря або аромадифузор": 500, "Прозорі контейнери з кришками": 3000,
+  "Великі коробки для сезонних речей": 2500, "Запас губок": 150, "Туалетний папір": 300,
+  "Паперові рушники": 250, "Рукавички для прибирання": 200, "Відро": 300, "Віник/щітка": 450,
+  "Совок": 200, "Щітка для важкодоступних місць": 250, "Мініпилосос": 2000,
+  "Коробка для зимових аксесуарів": 600, "Коробка для літніх речей": 600,
+  "Коробка для святкового декору": 900, "Коробка для гірлянд/подовжувачів": 600,
+  "Валіза або дорожня сумка": 3500, "Запас води": 500, "Коробка для кабелів": 700,
+  "Органайзер для адаптерів": 400, "Запасні батарейки AA/AAA": 500, "Запасні зарядні кабелі": 1000,
+  "Контейнер для старих дисків/SSD/флешок": 500, "Папка для гарантій і документів на техніку": 250,
+  "Запасний подовжувач": 600, "Запасний мережевий фільтр": 800, "Ліхтарик": 700,
+  "Запасні батарейки для ліхтарика": 250, "Вогнегасник": 1400, "Поглиначі вологи/силікагель": 500,
+  "Датчик протікання/диму": 1200, "Навушники": 2500, "Вентилятор або обігрівач": 2500,
+  "Бальзам для губ": 200, "Кошик або коробка для дрібних речей": 500,
+};
+const invDefaultPrice = (name) => Number(INV_DEFAULT_PRICES[name]) || 0;
+const INV_STATUSES = [
+  { id: "Є", label: "Є", dot: "#22c55e", bg: "bg-green-50", ring: "ring-green-200", text: "text-green-700", handled: true },
+  { id: "Купити", label: "Купити", dot: "#f59e0b", bg: "bg-amber-50", ring: "ring-amber-200", text: "text-amber-700" },
+  { id: "Замінити за нагоди", label: "Замінити за нагоди", dot: "#0ea5e9", bg: "bg-sky-50", ring: "ring-sky-200", text: "text-sky-700" },
+  { id: "Не потрібно", label: "Не потрібно", dot: "#94a3b8", bg: "bg-slate-100", ring: "ring-slate-200", text: "text-slate-500", handled: true },
+  { id: "Не вирішено", label: "Не вирішено", dot: "#cbd5e1", bg: "bg-white", ring: "ring-slate-200", text: "text-slate-400" },
+];
+const invStatus = (id) => INV_STATUSES.find((s) => s.id === id) || INV_STATUSES[4];
+const INV_DECIDED = (st) => st === "Є" || st === "Не потрібно"; // "handled" for readiness
+
+async function loadInventoryData() {
+  const rooms = await store.get(IKEYS.rooms, null);
+  const rawItems = await store.get(IKEYS.items, null);
+  const needsPrices = Array.isArray(rawItems) && rawItems.some((it) => it.price == null && invDefaultPrice(it.name) > 0);
+  const items = needsPrices ? rawItems.map((it) => (it.price == null && invDefaultPrice(it.name) > 0 ? { ...it, price: invDefaultPrice(it.name) } : it)) : rawItems;
+  if (needsPrices) await store.set(IKEYS.items, items);
+  const settings = await store.get(IKEYS.settings, { name: "Inventory" });
+  return { rooms, items, settings };
+}
+async function collectInventoryExport() { const d = await loadInventoryData(); return { rooms: d.rooms || [], items: d.items || [], settings: d.settings }; }
+async function clearInventoryData() { for (const k of Object.values(IKEYS)) await store.remove(k); }
+
+function InventorySection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState("dash"); // dash | browse | tobuy
+  const [rooms, setRooms] = useState([]);
+  const [items, setItems] = useState([]);
+  const [collapsed, setCollapsed] = useState({});
+  const [statusFilter, setStatusFilter] = useState("");
+  const [roomFilter, setRoomFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const [itemEditor, setItemEditor] = useState(null); // {item, roomId, secId}
+  const [mgrOpen, setMgrOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [toast, setToast] = useState(null);
+
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2200); }, []);
+
+  const reload = useCallback(async () => {
+    let d = await loadInventoryData();
+    if (d.rooms === null && d.items === null) {
+      try {
+        const res = await fetch("/inventory-seed.json");
+        const seed = await res.json();
+        const rms = [], its = [];
+        for (const sr of seed.rooms) {
+          const rid = ruid("ir"); const secs = [];
+          for (const ss of sr.sections) {
+            const sid = ruid("is"); secs.push({ id: sid, name: ss.name });
+            for (const si of ss.items) its.push({ id: ruid("ii"), roomId: rid, secId: sid, name: si.name, rec: si.rec || "", where: si.where || "", status: si.status || "Не вирішено", notes: si.notes || "", price: si.price == null ? invDefaultPrice(si.name) : Math.max(0, Number(si.price) || 0) });
+          }
+          rms.push({ id: rid, name: sr.name, sections: secs });
+        }
+        await store.set(IKEYS.rooms, rms); await store.set(IKEYS.items, its); await store.set(IKEYS.seeded, true);
+        d = await loadInventoryData();
+      } catch (e) { d.rooms = d.rooms || []; d.items = d.items || []; }
+    }
+    const currentItems = d.items || [];
+    const needsPrices = currentItems.some((it) => it.price == null && invDefaultPrice(it.name) > 0);
+    const pricedItems = needsPrices ? currentItems.map((it) => (it.price == null && invDefaultPrice(it.name) > 0 ? { ...it, price: invDefaultPrice(it.name) } : it)) : currentItems;
+    if (needsPrices) await store.set(IKEYS.items, pricedItems);
+    setRooms(d.rooms || []); setItems(pricedItems); setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("inventory-reset", onReset);
+    return () => window.removeEventListener("inventory-reset", onReset);
+  }, [reload]);
+
+  const saveRooms = useCallback(async (next) => { setRooms(next); await store.set(IKEYS.rooms, next); }, []);
+  const saveItems = useCallback(async (next) => { setItems(next); await store.set(IKEYS.items, next); }, []);
+
+  const setStatus = (id, status) => setItems((prev) => { const next = prev.map((it) => (it.id === id ? { ...it, status } : it)); store.set(IKEYS.items, next); return next; });
+  const setPrice = (id, price) => setItems((prev) => { const next = prev.map((it) => (it.id === id ? { ...it, price: Math.max(0, Number(price) || 0) } : it)); store.set(IKEYS.items, next); return next; });
+  const upsertItem = (meta, id) => { if (id) saveItems(items.map((it) => (it.id === id ? { ...it, ...meta } : it))); else saveItems([...items, { id: ruid("ii"), status: "Не вирішено", ...meta }]); };
+  const deleteItem = (id) => saveItems(items.filter((it) => it.id !== id));
+
+  // room / section CRUD
+  const addRoom = (nm) => saveRooms([...rooms, { id: ruid("ir"), name: nm.trim() || "Нова кімната", sections: [] }]);
+  const renameRoom = (id, nm) => saveRooms(rooms.map((r) => (r.id === id ? { ...r, name: nm } : r)));
+  const deleteRoom = (id) => { saveRooms(rooms.filter((r) => r.id !== id)); saveItems(items.filter((it) => it.roomId !== id)); };
+  const moveRoom = (id, dir) => { const i = rooms.findIndex((r) => r.id === id); const j = i + dir; if (i < 0 || j < 0 || j >= rooms.length) return; const n = rooms.slice(); [n[i], n[j]] = [n[j], n[i]]; saveRooms(n); };
+  const addSection = (roomId, nm) => saveRooms(rooms.map((r) => (r.id === roomId ? { ...r, sections: [...r.sections, { id: ruid("is"), name: nm.trim() || "Новий розділ" }] } : r)));
+  const renameSection = (roomId, secId, nm) => saveRooms(rooms.map((r) => (r.id === roomId ? { ...r, sections: r.sections.map((s) => (s.id === secId ? { ...s, name: nm } : s)) } : r)));
+  const deleteSection = (roomId, secId) => { saveRooms(rooms.map((r) => (r.id === roomId ? { ...r, sections: r.sections.filter((s) => s.id !== secId) } : r))); saveItems(items.filter((it) => it.secId !== secId)); };
+  const moveSection = (roomId, secId, dir) => saveRooms(rooms.map((r) => { if (r.id !== roomId) return r; const i = r.sections.findIndex((s) => s.id === secId); const j = i + dir; if (i < 0 || j < 0 || j >= r.sections.length) return r; const n = r.sections.slice(); [n[i], n[j]] = [n[j], n[i]]; return { ...r, sections: n }; }));
+
+  const itemsOfRoom = (rid) => items.filter((it) => it.roomId === rid);
+  const roomStats = (rid) => {
+    const list = itemsOfRoom(rid);
+    const c = { total: list.length, є: 0, buy: 0, no: 0, undec: 0, repl: 0 };
+    for (const it of list) { if (it.status === "Є") c.є++; else if (it.status === "Купити") c.buy++; else if (it.status === "Не потрібно") c.no++; else if (it.status === "Замінити за нагоди") c.repl++; else c.undec++; }
+    c.readiness = c.total ? (c.є + c.no) / c.total : 0;
+    return c;
+  };
+  const overall = useMemo(() => {
+    const total = items.length; const handled = items.filter((it) => INV_DECIDED(it.status)).length;
+    return { total, handled, pct: total ? handled / total : 0 };
+  }, [items]);
+
+  const toBuy = items.filter((it) => it.status === "Купити");
+
+  const copyToBuy = () => {
+    const byRoom = rooms.map((r) => { const list = toBuy.filter((it) => it.roomId === r.id); return list.length ? `${r.name}:\n` + list.map((it) => `  • ${it.name}${it.rec ? ` (${it.rec})` : ""}${it.price ? ` — ${finFmt(it.price)}` : ""}`).join("\n") : ""; }).filter(Boolean).join("\n\n");
+    const text = "Купити для дому:\n\n" + byRoom;
+    try { navigator.clipboard.writeText(text); flash("Скопійовано у буфер 📋"); } catch { flash("Не вдалося скопіювати"); }
+  };
+  const sendToBudget = async () => {
+    if (!toBuy.length) return;
+    const cats = await store.get(BKEYS.cats, []);
+    const its = await store.get(BKEYS.items, []);
+    let cat = cats.find((c) => c.name === "Дім (інвентар)");
+    let nextCats = cats;
+    if (!cat) { cat = { id: ruid("bc"), emoji: "🏠", name: "Дім (інвентар)" }; nextCats = [...cats, cat]; }
+    const existing = new Set(its.filter((x) => x.catId === cat.id).map((x) => x.name));
+    const add = toBuy.filter((it) => !existing.has(it.name)).map((it) => ({ id: ruid("bi"), catId: cat.id, name: it.name, qty: 1, unit: "шт", price: Number(it.price) || 0, notes: it.rec ? `реком.: ${it.rec}` : "", sourceInventoryId: it.id }));
+    await store.set(BKEYS.cats, nextCats); await store.set(BKEYS.items, [...its, ...add]);
+    flash(`Додано в Budget: ${add.length} товар(и) 🛒`);
+  };
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-rose-400"><div className="flex flex-col items-center gap-3"><Home className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-rose-50/50 to-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-rose-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          <div className="relative">
+            <button onClick={() => setMenuOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-full text-slate-500 hover:bg-slate-100"><Settings className="h-4 w-4" /></button>
+            {menuOpen && (<>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-11 z-20 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+                <button onClick={() => { setMgrOpen(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><ListTree className="h-4 w-4 text-slate-400" /> Кімнати й розділи</button>
+              </div>
+            </>)}
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-5">
+        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-rose-100">
+          {[["dash", "Готовність", BarChart3], ["browse", "Перелік", ListChecks], ["tobuy", "Купити", ShoppingCart]].map(([k, label, Icon]) => (
+            <button key={k} onClick={() => setView(k)} className={`relative flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${view === k ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4" /> {label}{k === "tobuy" && toBuy.length > 0 && <span className={`ml-0.5 rounded-full px-1.5 text-[10px] font-bold ${view === k ? "bg-white/25" : "bg-amber-100 text-amber-700"}`}>{toBuy.length}</span>}</button>
+          ))}
+        </div>
+
+        {view === "dash" && <InvDashboard rooms={rooms} overall={overall} roomStats={roomStats} onRoom={(rid) => { setRoomFilter(rid); setView("browse"); }} />}
+        {view === "browse" && <InvBrowse rooms={rooms} items={items} collapsed={collapsed} setCollapsed={setCollapsed}
+          statusFilter={statusFilter} setStatusFilter={setStatusFilter} roomFilter={roomFilter} setRoomFilter={setRoomFilter} query={query} setQuery={setQuery}
+          onStatus={setStatus} onPrice={setPrice} onEdit={(it) => setItemEditor({ item: it })} onDelete={deleteItem} onAddItem={(roomId, secId) => setItemEditor({ item: null, roomId, secId })} roomStats={roomStats} />}
+        {view === "tobuy" && <InvToBuy rooms={rooms} toBuy={toBuy} onAcquire={(id) => setStatus(id, "Є")} onCopy={copyToBuy} onSendBudget={sendToBudget} />}
+      </main>
+
+      {itemEditor && <InvItemEditor item={itemEditor.item} rooms={rooms} roomId={itemEditor.roomId} secId={itemEditor.secId}
+        onClose={() => setItemEditor(null)} onDelete={itemEditor.item ? () => { deleteItem(itemEditor.item.id); setItemEditor(null); } : null}
+        onSave={(meta) => { upsertItem(meta, itemEditor.item?.id); setItemEditor(null); }} />}
+      {mgrOpen && <InvManager rooms={rooms} onClose={() => setMgrOpen(false)} onAddRoom={addRoom} onRenameRoom={renameRoom} onDeleteRoom={deleteRoom} onMoveRoom={moveRoom} onAddSection={addSection} onRenameSection={renameSection} onDeleteSection={deleteSection} onMoveSection={moveSection} />}
+
+      {toast && <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg lg:bottom-6">{toast}</div>}
+    </div>
+  );
+}
+
+function InvDashboard({ rooms, overall, roomStats, onRoom }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-rose-100">
+        <div className="flex items-center gap-4">
+          <ProgressRing pct={overall.pct} size={72} stroke={8}><span className="text-sm font-extrabold text-rose-600">{Math.round(overall.pct * 100)}%</span></ProgressRing>
+          <div>
+            <div className="text-lg font-extrabold text-slate-900">Готовність дому</div>
+            <div className="text-sm text-slate-500">{overall.handled} з {overall.total} позицій вирішено</div>
+          </div>
+        </div>
+        <p className="mt-3 rounded-xl bg-rose-50/60 px-3 py-2 text-xs leading-relaxed text-rose-800">Готовність = (Є + Не потрібно) ÷ усі позиції. Тобто скільки речей уже вирішено — куплено/є або свідомо не треба.</p>
+      </div>
+      <div className="space-y-2.5">
+        {rooms.map((r) => { const c = roomStats(r.id); return (
+          <button key={r.id} onClick={() => onRoom(r.id)} className="block w-full rounded-2xl bg-white p-4 text-left shadow-sm ring-1 ring-rose-50 hover:ring-rose-200">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-800">{r.name}</span>
+              <span className="text-sm font-bold tabular-nums text-rose-600">{Math.round(c.readiness * 100)}%</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-rose-50"><div className="h-full rounded-full bg-rose-500 transition-all" style={{ width: `${c.readiness * 100}%` }} /></div>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
+              <span>усього {c.total}</span>
+              <span className="text-green-600">Є {c.є}</span>
+              <span className="text-amber-600">Купити {c.buy}</span>
+              <span className="text-slate-500">Не потрібно {c.no}</span>
+              <span>Не вирішено {c.undec}</span>
+            </div>
+          </button>
+        ); })}
+      </div>
+    </div>
+  );
+}
+
+function InvStatusSelect({ value, onChange }) {
+  const s = invStatus(value);
+  return (
+    <div className="relative">
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={`cursor-pointer appearance-none rounded-full py-1 pl-2.5 pr-6 text-xs font-bold ring-1 ${s.bg} ${s.text} ${s.ring} focus:outline-none`}>
+        {INV_STATUSES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 opacity-50" />
+    </div>
+  );
+}
+
+function InvPriceInput({ value, onChange }) {
+  return (
+    <label className="relative shrink-0">
+      <input type="number" min={0} value={value || ""} onChange={(e) => onChange(e.target.value)} onClick={(e) => e.stopPropagation()} placeholder="ціна" aria-label="Орієнтовна ціна" className="w-24 rounded-full border border-rose-200 bg-white py-1 pl-2 pr-5 text-right text-xs font-bold tabular-nums text-slate-600 focus:border-rose-400 focus:outline-none" />
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">₴</span>
+    </label>
+  );
+}
+
+function InvItemRow({ item, onStatus, onPrice, onEdit, onDelete }) {
+  const [showNotes, setShowNotes] = useState(false);
+  return (
+    <div className="group px-4 py-2.5">
+      <div className="flex flex-wrap items-start gap-2">
+        <button onClick={onEdit} className="min-w-[150px] flex-1 text-left">
+          <div className="text-sm font-medium text-slate-800">{item.name}</div>
+          <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-slate-400">
+            {item.rec && <span>реком.: <span className="text-slate-500">{item.rec}</span></span>}
+            {item.where && <span>· вдома: <span className="text-slate-500">{item.where}</span></span>}
+          </div>
+        </button>
+        <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-2">
+          <InvPriceInput value={item.price} onChange={(price) => onPrice(item.id, price)} />
+          {item.notes && <button onClick={() => setShowNotes((v) => !v)} title="Нотатки" className={`shrink-0 rounded-md p-1 ${showNotes ? "text-rose-500" : "text-slate-300 hover:text-slate-500"}`}><Info className="h-4 w-4" /></button>}
+          <InvStatusSelect value={item.status} onChange={(st) => onStatus(item.id, st)} />
+          <button onClick={onDelete} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><Trash2 className="h-4 w-4" /></button>
+        </div>
+      </div>
+      {showNotes && item.notes && <div className="mt-1 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-500">{item.notes}</div>}
+    </div>
+  );
+}
+
+function InvBrowse({ rooms, items, collapsed, setCollapsed, statusFilter, setStatusFilter, roomFilter, setRoomFilter, query, setQuery, onStatus, onPrice, onEdit, onDelete, onAddItem, roomStats }) {
+  const q = query.trim().toLowerCase();
+  const match = (it) => (!statusFilter || it.status === statusFilter) && (!q || it.name.toLowerCase().includes(q));
+  const visRooms = rooms.filter((r) => !roomFilter || r.id === roomFilter);
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Пошук предмета по всьому дому…" className="w-full rounded-2xl border border-rose-100 bg-white py-2.5 pl-10 pr-9 text-sm shadow-sm focus:border-rose-300 focus:outline-none" />
+        {query && <button onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"><X className="h-4 w-4" /></button>}
+      </div>
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <select value={roomFilter} onChange={(e) => setRoomFilter(e.target.value)} className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 focus:outline-none"><option value="">Усі кімнати</option>{rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
+        <button onClick={() => setStatusFilter("")} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ${!statusFilter ? "bg-slate-800 text-white ring-slate-800" : "bg-white text-slate-500 ring-slate-200"}`}>Усі статуси</button>
+        {INV_STATUSES.map((s) => <button key={s.id} onClick={() => setStatusFilter(statusFilter === s.id ? "" : s.id)} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${statusFilter === s.id ? `${s.bg} ${s.text} ${s.ring}` : "bg-white text-slate-500 ring-slate-200"}`}>{s.label}</button>)}
+      </div>
+      {visRooms.map((r) => {
+        const roomItems = items.filter((it) => it.roomId === r.id && match(it));
+        if (!roomItems.length && (statusFilter || q)) return null;
+        const c = roomStats(r.id); const decided = c.total - c.undec;
+        return (
+          <div key={r.id} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-rose-50">
+            <button onClick={() => setCollapsed((m) => ({ ...m, [r.id]: !m[r.id] }))} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50">
+              <span className="min-w-0 flex-1"><span className="block truncate font-extrabold text-slate-800">{r.name}</span><span className="block text-xs text-slate-400">{decided} з {c.total} вирішено</span></span>
+              <span className="text-sm font-bold tabular-nums text-rose-600">{Math.round(c.readiness * 100)}%</span>
+              {collapsed[r.id] ? <ChevronRight className="h-4 w-4 text-slate-300" /> : <ChevronDown className="h-4 w-4 text-slate-300" />}
+            </button>
+            {!collapsed[r.id] && (
+              <div className="border-t border-slate-100">
+                {r.sections.map((sec) => {
+                  const secItems = items.filter((it) => it.secId === sec.id && match(it));
+                  if (!secItems.length) return null;
+                  const sTotal = items.filter((it) => it.secId === sec.id).length;
+                  const sDecided = items.filter((it) => it.secId === sec.id && it.status !== "Не вирішено").length;
+                  return (
+                    <div key={sec.id}>
+                      <div className="flex items-center justify-between bg-slate-50/70 px-4 py-1.5"><span className="text-xs font-bold text-slate-500">{sec.name}</span><span className="text-[11px] text-slate-400">{sDecided}/{sTotal}</span></div>
+                      <div className="divide-y divide-slate-50">
+                        {secItems.map((it) => <InvItemRow key={it.id} item={it} onStatus={onStatus} onPrice={onPrice} onEdit={() => onEdit(it)} onDelete={() => onDelete(it.id)} />)}
+                        {!statusFilter && !q && <button onClick={() => onAddItem(r.id, sec.id)} className="flex w-full items-center gap-1.5 px-4 py-2 text-left text-xs font-medium text-rose-600 hover:bg-rose-50"><Plus className="h-3.5 w-3.5" /> Предмет</button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function InvToBuy({ rooms, toBuy, onAcquire, onCopy, onSendBudget }) {
+  const total = toBuy.reduce((sum, it) => sum + (Number(it.price) || 0), 0);
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+        <div><div className="text-lg font-extrabold text-slate-900">Купити для дому</div><div className="text-sm text-slate-400">{toBuy.length} позицій · познач ✓ коли придбала</div></div>
+        <div className="shrink-0 text-right"><ShoppingCart className="ml-auto h-6 w-6 text-amber-400" /><div className="mt-1 text-sm font-black tabular-nums text-slate-800">{finFmt(total)}</div></div>
+      </div>
+      {toBuy.length === 0 ? (
+        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-rose-50">Нічого купувати 🎉 Постав комусь статус «Купити» в переліку.</div>
+      ) : (<>
+        <div className="flex gap-2">
+          <button onClick={onCopy} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:ring-rose-200"><ClipboardPaste className="h-4 w-4" /> Копіювати списком</button>
+          <button onClick={onSendBudget} className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200 hover:ring-emerald-200"><ShoppingBasket className="h-4 w-4" /> У Budget</button>
+        </div>
+        {rooms.map((r) => { const list = toBuy.filter((it) => it.roomId === r.id); if (!list.length) return null; return (
+          <div key={r.id}>
+            <div className="mb-1.5 px-1 text-sm font-bold text-slate-600">{r.name}</div>
+            <div className="space-y-2">
+              {list.map((it) => (
+                <button key={it.id} onClick={() => onAcquire(it.id)} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3.5 text-left shadow-sm ring-1 ring-slate-100 transition hover:ring-green-200">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 border-slate-300 text-transparent hover:border-green-400"><Check className="h-4 w-4" /></span>
+                  <span className="min-w-0 flex-1"><span className="block truncate font-semibold text-slate-800">{it.name}</span>{it.rec && <span className="block text-xs text-slate-400">реком.: {it.rec}</span>}</span>
+                  <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{it.price ? finFmt(it.price) : "—"}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ); })}
+      </>)}
+    </div>
+  );
+}
+
+function InvItemEditor({ item, rooms, roomId, secId, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(item?.name || "");
+  const [rec, setRec] = useState(item?.rec || "");
+  const [where, setWhere] = useState(item?.where || "");
+  const [status, setStatus] = useState(item?.status || "Не вирішено");
+  const [price, setPrice] = useState(item?.price ?? invDefaultPrice(item?.name));
+  const [notes, setNotes] = useState(item?.notes || "");
+  const [rid, setRid] = useState(item?.roomId || roomId || rooms[0]?.id);
+  const room = rooms.find((r) => r.id === rid);
+  const [sid, setSid] = useState(item?.secId || secId || room?.sections[0]?.id);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{item ? "Редагувати" : "Новий предмет"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва предмета" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-rose-400 focus:outline-none" />
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Рекомендовано</span><input value={rec} onChange={(e) => setRec(e.target.value)} placeholder="напр. 2–4" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-rose-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Статус</span><select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{INV_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select></label>
+        </div>
+        <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Орієнтовна ціна, ₴</span><input type="number" min={0} value={price || ""} onChange={(e) => setPrice(Math.max(0, Number(e.target.value) || 0))} placeholder="0" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-semibold tabular-nums focus:border-rose-400 focus:outline-none" /></label>
+        <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Де є вдома</span><input value={where} onChange={(e) => setWhere(e.target.value)} placeholder="напр. в шафі на верхній полиці" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-rose-400 focus:outline-none" /></label>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Кімната</span><select value={rid} onChange={(e) => { setRid(e.target.value); const rr = rooms.find((x) => x.id === e.target.value); setSid(rr?.sections[0]?.id); }} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Розділ</span><select value={sid} onChange={(e) => setSid(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{(room?.sections || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
+        </div>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Нотатки (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
+        <div className="flex gap-2">
+          <button onClick={() => { if (name.trim() && rid && sid) onSave({ name: name.trim(), rec: rec.trim(), where: where.trim(), status, notes: notes.trim(), price: Math.max(0, Number(price) || 0), roomId: rid, secId: sid }); }} className="flex-1 rounded-2xl bg-rose-500 py-3 font-bold text-white hover:bg-rose-600">Зберегти</button>
+          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-red-50 px-4 py-3 font-semibold text-red-500 hover:bg-red-100"><Trash2 className="h-5 w-5" /></button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvManager({ rooms, onClose, onAddRoom, onRenameRoom, onDeleteRoom, onMoveRoom, onAddSection, onRenameSection, onDeleteSection, onMoveSection }) {
+  const [newRoom, setNewRoom] = useState("");
+  const [openRoom, setOpenRoom] = useState(null);
+  const [newSec, setNewSec] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[88vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">Кімнати й розділи</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="space-y-2">
+          {rooms.map((r, i) => (
+            <div key={r.id} className="rounded-xl bg-slate-50 p-2">
+              <div className="flex items-center gap-2">
+                <input value={r.name} onChange={(e) => onRenameRoom(r.id, e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm font-semibold focus:border-rose-400 focus:outline-none" />
+                <div className="flex shrink-0 flex-col"><button onClick={() => onMoveRoom(r.id, -1)} disabled={i === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 -rotate-90" /></button><button onClick={() => onMoveRoom(r.id, 1)} disabled={i === rooms.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5 rotate-90" /></button></div>
+                <button onClick={() => setOpenRoom(openRoom === r.id ? null : r.id)} className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-rose-500 hover:bg-rose-50">розділи</button>
+                <button onClick={() => { if (confirm(`Видалити «${r.name}» і всі її предмети?`)) onDeleteRoom(r.id); }} className="shrink-0 rounded-md p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+              </div>
+              {openRoom === r.id && (
+                <div className="mt-2 space-y-1.5 border-t border-slate-200 pt-2">
+                  {r.sections.map((s, si) => (
+                    <div key={s.id} className="flex items-center gap-2">
+                      <input value={s.name} onChange={(e) => onRenameSection(r.id, s.id, e.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs focus:border-rose-400 focus:outline-none" />
+                      <div className="flex shrink-0 flex-col"><button onClick={() => onMoveSection(r.id, s.id, -1)} disabled={si === 0} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3 w-3 -rotate-90" /></button><button onClick={() => onMoveSection(r.id, s.id, 1)} disabled={si === r.sections.length - 1} className="text-slate-300 hover:text-slate-600 disabled:opacity-30"><ChevronRight className="h-3 w-3 rotate-90" /></button></div>
+                      <button onClick={() => { if (confirm("Видалити розділ і його предмети?")) onDeleteSection(r.id, s.id); }} className="shrink-0 text-slate-300 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2"><input value={openRoom === r.id ? newSec : ""} onChange={(e) => setNewSec(e.target.value)} placeholder="Новий розділ" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-rose-400 focus:outline-none" /><button onClick={() => { if (newSec.trim()) { onAddSection(r.id, newSec); setNewSec(""); } }} className="shrink-0 rounded-full bg-slate-700 px-2.5 py-1 text-xs font-semibold text-white">+</button></div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-dashed border-slate-300 p-2">
+          <input value={newRoom} onChange={(e) => setNewRoom(e.target.value)} placeholder="Нова кімната" className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-rose-400 focus:outline-none" />
+          <button onClick={() => { if (newRoom.trim()) { onAddRoom(newRoom); setNewRoom(""); } }} className="shrink-0 rounded-full bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-900">Додати</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* LANGUAGES - generated B2 -> C1 path                                 */
+/* ================================================================== */
+function LanguagesSection({ onAddWeakWords, onPracticeReview, onStepComplete }) {
+  const [loading, setLoading] = useState(true);
+  const [progress, setProgress] = useState({ completed: [], completedAt: {} });
+  const [xp, setXp] = useState({ total: 0, byDay: {} });
+  const [selectedId, setSelectedId] = useState("");
+  const [resetSignal, setResetSignal] = useState(0);
+
+  const reload = useCallback(async () => {
+    const [p, x] = await Promise.all([
+      store.get(LKEYS.progress, { completed: [], completedAt: {} }),
+      store.get(LKEYS.xp, { total: 0, byDay: {} }),
+    ]);
+    const safeProgress = { completed: p?.completed || [], completedAt: p?.completedAt || {} };
+    setProgress(safeProgress);
+    setXp({ total: x?.total || 0, byDay: x?.byDay || {} });
+    setSelectedId((cur) => cur || LANG_STEPS[Math.min(langCompletedCount(safeProgress), LANG_STEPS.length - 1)]?.id || LANG_STEPS[0].id);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("languages-reset", onReset);
+    return () => window.removeEventListener("languages-reset", onReset);
+  }, [reload]);
+
+  const completedCount = langCompletedCount(progress);
+  const doneSet = useMemo(() => new Set(progress.completed || []), [progress]);
+  const selected = LANG_STEPS.find((s) => s.id === selectedId) || LANG_STEPS[Math.min(completedCount, LANG_STEPS.length - 1)] || LANG_STEPS[0];
+  const today = dateKey(Date.now());
+  const todayXp = xp.byDay?.[today] || 0;
+  const currentUnit = LANG_UNITS.find((u) => u.id === selected.unitId) || LANG_UNITS[0];
+  const unitProg = langUnitProgress(progress, selected.unitId);
+
+  const selectUnit = useCallback((unitId) => {
+    const steps = LANG_STEPS.filter((s) => s.unitId === unitId);
+    const firstUnlocked = steps.find((s) => s.index <= completedCount && !doneSet.has(s.id));
+    const fallback = steps.find((s) => s.index <= completedCount) || steps[0];
+    if (firstUnlocked || fallback) setSelectedId((firstUnlocked || fallback).id);
+  }, [completedCount, doneSet]);
+
+  const completeStep = useCallback(async (step, content, score, weakWords) => {
+    if (doneSet.has(step.id)) return;
+    if (weakWords?.length) await onAddWeakWords(weakWords, "missed");
+    const nextProgress = {
+      completed: [...(progress.completed || []), step.id],
+      completedAt: { ...(progress.completedAt || {}), [step.id]: Date.now() },
+    };
+    const key = dateKey(Date.now());
+    const earned = step.xp + Math.round(Math.max(0, score - 0.7) * 30);
+    const nextXp = {
+      total: (xp.total || 0) + earned,
+      byDay: { ...(xp.byDay || {}), [key]: (xp.byDay?.[key] || 0) + earned },
+    };
+    setProgress(nextProgress);
+    setXp(nextXp);
+    await store.set(LKEYS.progress, nextProgress);
+    await store.set(LKEYS.xp, nextXp);
+    await onStepComplete(score >= 0.9 ? "easy" : "good");
+    const next = LANG_STEPS[step.index + 1];
+    if (next) setSelectedId(next.id);
+  }, [doneSet, progress, xp, onAddWeakWords, onStepComplete]);
+
+  const resetSelectedStep = useCallback(async () => {
+    if (!selected) return;
+    await resetCachedLanguageStep(selected.id);
+    setResetSignal((n) => n + 1);
+  }, [selected]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen flex-1 items-center justify-center bg-emerald-50 text-emerald-600">
+        <div className="flex flex-col items-center gap-3">
+          <Compass className="h-8 w-8 animate-pulse" />
+          <span className="text-sm font-semibold">Loading Languages path...</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-emerald-50 via-sky-50 to-white pb-24 lg:pb-0">
+      <header className="sticky top-0 z-20 border-b border-emerald-100 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex min-h-14 w-full max-w-6xl items-center gap-2 px-3 py-2 sm:px-4">
+          <div className="mr-auto flex min-w-0 items-center gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-500 text-white"><Compass className="h-5 w-5" /></span>
+            <div className="min-w-0">
+              <div className="truncate text-base font-extrabold text-slate-900">Languages</div>
+              <div className="hidden text-xs font-medium text-emerald-700 sm:block">English B2 to C1 path</div>
+            </div>
+          </div>
+          <button onClick={onPracticeReview} className="inline-flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-sm font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-50">
+            <Repeat className="h-4 w-4" /> Practice
+          </button>
+          <button onClick={resetSelectedStep} className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Regenerate this step">
+            <RefreshCw className="h-4 w-4" />
+          </button>
+        </div>
+      </header>
+
+      <main className="mx-auto grid min-w-0 w-full max-w-6xl gap-4 px-3 py-4 sm:px-4 lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-5 lg:py-5">
+        <aside className="min-w-0 space-y-3 lg:sticky lg:top-20 lg:self-start">
+          <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-100">
+            <div className="bg-emerald-500 p-3 text-white sm:p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold uppercase">Total progress</div>
+                  <div className="text-2xl font-extrabold tabular-nums sm:text-3xl">{completedCount}/1000</div>
+                </div>
+                <Trophy className="h-8 w-8 text-amber-200 sm:h-9 sm:w-9" />
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/25">
+                <div className="h-full rounded-full bg-amber-300" style={{ width: `${(completedCount / LANG_STEPS.length) * 100}%` }} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 divide-x divide-emerald-50 p-3 text-center">
+              <div><div className="text-lg font-extrabold text-slate-900">{xp.total || 0}</div><div className="text-[11px] font-medium text-slate-400">XP</div></div>
+              <div><div className="text-lg font-extrabold text-orange-500">{todayXp}</div><div className="text-[11px] font-medium text-slate-400">today</div></div>
+              <div><div className="text-lg font-extrabold text-amber-500">{LANG_UNITS.filter((u) => langUnitProgress(progress, u.id).crowned).length}</div><div className="text-[11px] font-medium text-slate-400">crowns</div></div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-extrabold text-slate-900">Unit {currentUnit.id}: {currentUnit.theme}</div>
+                <div className="text-xs text-slate-400">{currentUnit.level} · {unitProg.completed}/{unitProg.total} steps</div>
+              </div>
+              {unitProg.crowned ? <Trophy className="h-5 w-5 shrink-0 text-amber-500" /> : <Star className="h-5 w-5 shrink-0 text-sky-400" />}
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-sky-500" style={{ width: `${(unitProg.completed / unitProg.total) * 100}%` }} />
+            </div>
+          </div>
+
+          <div className="lg:hidden">
+            <LanguageUnitStrip progress={progress} currentUnitId={selected.unitId} onSelectUnit={selectUnit} />
+          </div>
+          <div className="lg:hidden">
+            <LanguagePathMap progress={progress} selectedId={selected.id} onSelect={(step) => setSelectedId(step.id)} unitFilter={selected.unitId} compact />
+          </div>
+          <div className="hidden lg:block">
+            <LanguagePathMap progress={progress} selectedId={selected.id} onSelect={(step) => setSelectedId(step.id)} />
+          </div>
+        </aside>
+
+        <LanguageStepPanel
+          key={`${selected.id}:${resetSignal}`}
+          step={selected}
+          unlocked={selected.index <= completedCount}
+          completed={doneSet.has(selected.id)}
+          onComplete={completeStep}
+          onAddWeakWords={onAddWeakWords}
+        />
+      </main>
+    </div>
+  );
+}
+
+function LanguageUnitStrip({ progress, currentUnitId, onSelectUnit }) {
+  return (
+    <div className="-mx-3 max-w-full overflow-x-auto px-3 pb-1">
+      <div className="flex w-max gap-2">
+        {LANG_UNITS.map((unit) => {
+          const prog = langUnitProgress(progress, unit.id);
+          const active = unit.id === currentUnitId;
+          return (
+            <button
+              key={unit.id}
+              onClick={() => onSelectUnit(unit.id)}
+              className={`flex min-w-[126px] items-center gap-2 rounded-2xl px-3 py-2 text-left text-xs font-bold shadow-sm ring-1 transition ${
+                active ? "bg-emerald-500 text-white ring-emerald-500" : "bg-white text-slate-600 ring-emerald-100"
+              }`}
+            >
+              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] ${active ? "bg-white/20" : "bg-emerald-50 text-emerald-600"}`}>{unit.id}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{unit.theme}</span>
+                <span className={`block text-[10px] ${active ? "text-white/80" : "text-slate-400"}`}>{prog.completed}/25</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LanguagePathMap({ progress, selectedId, onSelect, unitFilter = null, compact = false }) {
+  const completedCount = langCompletedCount(progress);
+  const done = new Set(progress.completed || []);
+  const units = unitFilter ? LANG_UNITS.filter((u) => u.id === unitFilter) : LANG_UNITS;
+  return (
+    <div className={`min-w-0 ${compact ? "max-h-none" : "max-h-[66vh]"} overflow-y-auto rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-100`}>
+      {units.map((unit) => {
+        const unitSteps = LANG_STEPS.filter((s) => s.unitId === unit.id);
+        const prog = langUnitProgress(progress, unit.id);
+        return (
+          <div key={unit.id} className={compact ? "" : "mb-5 last:mb-0"}>
+            <div className="sticky top-0 z-10 mb-2 rounded-xl bg-white/95 px-2 py-2 backdrop-blur">
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-xs font-extrabold uppercase text-slate-500">Unit {unit.id} · {unit.theme}</span>
+                <span className="shrink-0 text-[11px] font-bold text-emerald-600">{prog.completed}/{prog.total}</span>
+              </div>
+            </div>
+            <div className={`relative py-1 ${compact ? "grid grid-cols-5 gap-2 sm:grid-cols-8" : "space-y-2"}`}>
+              {unitSteps.map((step, i) => {
+                const completed = done.has(step.id);
+                const current = step.index === completedCount;
+                const locked = step.index > completedCount;
+                const selected = step.id === selectedId;
+                const offsets = [6, 20, 36, 54, 70, 56, 40, 24];
+                return (
+                  <button
+                    key={step.id}
+                    onClick={() => !locked && onSelect(step)}
+                    disabled={locked}
+                    title={step.title}
+                    className={`group flex h-10 w-10 items-center justify-center rounded-full border-2 text-xs font-extrabold shadow-sm transition ${
+                      completed ? "border-emerald-500 bg-emerald-500 text-white" :
+                      current ? "border-amber-400 bg-amber-300 text-amber-950 ring-4 ring-amber-100" :
+                      locked ? "border-slate-200 bg-slate-100 text-slate-300" :
+                      "border-sky-300 bg-sky-50 text-sky-700 hover:bg-sky-100"
+                    } ${selected ? "scale-110" : ""}`}
+                    style={compact ? undefined : { marginLeft: `${offsets[i % offsets.length]}%` }}
+                  >
+                    {locked ? <Lock className="h-4 w-4" /> : completed ? (step.checkpoint ? <Trophy className="h-4 w-4" /> : <Check className="h-4 w-4" />) : step.checkpoint ? <Star className="h-4 w-4" /> : step.unitStep}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function LanguageStepPanel({ step, unlocked, completed, onComplete, onAddWeakWords }) {
+  const [state, setState] = useState({ status: unlocked ? "loading" : "locked", content: null, error: "" });
+
+  const load = useCallback(async () => {
+    if (!unlocked) {
+      setState({ status: "locked", content: null, error: "" });
+      return;
+    }
+    setState({ status: "loading", content: null, error: "" });
+    try {
+      const content = await getCachedLanguageStep(step);
+      setState({ status: "ready", content, error: "" });
+    } catch (e) {
+      setState({ status: "error", content: null, error: e?.message || "Could not generate this step." });
+    }
+  }, [step, unlocked]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => { if (alive) await load(); })();
+    return () => { alive = false; };
+  }, [load]);
+
+  if (!unlocked || state.status === "locked") {
+    return (
+      <div className="rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-100">
+        <Lock className="mx-auto h-10 w-10 text-slate-300" />
+        <h2 className="mt-3 text-xl font-extrabold text-slate-900">Locked step</h2>
+        <p className="mx-auto mt-1 max-w-sm text-sm text-slate-500">Finish the previous node to open this one. One small win at a time.</p>
+      </div>
+    );
+  }
+
+  if (state.status === "loading") {
+    return (
+      <div className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-emerald-100">
+        <div className="flex items-center gap-4">
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-emerald-100 text-emerald-600"><Sparkles className="h-7 w-7 animate-pulse" /></div>
+          <div>
+            <h2 className="text-xl font-extrabold text-slate-900">Generating step {step.number}</h2>
+            <p className="text-sm text-slate-500">{step.level} · {step.skill}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <div className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-red-100">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-500"><RefreshCw className="h-7 w-7" /></div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl font-extrabold text-slate-900">Step generation needs a retry</h2>
+            <p className="mt-1 text-sm text-slate-500">{step.level} · {step.skill}</p>
+            <p className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600">{state.error}</p>
+          </div>
+          <button onClick={load} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-red-500 px-4 py-2 text-sm font-bold text-white hover:bg-red-600">
+            <RefreshCw className="h-4 w-4" /> Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <LanguageLesson
+      step={step}
+      content={state.content}
+      completed={completed}
+      onComplete={onComplete}
+      onAddWeakWords={onAddWeakWords}
+    />
+  );
+}
+
+function LanguageLesson({ step, content, completed, onComplete, onAddWeakWords }) {
+  const [checks, setChecks] = useState({});
+  const [misses, setMisses] = useState({});
+  const [hearts, setHearts] = useState(5);
+  const [celebrated, setCelebrated] = useState(false);
+  const readingItems = (content.reading?.questions || []).map((q, i) => ({
+    type: q.options?.length ? "multiple_choice" : "cloze",
+    prompt: q.question,
+    answer: q.answer,
+    options: q.options || [],
+    explanation: "Check the reading text for the clue.",
+    word: "",
+    id: `reading-${i}`,
+  }));
+  const learningItems = [...readingItems, ...(content.exercises || []).map((x, i) => ({ ...x, id: `exercise-${i}` }))];
+  const testItems = (content.test || []).map((x, i) => ({ ...x, id: `test-${i}` }));
+  const totalInteractions = learningItems.length + testItems.length;
+  const doneInteractions = Object.keys(checks).length;
+  const progressPct = totalInteractions ? Math.round((doneInteractions / totalInteractions) * 100) : 0;
+  const testChecks = testItems.map((it) => checks[it.id]).filter(Boolean);
+  const testReady = testItems.length > 0 && testChecks.length === testItems.length;
+  const score = testReady ? testChecks.filter((x) => x.correct).length / testItems.length : 0;
+  const weakWords = Object.values(misses);
+
+  const markCheck = useCallback((item, correct) => {
+    setChecks((m) => ({ ...m, [item.id]: { correct } }));
+    if (!correct) {
+      setHearts((h) => Math.max(0, h - 1));
+      const w = wordForLanguageItem(item, content.words);
+      if (w) setMisses((m) => ({ ...m, [normalizeText(w.word)]: w }));
+    }
+  }, [content.words]);
+
+  const markHard = useCallback(async (word) => {
+    await onAddWeakWords([word], "hard");
+  }, [onAddWeakWords]);
+
+  const retryTest = () => {
+    const testIds = new Set(testItems.map((it) => it.id));
+    setChecks((m) => Object.fromEntries(Object.entries(m).filter(([id]) => !testIds.has(id))));
+    setHearts(5);
+    setCelebrated(false);
+  };
+
+  const finish = async () => {
+    await onComplete(step, content, score, weakWords);
+    setCelebrated(true);
+  };
+
+  return (
+    <div className="min-w-0 space-y-4">
+      <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-100 sm:rounded-3xl">
+        <div className="bg-gradient-to-r from-emerald-500 via-sky-500 to-amber-400 p-4 text-white sm:p-5">
+          <div className="flex flex-wrap items-start gap-4">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/20 text-2xl sm:h-14 sm:w-14 sm:text-3xl">{content.emoji || "🗣️"}</div>
+            <div className="min-w-0 flex-1">
+              <div className="mb-1 flex flex-wrap items-center gap-2 text-xs font-bold uppercase">
+                <span className="rounded-full bg-white/20 px-2 py-0.5">Step {step.number}/1000</span>
+                <span className="rounded-full bg-white/20 px-2 py-0.5">{step.level}</span>
+                {step.checkpoint && <span className="rounded-full bg-amber-200 px-2 py-0.5 text-amber-900">checkpoint</span>}
+              </div>
+              <h1 className="text-xl font-extrabold leading-tight sm:text-2xl">{content.title}</h1>
+              <p className="mt-1 text-sm font-medium text-white/85">{content.target}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1 rounded-full bg-white/20 px-3 py-1.5 text-sm font-extrabold">
+              <Heart className="h-4 w-4 fill-white" /> {hearts}
+            </div>
+          </div>
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/25">
+            <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progressPct}%` }} />
+          </div>
+        </div>
+
+        <div className="grid gap-3 p-3 sm:grid-cols-2 sm:p-4">
+          {content.words.map((w) => (
+            <div key={w.word} className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-100 sm:rounded-2xl">
+              <div className="flex items-start gap-2">
+                <button onClick={() => speak(w.word, "en-US")} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sky-100 text-sky-700" title="Listen">
+                  <Volume2 className="h-4 w-4" />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <div className="font-extrabold text-slate-900">{w.word}</div>
+                  <div className="mt-0.5 text-sm text-slate-600">{w.definition}</div>
+                  {w.gloss && <div className="mt-1 text-xs font-medium text-emerald-700">{w.gloss}</div>}
+                  {w.example && <div className="mt-2 text-xs italic text-slate-500">{w.example}</div>}
+                </div>
+                <button onClick={() => markHard(w)} className="rounded-lg px-2 py-1 text-[11px] font-bold text-amber-600 hover:bg-amber-50">Hard</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100 sm:rounded-3xl sm:p-5">
+        <div className="mb-3 flex items-center gap-2">
+          <BookOpen className="h-5 w-5 text-sky-500" />
+          <h2 className="text-lg font-extrabold text-slate-900">{content.reading?.title || "Reading"}</h2>
+        </div>
+        <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{content.reading?.text}</p>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center gap-2 px-1">
+          <Sparkles className="h-5 w-5 text-emerald-500" />
+          <h2 className="text-lg font-extrabold text-slate-900">Practice</h2>
+        </div>
+        {learningItems.map((item) => (
+          <LanguageQuestion key={item.id} item={item} checked={checks[item.id]} onChecked={(correct) => markCheck(item, correct)} />
+        ))}
+      </section>
+
+      <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100 sm:rounded-3xl sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <Target className="h-5 w-5 text-amber-500" />
+            <h2 className="text-lg font-extrabold text-slate-900">End-of-step test</h2>
+          </div>
+          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-extrabold text-amber-700">Pass 70%</span>
+        </div>
+        {testItems.map((item) => (
+          <LanguageQuestion key={item.id} item={item} checked={checks[item.id]} onChecked={(correct) => markCheck(item, correct)} />
+        ))}
+        {testReady && (
+          <div className={`rounded-2xl p-4 ${score >= 0.7 ? "bg-emerald-50 ring-1 ring-emerald-100" : "bg-amber-50 ring-1 ring-amber-100"}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className={`text-xl font-extrabold ${score >= 0.7 ? "text-emerald-700" : "text-amber-700"}`}>{Math.round(score * 100)}%</div>
+                <div className="text-sm text-slate-600">{score >= 0.7 ? "Nice. This node is ready to complete." : "Almost. Review the misses and try the test again."}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {score < 0.7 && <button onClick={retryTest} className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-amber-700 ring-1 ring-amber-200 hover:bg-amber-50">Retry test</button>}
+                {score >= 0.7 && !completed && <button onClick={finish} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-extrabold text-white hover:bg-emerald-600"><CheckCircle2 className="h-4 w-4" /> Complete +{step.xp} XP</button>}
+                {completed && <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-100 px-4 py-2 text-sm font-extrabold text-emerald-700"><Trophy className="h-4 w-4" /> Completed</span>}
+              </div>
+            </div>
+          </div>
+        )}
+        {celebrated && <div className="rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-extrabold text-white shadow-sm">Step complete. The next node is open.</div>}
+      </section>
+    </div>
+  );
+}
+
+function LanguageQuestion({ item, checked, onChecked }) {
+  const [value, setValue] = useState("");
+  const [matches, setMatches] = useState({});
+  const [picked, setPicked] = useState([]);
+  const [chips] = useState(() => item.words?.length ? item.words : String(item.answer || "").split(/\s+/).filter(Boolean).sort(() => 0.5 - Math.random()));
+  const type = item.type || "multiple_choice";
+
+  const currentValue = type === "matching" ? matches : type === "reorder" ? picked.join(" ") : value;
+  const correct = evaluateLanguageItem(item, currentValue);
+  const canCheck =
+    type === "matching" ? item.pairs?.length && Object.keys(matches).length === item.pairs.length :
+    type === "reorder" ? picked.length > 0 :
+    String(value).trim().length > 0;
+
+  const doCheck = () => {
+    if (!canCheck || checked) return;
+    onChecked(correct);
+  };
+
+  return (
+    <div className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-slate-100 sm:rounded-2xl sm:p-4">
+      <div className="mb-3 flex items-start gap-2">
+        <span className={`mt-0.5 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${
+          type === "listening" ? "bg-sky-100 text-sky-700" :
+          type === "translate" ? "bg-violet-100 text-violet-700" :
+          type === "matching" ? "bg-emerald-100 text-emerald-700" :
+          "bg-slate-100 text-slate-600"
+        }`}>{type.replace("_", " ")}</span>
+        <div className="min-w-0 flex-1 text-sm font-semibold text-slate-800">{item.prompt}</div>
+        {type === "listening" && (
+          <button onClick={() => speak(item.audioText || item.answer || item.prompt, "en-US")} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-sky-100 text-sky-700" title="Play audio">
+            <Volume2 className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {type === "multiple_choice" && (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(item.options?.length ? item.options : [item.answer]).map((opt) => (
+            <button key={opt} disabled={!!checked} onClick={() => setValue(opt)} className={`rounded-xl px-3 py-2 text-left text-sm font-semibold ring-1 transition ${value === opt ? "bg-sky-50 text-sky-700 ring-sky-300" : "bg-slate-50 text-slate-600 ring-slate-100 hover:bg-slate-100"}`}>
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {["cloze", "translate", "listening"].includes(type) && (
+        <input
+          disabled={!!checked}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") doCheck(); }}
+          placeholder={type === "listening" ? "Type what you hear..." : "Your answer..."}
+          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-100"
+        />
+      )}
+
+      {type === "reorder" && (
+        <div className="space-y-3">
+          <div className="min-h-11 rounded-xl bg-slate-50 p-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-100">{picked.join(" ") || "Build the sentence..."}</div>
+          <div className="flex flex-wrap gap-2">
+            {chips.map((w, i) => (
+              <button key={`${w}-${i}`} disabled={!!checked || picked.includes(w)} onClick={() => setPicked((p) => [...p, w])} className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 disabled:opacity-40">{w}</button>
+            ))}
+            {!checked && picked.length > 0 && <button onClick={() => setPicked([])} className="rounded-full px-3 py-1.5 text-sm font-semibold text-slate-400 hover:bg-slate-100">Reset</button>}
+          </div>
+        </div>
+      )}
+
+      {type === "matching" && (
+        <div className="space-y-2">
+          {item.pairs.map((p) => (
+            <label key={p.left} className="grid gap-2 rounded-xl bg-slate-50 p-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+              <span className="text-sm font-extrabold text-slate-700">{p.left}</span>
+              <select disabled={!!checked} value={matches[p.left] || ""} onChange={(e) => setMatches((m) => ({ ...m, [p.left]: e.target.value }))} className="min-w-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm">
+                <option value="">Choose...</option>
+                {item.pairs.map((opt) => <option key={opt.right} value={opt.right}>{opt.right}</option>)}
+              </select>
+            </label>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <button disabled={!canCheck || !!checked} onClick={doCheck} className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-200 sm:w-auto">
+          Check
+        </button>
+        {checked && (
+          <div className={`min-w-0 flex-1 rounded-xl px-3 py-2 text-sm ${checked.correct ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+            <span className="font-extrabold">{checked.correct ? "Correct." : `Answer: ${Array.isArray(item.answer) ? item.answer[0] : item.answer}`}</span>
+            {item.explanation && <span className="ml-1">{item.explanation}</span>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function evaluateLanguageItem(item, value) {
+  if (item.type === "matching") {
+    return item.pairs?.every((p) => value?.[p.left] === p.right);
+  }
+  return sameAnswer(value, item.answer);
+}
+
+function wordForLanguageItem(item, words) {
+  if (!words?.length) return null;
+  const direct = normalizeText(item.word);
+  if (direct) {
+    const found = words.find((w) => normalizeText(w.word) === direct || normalizeText(w.word).includes(direct) || direct.includes(normalizeText(w.word)));
+    if (found) return found;
+  }
+  const hay = normalizeText(`${item.prompt} ${item.answer}`);
+  return words.find((w) => hay.includes(normalizeText(w.word))) || words[0];
+}
+
+/* ================================================================== */
+/* DAILY REVIEW — one-screen morning+evening check-in (review:{date})  */
+/* ================================================================== */
+const REVKEYS = { index: "review:index" };
+const rvKey = (d) => `review:${d}`;
+async function collectReviewExport() {
+  const index = await store.get(REVKEYS.index, []);
+  const docs = {};
+  for (const d of index) { const doc = await store.get(rvKey(d), null); if (doc) docs[d] = doc; }
+  return { index, docs };
+}
+async function clearReviewData() {
+  const index = await store.get(REVKEYS.index, []);
+  for (const d of index) await store.remove(rvKey(d));
+  await store.remove(REVKEYS.index);
+}
+
+function ReviewSection({ onGo }) {
+  const today = dateKey(Date.now());
+  const nowHour = new Date().getHours();
+  const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState(nowHour < 15 ? "morning" : "evening");
+  const [doc, setDoc] = useState({});
+  const [mood, setMood] = useState(null);
+  const [routine, setRoutine] = useState({ tasks: [], completions: {}, streak: { current: 0 }, xp: 0 });
+  const [fasting, setFasting] = useState(null);
+  const [study, setStudy] = useState({ streak: 0, due: 0 });
+  const [calmStreakVal, setCalmStreakVal] = useState(0);
+  const [toast, setToast] = useState(null);
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 1800); }, []);
+
+  const reload = useCallback(async () => {
+    const d = await store.get(rvKey(today), {});
+    setDoc(d || {});
+    const r = await loadRoutineData();
+    setMood((r.moods || {})[today] ?? null);
+    setRoutine({ tasks: r.tasks || [], completions: r.completions || {}, streak: computeTaskStreak(r.completions || {}, today), xp: (r.xp && r.xp.xp) || 0 });
+    const f = await loadFastingData();
+    setFasting(f.current || null);
+    const c = await loadCalmData();
+    setCalmStreakVal(calmStreak(c.sessions || [], today));
+    const stats = await store.get("stats", { history: {} });
+    // strict due-today count across decks
+    const idx = await store.get("decks:index", { decks: [] });
+    const endToday = new Date(); endToday.setHours(23, 59, 59, 999); const endTs = endToday.getTime();
+    let due = 0;
+    for (const dk of idx.decks || []) {
+      const cards = await store.get(`cards:${dk.id}`, []);
+      for (const cd of cards) if ((cd.state === "learning" || cd.state === "review") && cd.due <= endTs) due += 1;
+    }
+    setStudy({ streak: computeStreak(stats.history || {}), due });
+    setLoading(false);
+  }, [today]);
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("review-reset", onReset);
+    return () => window.removeEventListener("review-reset", onReset);
+  }, [reload]);
+
+  const saveDoc = useCallback((patch) => {
+    setDoc((prev) => {
+      const next = { ...prev, ...patch };
+      store.set(rvKey(today), next);
+      store.get(REVKEYS.index, []).then((idx) => { if (!idx.includes(today)) store.set(REVKEYS.index, [...idx, today].sort()); });
+      return next;
+    });
+  }, [today]);
+  const setMoodVal = useCallback(async (score) => {
+    setMood(score);
+    const prev = await store.get("routine:mood", {});
+    await store.set("routine:mood", { ...prev, [today]: score });
+  }, [today]);
+
+  const occurring = useMemo(() => routine.tasks.filter((t) => taskOccursOn(t, today)), [routine.tasks, today]);
+  const todayDoc = routine.completions[today] || {};
+  const doneTasks = occurring.filter((t) => todayDoc.tasks?.[t.id]);
+  const fastElapsedH = fasting ? (Date.now() - fasting.startTs) / 3600000 : 0;
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-amber-400"><div className="flex flex-col items-center gap-3"><Sunrise className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  const Toggle = ({ label, value, onYes, onNo, goodWhenNo }) => (
+    <div className="flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-100">
+      <span className="text-sm font-semibold text-slate-700">{label}</span>
+      <div className="flex gap-1.5">
+        <button onClick={onNo} className={`rounded-full px-3 py-1 text-xs font-bold ring-1 transition ${value === false ? (goodWhenNo ? "bg-emerald-500 text-white ring-emerald-500" : "bg-slate-700 text-white ring-slate-700") : "bg-white text-slate-400 ring-slate-200"}`}>Ні</button>
+        <button onClick={onYes} className={`rounded-full px-3 py-1 text-xs font-bold ring-1 transition ${value === true ? (goodWhenNo ? "bg-slate-700 text-white ring-slate-700" : "bg-emerald-500 text-white ring-emerald-500") : "bg-white text-slate-400 ring-slate-200"}`}>Так</button>
+      </div>
+    </div>
+  );
+
+  const MoodPicker = () => (
+    <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+      <div className="mb-1.5 text-sm font-semibold text-slate-700">Як настрій?</div>
+      <div className="flex justify-between">
+        {MOODS.map((m) => (
+          <button key={m.score} onClick={() => setMoodVal(m.score)} className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-1.5 transition hover:scale-110 ${mood === m.score ? "bg-amber-50 ring-2 ring-amber-300" : ""}`}>
+            <span className="text-2xl">{m.emoji}</span><span className="text-[9px] font-medium text-slate-400">{m.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  const StreakChips = () => (
+    <div className="flex flex-wrap gap-2">
+      <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ring-1 ring-slate-100"><span>🔥</span><span className="tabular-nums text-orange-500">{routine.streak.current}</span> рутина</span>
+      <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ring-1 ring-slate-100"><GraduationCap className="h-3.5 w-3.5 text-rose-500" /><span className="tabular-nums text-rose-500">{study.streak}</span> навчання</span>
+      <span className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-bold shadow-sm ring-1 ring-slate-100"><Leaf className="h-3.5 w-3.5 text-teal-500" /><span className="tabular-nums text-teal-500">{calmStreakVal}</span> спокій</span>
+    </div>
+  );
+
+  const Glance = () => (
+    <div className="grid grid-cols-3 gap-2">
+      <button onClick={() => onGo("routine")} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-slate-100 hover:ring-pink-200"><div className="text-2xl font-extrabold tabular-nums text-pink-500">{doneTasks.length}/{occurring.length}</div><div className="text-[11px] text-slate-400">справи</div></button>
+      <button onClick={() => onGo("fasting")} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-slate-100 hover:ring-orange-200"><div className="text-2xl font-extrabold tabular-nums text-orange-500">{fasting ? `${Math.floor(fastElapsedH)}г` : "—"}</div><div className="text-[11px] text-slate-400">{fasting ? "голодування" : "не постишся"}</div></button>
+      <button onClick={() => onGo("studying")} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-slate-100 hover:ring-rose-200"><div className="text-2xl font-extrabold tabular-nums text-rose-500">{study.due}</div><div className="text-[11px] text-slate-400">карток на сьогодні</div></button>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-amber-50/50 via-red-50/30 to-white">
+      <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
+        {/* header */}
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900">Огляд дня</h1>
+            <p className="text-xs font-medium text-slate-400">{prettyDate(today)}</p>
+          </div>
+          <div className="flex gap-1 rounded-full bg-white p-1 shadow-sm ring-1 ring-slate-100">
+            <button onClick={() => setMode("morning")} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${mode === "morning" ? "bg-amber-400 text-white" : "text-slate-400"}`}>🌅 Ранок</button>
+            <button onClick={() => setMode("evening")} className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${mode === "evening" ? "bg-rose-500 text-white" : "text-slate-400"}`}>🌙 Вечір</button>
+          </div>
+        </div>
+
+        {mode === "morning" ? (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-gradient-to-r from-amber-300 to-red-300 p-4 text-white shadow-sm">
+              <div className="text-lg font-extrabold">Доброго ранку 🌅</div>
+              <div className="text-sm text-white/90">Хвилинка, щоб налаштуватись — без тиску.</div>
+            </div>
+            <StreakChips />
+            <MoodPicker />
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+              <div className="mb-1.5 text-sm font-semibold text-slate-700">Мій намір на сьогодні</div>
+              <textarea value={doc.intentions || ""} onChange={(e) => saveDoc({ intentions: e.target.value })} rows={2} placeholder="Одна річ, яка зробить день добрим…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-amber-400 focus:outline-none" />
+            </div>
+            <div className="mb-1 mt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">На сьогодні чекає</div>
+            <Glance />
+            <p className="pt-2 text-center text-xs text-slate-400">Не мусиш робити все. Обери одне — і почни з нього 💛</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-gradient-to-r from-rose-400 to-pink-400 p-4 text-white shadow-sm">
+              <div className="text-lg font-extrabold">Як пройшов день? 🌙</div>
+              <div className="text-sm text-white/90">Відзначимо, що вдалося — решта зачекає.</div>
+            </div>
+            <StreakChips />
+            <MoodPicker />
+
+            {/* done celebration */}
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+              <div className="flex items-center justify-between"><span className="text-sm font-semibold text-slate-700">Закрито сьогодні</span><span className="text-sm font-extrabold text-pink-500">{doneTasks.length}{routine.xp ? ` · рівень ${levelProgress(routine.xp).lvl}` : ""}</span></div>
+              {doneTasks.length > 0 ? (
+                <div className="mt-2 space-y-1">{doneTasks.slice(0, 12).map((t) => <div key={t.id} className="flex items-center gap-2 text-sm text-slate-700"><span>{t.emoji || "✅"}</span><span className="truncate">{t.title}</span></div>)}</div>
+              ) : <p className="mt-1 text-sm text-slate-400">Сьогодні нічого не закрито — і це ок. Завтра новий день 💛</p>}
+            </div>
+
+            {/* quick check-ins */}
+            <div className="space-y-2">
+              <Toggle label="Ліки прийняла?" value={doc.meds ?? null} onYes={() => saveDoc({ meds: true })} onNo={() => saveDoc({ meds: false })} />
+              <Toggle label="Порухалась сьогодні?" value={doc.moved ?? null} onYes={() => saveDoc({ moved: true })} onNo={() => saveDoc({ moved: false })} />
+              <Toggle label="Алкоголь сьогодні?" value={doc.alcohol ?? null} onYes={() => saveDoc({ alcohol: true })} onNo={() => saveDoc({ alcohol: false })} goodWhenNo />
+              <Toggle label="Сигарети сьогодні?" value={doc.smoke ?? null} onYes={() => saveDoc({ smoke: true })} onNo={() => saveDoc({ smoke: false })} goodWhenNo />
+              <Toggle label="Витрати поза планом?" value={doc.spentOver ?? null} onYes={() => saveDoc({ spentOver: true })} onNo={() => saveDoc({ spentOver: false })} goodWhenNo />
+            </div>
+
+            <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+              <div className="mb-1.5 text-sm font-semibold text-slate-700">Як був день? (одним рядком)</div>
+              <textarea value={doc.note || ""} onChange={(e) => saveDoc({ note: e.target.value })} rows={2} placeholder="Що запам'яталось…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
+            </div>
+
+            <div className="mb-1 mt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Стан секцій</div>
+            <Glance />
+            <p className="pt-2 text-center text-xs text-slate-400">Ти зробила достатньо на сьогодні. Відпочинок — теж частина плану 💛</p>
+          </div>
+        )}
+      </div>
+      {toast && <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg lg:bottom-6">{toast}</div>}
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* FINANCE — debts + discretionary spending + impulse counter          */
+/* ================================================================== */
+const FNKEYS = {
+  debts: "finance:debts",         // [{id, name, creditor, balance, start, rate, minPayment}]
+  allowance: "finance:allowance", // { amount, period: "day"|"week" }
+  expenses: "finance:expenses",   // [{id, date, amount, note, ts}]
+  impulse: "finance:impulse",     // { since, best, resisted, slips:[dates] }
+  settings: "finance:settings",   // { name, strategy }
+  profile: "finance:profile",     // { openingBalance, buffer }
+  incomes: "finance:incomes",     // [{id, name, amount, day}]
+  fixedCosts: "finance:fixedCosts", // [{id, name, amount, day}]
+  month: "finance:month",         // selected overview month
+  monthPlans: "finance:monthPlans", // { [month]: { profile, incomes, fixedCosts } }
+};
+const finFmt = (n) => `${Math.round((Number(n) || 0)).toLocaleString("uk-UA")} ₴`;
+function finWeekStart(ds) { const d = new Date(ds + "T00:00:00"); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return dateKey(d.getTime()); }
+function finDaysBetween(a, b) { return Math.max(0, Math.floor((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000)); }
+function finOrderDebts(debts, strategy) {
+  return [...debts].sort((a, b) => {
+    const aDone = (Number(a.balance) || 0) <= 0;
+    const bDone = (Number(b.balance) || 0) <= 0;
+    if (aDone !== bDone) return aDone ? 1 : -1;
+    if (strategy === "avalanche") return (Number(b.rate) || 0) - (Number(a.rate) || 0) || (Number(a.balance) || 0) - (Number(b.balance) || 0);
+    if (strategy === "smart") {
+      const rateGap = (Number(b.rate) || 0) - (Number(a.rate) || 0);
+      return Math.abs(rateGap) >= 3 ? rateGap : (Number(a.balance) || 0) - (Number(b.balance) || 0);
+    }
+    return (Number(a.balance) || 0) - (Number(b.balance) || 0);
+  });
+}
+function finPayoffMonths(balance, annualRate, payment) {
+  const b = Number(balance) || 0; const p = Number(payment) || 0; const r = (Number(annualRate) || 0) / 1200;
+  if (b <= 0) return 0;
+  if (p <= 0 || (r > 0 && p <= b * r)) return null;
+  if (r === 0) return Math.ceil(b / p);
+  const months = Math.ceil(-Math.log(1 - (r * b) / p) / Math.log(1 + r));
+  return Number.isFinite(months) && months <= 600 ? months : null;
+}
+function finResolveDebtAllocation(allocation, incomes, debts) {
+  if (!allocation) return { amount: 0, income: null, debt: null };
+  const income = incomes.find((x) => x.id === allocation.incomeId);
+  const debt = debts.find((x) => x.id === allocation.debtId && (Number(x.balance) || 0) > 0);
+  if (!income || !debt) return { amount: 0, income, debt };
+  const incomeAmount = Math.max(0, Number(income.amount) || 0);
+  const requested = allocation.mode === "all" ? incomeAmount : allocation.mode === "half" ? incomeAmount / 2 : Math.max(0, Number(allocation.amount) || 0);
+  const debtCapacity = Math.max(0, Number(debt.balance) || 0);
+  return { amount: Math.min(incomeAmount, requested, debtCapacity), income, debt };
+}
+function finDebtProjection(balance, annualRate, monthlyPayment, maxMonths = 600) {
+  let left = Math.max(0, Number(balance) || 0);
+  const payment = Math.max(0, Number(monthlyPayment) || 0);
+  const monthlyRate = Math.max(0, Number(annualRate) || 0) / 1200;
+  let months = 0; let interest = 0;
+  if (left <= 0) return { months: 0, interest: 0, left: 0, stalled: false };
+  if (payment <= 0 || (monthlyRate > 0 && payment <= left * monthlyRate)) return { months: null, interest: 0, left, stalled: true };
+  while (left > 0.01 && months < maxMonths) {
+    const monthInterest = left * monthlyRate;
+    left += monthInterest; interest += monthInterest;
+    left -= Math.min(left, payment); months += 1;
+  }
+  return { months: left <= 0.01 ? months : null, interest, left: Math.max(0, left), stalled: left > 0.01 };
+}
+function finSavingsProjection({ months, startingSavings, income, fixedCosts, basket, pocket, otherDebtMinimums, debt, debtPayment, savingsAnnualRate = 10 }) {
+  let savings = Number(startingSavings) || 0;
+  let depositedSavings = savings;
+  let depositInterest = 0;
+  let debtLeft = Math.max(0, Number(debt?.balance) || 0);
+  const monthlyRate = Math.max(0, Number(debt?.rate) || 0) / 1200;
+  const monthlySavingsRate = Math.max(0, Number(savingsAnnualRate) || 0) / 1200;
+  let debtClosedAt = debtLeft <= 0 ? 0 : null;
+  for (let i = 1; i <= months; i += 1) {
+    let focusPayment = 0;
+    if (debtLeft > 0.01) {
+      debtLeft += debtLeft * monthlyRate;
+      focusPayment = Math.min(debtLeft, Math.max(0, Number(debtPayment) || 0));
+      debtLeft -= focusPayment;
+      if (debtLeft <= 0.01) { debtLeft = 0; debtClosedAt = i; }
+    }
+    const netSavings = (Number(income) || 0) - (Number(fixedCosts) || 0) - (Number(basket) || 0) - (Number(pocket) || 0) - (Number(otherDebtMinimums) || 0) - focusPayment;
+    const earnedInterest = Math.max(0, depositedSavings) * monthlySavingsRate;
+    depositInterest += earnedInterest;
+    depositedSavings += earnedInterest + netSavings;
+    savings += netSavings;
+  }
+  return { savings, depositedSavings, depositInterest, debtLeft, debtClosedAt };
+}
+
+async function loadFinanceData() {
+  const debts = await store.get(FNKEYS.debts, []);
+  const allowance = await store.get(FNKEYS.allowance, { amount: 0, period: "day" });
+  const expenses = await store.get(FNKEYS.expenses, []);
+  const impulse = await store.get(FNKEYS.impulse, null);
+  const settings = await store.get(FNKEYS.settings, { name: "Finance", strategy: "snowball" });
+  const profile = await store.get(FNKEYS.profile, { openingBalance: 0, buffer: 0 });
+  const incomes = await store.get(FNKEYS.incomes, []);
+  const fixedCosts = await store.get(FNKEYS.fixedCosts, []);
+  const month = await store.get(FNKEYS.month, budDefaultMonth());
+  const monthPlans = await store.get(FNKEYS.monthPlans, {});
+  return { debts, allowance, expenses, impulse, settings, profile, incomes, fixedCosts, month, monthPlans };
+}
+async function collectFinanceExport() { const d = await loadFinanceData(); return { debts: d.debts, allowance: d.allowance, expenses: d.expenses, impulse: d.impulse, settings: d.settings, profile: d.profile, incomes: d.incomes, fixedCosts: d.fixedCosts, month: d.month, monthPlans: d.monthPlans }; }
+async function clearFinanceData() { for (const k of Object.values(FNKEYS)) await store.remove(k); }
+
+function MoneyPlanList({ title, hint, items, onChange, onAdd, tone = "emerald" }) {
+  const accent = tone === "sky" ? "text-sky-700 bg-sky-50" : "text-emerald-700 bg-emerald-50";
+  return (
+    <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div><h3 className="font-bold text-slate-800">{title}</h3><p className="text-xs text-slate-400">{hint}</p></div>
+        <button onClick={onAdd} title="Додати" className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${accent}`}><Plus className="h-4 w-4" /></button>
+      </div>
+      {items.length === 0 ? <div className="px-4 py-5 text-center text-sm text-slate-400">Ще нічого не додано</div> : (
+        <div className="divide-y divide-slate-100">
+          {items.map((item) => (
+            <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_90px_48px_28px] items-center gap-2 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_120px_70px_32px]">
+              <input value={item.name} onChange={(e) => onChange(item.id, { name: e.target.value })} placeholder="Назва" className="min-w-0 rounded-lg border border-slate-200 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" />
+              <label className="relative"><input type="number" min={0} value={item.amount || ""} onChange={(e) => onChange(item.id, { amount: Math.max(0, Number(e.target.value) || 0) })} placeholder="0" className="w-full rounded-lg border border-slate-200 py-1.5 pl-2 pr-5 text-right text-sm font-semibold tabular-nums focus:border-emerald-400 focus:outline-none" /><span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">₴</span></label>
+              <label className="relative"><input type="number" min={1} max={31} value={item.day || ""} onChange={(e) => onChange(item.id, { day: Math.min(31, Math.max(1, Number(e.target.value) || 1)) })} className="w-full rounded-lg border border-slate-200 py-1.5 pl-1 pr-4 text-center text-xs focus:border-emerald-400 focus:outline-none" /><span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-[9px] text-slate-400">д</span></label>
+              <button onClick={() => onChange(item.id, null)} title="Видалити" className="grid h-7 w-7 place-items-center rounded-md text-slate-300 hover:bg-red-50 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MoneyOverview({ moneyTab, onMoneyTab }) {
+  const [loading, setLoading] = useState(true);
+  const [budget, setBudget] = useState({ cats: [], items: [], bought: {}, stock: {}, actuals: {} });
+  const [inventory, setInventory] = useState({ rooms: [], items: [] });
+  const [finance, setFinance] = useState({ debts: [], allowance: { amount: 0, period: "day" }, expenses: [], settings: {} });
+  const [profile, setProfile] = useState({ openingBalance: 0, buffer: 0 });
+  const [incomes, setIncomes] = useState([]);
+  const [fixedCosts, setFixedCosts] = useState([]);
+  const [month, setMonth] = useState(budDefaultMonth());
+  const [monthPlans, setMonthPlans] = useState({});
+  const [debtAllocation, setDebtAllocation] = useState(null);
+  const [allocationOpen, setAllocationOpen] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [extraPurchase, setExtraPurchase] = useState("");
+
+  const reload = useCallback(async () => {
+    const [b, f, inv] = await Promise.all([loadBudgetData(), loadFinanceData(), loadInventoryData()]);
+    setBudget({ ...b, cats: b.cats || [], items: b.items || [], bought: b.bought || {}, stock: b.stock || {}, actuals: b.actuals || {} });
+    setInventory({ rooms: inv.rooms || [], items: inv.items || [] });
+    const selectedMonth = f.month || budDefaultMonth();
+    const plans = f.monthPlans || {};
+    const legacyPlan = { profile: f.profile || { openingBalance: 0, buffer: 0 }, incomes: f.incomes || [], fixedCosts: f.fixedCosts || [] };
+    const activePlan = plans[selectedMonth] || legacyPlan;
+    const nextPlans = plans[selectedMonth] ? plans : { ...plans, [selectedMonth]: activePlan };
+    if (!plans[selectedMonth]) await store.set(FNKEYS.monthPlans, nextPlans);
+    setFinance(f); setMonth(selectedMonth); setMonthPlans(nextPlans); setProfile(activePlan.profile); setIncomes(activePlan.incomes); setFixedCosts(activePlan.fixedCosts); setDebtAllocation(activePlan.debtAllocation || null);
+    setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => reload();
+    window.addEventListener("budget-reset", onReset); window.addEventListener("finance-reset", onReset); window.addEventListener("inventory-reset", onReset);
+    return () => { window.removeEventListener("budget-reset", onReset); window.removeEventListener("finance-reset", onReset); window.removeEventListener("inventory-reset", onReset); };
+  }, [reload]);
+
+  const saveMonthPlan = (nextProfile, nextIncomes, nextFixed, nextAllocation = debtAllocation) => {
+    const nextPlans = { ...monthPlans, [month]: { profile: nextProfile, incomes: nextIncomes, fixedCosts: nextFixed, debtAllocation: nextAllocation } };
+    setMonthPlans(nextPlans); store.set(FNKEYS.monthPlans, nextPlans);
+  };
+  const saveProfile = (patch) => { const next = { ...profile, ...patch }; setProfile(next); store.set(FNKEYS.profile, next); saveMonthPlan(next, incomes, fixedCosts); };
+  const saveIncomes = (next) => { setIncomes(next); store.set(FNKEYS.incomes, next); saveMonthPlan(profile, next, fixedCosts); };
+  const saveFixed = (next) => { setFixedCosts(next); store.set(FNKEYS.fixedCosts, next); saveMonthPlan(profile, incomes, next); };
+  const saveDebtAllocation = (next) => { setDebtAllocation(next); saveMonthPlan(profile, incomes, fixedCosts, next); };
+  const changeList = (list, save, id, patch) => save(patch ? list.map((x) => (x.id === id ? { ...x, ...patch } : x)) : list.filter((x) => x.id !== id));
+  const selectMonth = (nextMonth) => {
+    let nextPlans = monthPlans; let plan = monthPlans[nextMonth];
+    if (!plan) {
+      plan = {
+        profile: { openingBalance: 0, buffer: Number(profile.buffer) || 0 },
+        incomes: incomes.map((x) => ({ ...x })),
+        fixedCosts: fixedCosts.map((x) => ({ ...x })),
+        debtAllocation: null,
+      };
+      nextPlans = { ...monthPlans, [nextMonth]: plan };
+      setMonthPlans(nextPlans); store.set(FNKEYS.monthPlans, nextPlans);
+    }
+    setMonth(nextMonth); setProfile(plan.profile); setIncomes(plan.incomes); setFixedCosts(plan.fixedCosts); setDebtAllocation(plan.debtAllocation || null); setSelected([]); setExtraPurchase("");
+    store.set(FNKEYS.month, nextMonth);
+  };
+
+  const boughtMap = budget.bought[month] || {}; const stockMap = budget.stock[month] || {}; const actualMap = budget.actuals[month] || {};
+  const budgetPurchases = budget.items.filter((it) => !boughtMap[it.id] && budStockFrac(stockMap[it.id]) < 1).map((it) => ({ ...it, optionId: `budget:${it.id}`, source: "Budget", cost: (1 - budStockFrac(stockMap[it.id])) * budLineSum(it) }));
+  const budgetInventoryIds = new Set(budget.items.map((it) => it.sourceInventoryId).filter(Boolean));
+  const budgetNames = new Set(budget.items.map((it) => it.name.trim().toLowerCase()));
+  const inventoryPurchases = month === budDefaultMonth() ? inventory.items.filter((it) => it.status === "Купити" && !budgetInventoryIds.has(it.id) && !budgetNames.has(it.name.trim().toLowerCase())).map((it) => ({ ...it, optionId: `inventory:${it.id}`, source: "Inventory", cost: Number(it.price) || 0 })) : [];
+  const remainingPurchases = [...budgetPurchases, ...inventoryPurchases];
+  const purchasedCost = budget.items.reduce((sum, it) => sum + (boughtMap[it.id] ? (actualMap[it.id] != null ? Number(actualMap[it.id]) || 0 : budLineSum(it)) : 0), 0);
+  const remainingCost = remainingPurchases.reduce((sum, it) => sum + it.cost, 0);
+  const baselineBasket = budget.items.filter((it) => !it.sourceInventoryId).reduce((sum, it) => sum + budLineSum(it), 0);
+  const incomeTotal = incomes.reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+  const fixedTotal = fixedCosts.reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+  const activeDebts = (finance.debts || []).filter((x) => (Number(x.balance) || 0) > 0);
+  const minDebt = activeDebts.reduce((sum, x) => sum + (Number(x.minPayment) || 0), 0);
+  const totalDebt = activeDebts.reduce((sum, x) => sum + (Number(x.balance) || 0), 0);
+  const resolvedAllocation = finResolveDebtAllocation(debtAllocation, incomes, activeDebts);
+  const allocatedIncome = resolvedAllocation.amount;
+  const allocationMinPayment = Number(resolvedAllocation.debt?.minPayment) || 0;
+  const extraDebtPayment = Math.max(0, allocatedIncome - allocationMinPayment);
+  const availableIncome = incomeTotal - extraDebtPayment;
+  const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+  const allowancePlan = (Number(finance.allowance?.amount) || 0) * (finance.allowance?.period === "week" ? 52 / 12 : daysInMonth);
+  const pocketSpent = (finance.expenses || []).filter((x) => x.date?.startsWith(month)).reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+  const pocketCost = Math.max(allowancePlan, pocketSpent);
+  const forecast = (Number(profile.openingBalance) || 0) + availableIncome - fixedTotal - minDebt - purchasedCost - remainingCost - pocketCost;
+  const monthBalance = forecast;
+  const selectedCost = remainingPurchases.filter((it) => selected.includes(it.optionId)).reduce((sum, it) => sum + it.cost, 0);
+  const scenarioBase = (Number(profile.openingBalance) || 0) + availableIncome - fixedTotal - minDebt - purchasedCost - pocketCost;
+  const scenarioResult = scenarioBase - selectedCost - (Number(extraPurchase) || 0);
+  const strategy = finance.settings?.strategy || "snowball";
+  const focusDebt = resolvedAllocation.debt || finOrderDebts(activeDebts, strategy)[0];
+  const extraForDebt = Math.max(0, monthBalance);
+  const focusAllocation = focusDebt?.id === resolvedAllocation.debt?.id ? allocatedIncome : 0;
+  const plannedFocusPayment = focusDebt ? Math.min(Number(focusDebt.balance) || 0, Math.max(Number(focusDebt.minPayment) || 0, focusAllocation)) : 0;
+  const focusPaymentForEstimate = focusDebt ? Math.min(Number(focusDebt.balance) || 0, plannedFocusPayment + extraForDebt) : 0;
+  const payoffMonths = focusDebt ? finPayoffMonths(focusDebt.balance, focusDebt.rate, focusPaymentForEstimate) : 0;
+  const debtAfterPlan = focusDebt ? Math.max(0, (Number(focusDebt.balance) || 0) - plannedFocusPayment) : 0;
+  const otherDebtMinimums = activeDebts.filter((x) => x.id !== focusDebt?.id).reduce((sum, x) => sum + (Number(x.minPayment) || 0), 0);
+  const outcomeClass = monthBalance < 0 ? "text-rose-600" : monthBalance < 1000 ? "text-amber-600" : "text-emerald-600";
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-emerald-500"><Wallet className="h-8 w-8 animate-pulse" /></div>;
+  return (
+    <div className="min-h-screen min-w-0 flex-1 bg-gradient-to-b from-emerald-50/40 via-white to-sky-50/30">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex min-h-14 w-full max-w-4xl items-center gap-2 px-3 py-2 sm:px-4">
+          <div className="mr-auto min-w-0"><div className="font-bold text-slate-900">Гроші</div><div className="hidden text-xs text-slate-400 sm:block">Спільний прогноз</div></div>
+          <MoneyToggle active={moneyTab} onSet={onMoneyTab} />
+        </div>
+      </header>
+      <main className="mx-auto w-full max-w-4xl space-y-4 px-3 py-4 pb-24 sm:px-4 sm:py-5 lg:pb-8">
+        <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-100">
+          <div className="grid gap-px bg-slate-100 sm:grid-cols-2">
+            <label className="flex items-center justify-between gap-3 bg-white px-4 py-3"><span><span className="block text-sm font-semibold text-slate-700">На початок місяця</span><span className="block text-xs text-slate-400">гроші до надходжень і витрат</span></span><span className="relative shrink-0"><input type="number" value={profile.openingBalance || ""} onChange={(e) => saveProfile({ openingBalance: Number(e.target.value) || 0 })} placeholder="0" className="w-28 rounded-lg border border-slate-200 py-1.5 pl-2 pr-5 text-right font-bold tabular-nums focus:border-emerald-400 focus:outline-none" /><span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">₴</span></span></label>
+            <label className="flex items-center justify-between gap-3 bg-white px-4 py-3"><span><span className="block text-sm font-semibold text-slate-700">Вже відкладено</span><span className="block text-xs text-slate-400">окремі заощадження, не витрата місяця</span></span><span className="relative shrink-0"><input type="number" min={0} value={profile.buffer || ""} onChange={(e) => saveProfile({ buffer: Math.max(0, Number(e.target.value) || 0) })} placeholder="0" className="w-28 rounded-lg border border-slate-200 py-1.5 pl-2 pr-5 text-right font-bold tabular-nums focus:border-emerald-400 focus:outline-none" /><span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">₴</span></span></label>
+          </div>
+        </section>
+
+        <section className="rounded-2xl bg-slate-900 p-4 text-white shadow-sm sm:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3 border-b border-white/10 pb-3">
+            <button onClick={() => selectMonth(budShiftMonth(month, -1))} title="Попередній місяць" aria-label="Попередній місяць" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-slate-200 hover:bg-white/20"><ChevronLeft className="h-4 w-4" /></button>
+            <div className="min-w-0 text-center"><div className="text-sm font-bold text-white">{budMonthLabel(month)}</div>{month !== budDefaultMonth() && <button onClick={() => selectMonth(budDefaultMonth())} className="mt-0.5 text-[11px] font-semibold text-emerald-300 hover:text-emerald-200">Поточний місяць</button>}</div>
+            <button onClick={() => selectMonth(budShiftMonth(month, 1))} title="Наступний місяць" aria-label="Наступний місяць" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 text-slate-200 hover:bg-white/20"><ChevronRight className="h-4 w-4" /></button>
+          </div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-semibold text-slate-400">Прогноз місяця</div><div className={`mt-1 text-3xl font-black tabular-nums ${monthBalance < 0 ? "text-rose-300" : "text-emerald-300"}`}>{monthBalance < 0 ? "−" : "+"}{finFmt(Math.abs(monthBalance))}</div><div className="mt-1 text-xs text-slate-400">після всіх планів; заощадження рахуються окремо</div></div><div className="flex flex-wrap justify-end gap-2"><div className="rounded-xl bg-white/10 px-3 py-2 text-right"><div className="text-[11px] text-slate-400">Відкладено</div><div className="font-bold tabular-nums text-emerald-300">{finFmt(profile.buffer)}</div></div><div className="rounded-xl bg-white/10 px-3 py-2 text-right"><div className="text-[11px] text-slate-400">Усі борги</div><div className="font-bold tabular-nums">{finFmt(totalDebt)}</div></div></div></div>
+          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-white/10 pt-3 text-sm sm:grid-cols-4">
+            <div><span className="text-slate-400">Доходи</span><div className="font-bold text-emerald-300">+{finFmt(incomeTotal)}</div>{allocatedIncome > 0 && <div className="text-[11px] font-semibold text-amber-300">{finFmt(allocatedIncome)} → кредит, мінімум включено</div>}</div>
+            <div><span className="text-slate-400">Обов'язкове</span><div className="font-bold">−{finFmt(fixedTotal + minDebt)}</div></div>
+            <div><span className="text-slate-400">Покупки</span><div className="font-bold">−{finFmt(purchasedCost + remainingCost)}</div></div>
+            <div><span className="text-slate-400">Кишеня</span><div className="font-bold">−{finFmt(pocketCost)}</div></div>
+          </div>
+        </section>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <MoneyPlanList title="Доходи" hint="зарплата, аванс, підробіток" items={incomes} tone="emerald" onAdd={() => saveIncomes([...incomes, { id: ruid("fi"), name: "Зарплата", amount: 0, day: 1 }])} onChange={(id, patch) => changeList(incomes, saveIncomes, id, patch)} />
+          <MoneyPlanList title="Регулярні витрати" hint="оренда, комуналка, підписки" items={fixedCosts} tone="sky" onAdd={() => saveFixed([...fixedCosts, { id: ruid("ff"), name: "", amount: 0, day: 1 }])} onChange={(id, patch) => changeList(fixedCosts, saveFixed, id, patch)} />
+        </div>
+
+        <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-amber-100">
+          <div className="border-b border-slate-100 px-4 py-3"><h3 className="font-bold text-slate-800">А якщо купити?</h3><p className="text-xs text-slate-400">Познач позиції з місячного списку або введи іншу суму</p></div>
+          {remainingPurchases.length > 0 ? <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto">{remainingPurchases.map((it) => <label key={it.optionId} className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-amber-50/40"><input type="checkbox" checked={selected.includes(it.optionId)} onChange={() => setSelected((prev) => prev.includes(it.optionId) ? prev.filter((id) => id !== it.optionId) : [...prev, it.optionId])} className="h-4 w-4 rounded border-slate-300 accent-amber-500" /><span className="min-w-0 flex-1"><span className="block truncate text-sm text-slate-700">{it.name}</span><span className="block text-[10px] text-slate-400">{it.source}</span></span><span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">{finFmt(it.cost)}</span></label>)}</div> : <div className="px-4 py-4 text-sm text-slate-400">У Budget та Inventory немає невиконаних покупок.</div>}
+          <div className="grid gap-3 border-t border-slate-100 bg-slate-50/60 p-3 sm:grid-cols-[1fr_170px] sm:items-center"><label className="flex items-center gap-2"><span className="text-sm text-slate-500">Інша покупка</span><span className="relative ml-auto"><input type="number" min={0} value={extraPurchase} onChange={(e) => setExtraPurchase(e.target.value)} placeholder="0" className="w-28 rounded-lg border border-slate-200 bg-white py-1.5 pl-2 pr-5 text-right text-sm font-bold focus:border-amber-400 focus:outline-none" /><span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">₴</span></span></label><div className="text-left sm:text-right"><div className="text-[11px] text-slate-400">Після вибраного</div><div className={`text-lg font-black tabular-nums ${scenarioResult < 0 ? "text-rose-600" : "text-emerald-600"}`}>{finFmt(scenarioResult)}</div></div></div>
+        </section>
+
+        <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-sky-100">
+          <div className="flex items-start gap-3"><Target className="mt-0.5 h-5 w-5 shrink-0 text-sky-500" /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-slate-800">Пріоритет боргу</h3>{focusDebt && incomes.some((x) => (Number(x.amount) || 0) > 0) && <button onClick={() => setAllocationOpen(true)} className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700 hover:bg-sky-100">{allocatedIncome > 0 ? "Змінити розподіл" : "Розподілити дохід"}</button>}</div>{focusDebt ? <><div className="mt-2 flex flex-wrap items-baseline justify-between gap-2"><span className="font-semibold text-slate-700">{focusDebt.name}</span><span className="font-black tabular-nums text-slate-900">{finFmt(focusDebt.balance)}</span></div>{allocatedIncome > 0 ? <div className="mt-2 space-y-1 rounded-xl bg-sky-50 px-3 py-2 text-sm"><div className="flex justify-between gap-3 text-sky-800"><span>Із «{resolvedAllocation.income?.name}» на кредит</span><b className="tabular-nums">{finFmt(allocatedIncome)}</b></div><div className="flex justify-between gap-3 text-slate-500"><span>У тому числі мінімальний платіж</span><b className="tabular-nums">{finFmt(Math.min(plannedFocusPayment, Number(focusDebt.minPayment) || 0))}</b></div><div className="flex justify-between gap-3 text-slate-600"><span>Борг після плану</span><b className="tabular-nums">{finFmt(debtAfterPlan)}</b></div></div> : <p className="mt-2 text-sm text-slate-500">Мінімум по всіх боргах уже враховано. Після планів можна спрямувати сюди ще <b className={outcomeClass}>{finFmt(extraForDebt)}</b>{payoffMonths ? ` — орієнтовне закриття за ${payoffMonths} міс.` : ""}</p>}{allocatedIncome > 0 && <button onClick={() => saveDebtAllocation(null)} className="mt-2 text-xs font-semibold text-slate-400 hover:text-red-500">Прибрати розподіл цього місяця</button>}</> : <p className="mt-1 text-sm text-slate-400">Активних боргів немає.</p>}</div></div>
+        </section>
+
+        <MoneyProjectionPanel
+          month={month}
+          income={incomeTotal}
+          fixedCosts={fixedTotal}
+          basket={baselineBasket}
+          pocket={pocketCost}
+          startingSavings={Number(profile.buffer) || 0}
+          focusDebt={focusDebt}
+          debtPayment={plannedFocusPayment}
+          otherDebtMinimums={otherDebtMinimums}
+        />
+      </main>
+      {allocationOpen && <IncomeDebtAllocationModal incomes={incomes} debts={activeDebts} value={debtAllocation} forecastBeforeAllocation={forecast + extraDebtPayment} onClose={() => setAllocationOpen(false)} onSave={(next) => { saveDebtAllocation(next); setAllocationOpen(false); }} />}
+    </div>
+  );
+}
+
+function MoneyProjectionPanel({ month, income, fixedCosts, basket, pocket, startingSavings, focusDebt, debtPayment, otherDebtMinimums }) {
+  const [horizon, setHorizon] = useState(12);
+  const payoff = focusDebt ? finDebtProjection(focusDebt.balance, focusDebt.rate, debtPayment) : null;
+  const savings = finSavingsProjection({
+    months: horizon,
+    startingSavings,
+    income,
+    fixedCosts,
+    basket,
+    pocket,
+    otherDebtMinimums,
+    debt: focusDebt,
+    debtPayment,
+  });
+  const monthlyWhileDebt = income - fixedCosts - basket - pocket - otherDebtMinimums - (focusDebt ? debtPayment : 0);
+  const monthlyAfterDebt = income - fixedCosts - basket - pocket - otherDebtMinimums;
+  const monthlyDepositIncome = Math.max(0, savings.depositedSavings) * 10 / 1200;
+  const savingsDelta = savings.depositedSavings - startingSavings;
+  const payoffMonth = payoff?.months != null && payoff.months > 0 ? budMonthLabel(budShiftMonth(month, payoff.months - 1)) : null;
+  const signed = (value) => `${value < 0 ? "−" : "+"}${finFmt(Math.abs(value))}`;
+
+  return (
+    <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-emerald-100">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-600"><TrendingUp className="h-4 w-4" /></span>
+          <div className="min-w-0"><h3 className="font-bold text-slate-800">Прогноз кредиту й заощаджень</h3><p className="text-xs text-slate-400">Якщо щомісячний план не змінюється</p></div>
+        </div>
+        <div className="flex shrink-0 rounded-lg bg-slate-100 p-0.5" aria-label="Горизонт прогнозу">
+          {[6, 12, 24, 36].map((months) => <button key={months} onClick={() => setHorizon(months)} className={`min-w-11 rounded-md px-2 py-1.5 text-xs font-bold ${horizon === months ? "bg-white text-emerald-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>{months} міс.</button>)}
+        </div>
+      </div>
+
+      <div className="grid divide-y divide-slate-100 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <div className="p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-700"><CalendarClock className="h-4 w-4 text-sky-500" />Закриття кредиту</div>
+          {!focusDebt ? <p className="mt-3 text-sm text-slate-400">Активних кредитів немає.</p> : payoff?.stalled ? <div className="mt-3"><div className="text-lg font-black text-amber-600">Дату поки не визначити</div><p className="mt-1 text-xs leading-5 text-slate-500">Платіж {finFmt(debtPayment)} не покриває щомісячні відсотки. Потрібна більша сума платежу.</p></div> : (
+            <div className="mt-3">
+              <div className="text-2xl font-black text-slate-900">{payoffMonth || "Цього місяця"}</div>
+              <p className="mt-0.5 text-sm font-semibold text-sky-600">через {payoff?.months || 0} міс.</p>
+              <div className="mt-3 space-y-1.5 text-xs text-slate-500">
+                <div className="flex justify-between gap-3"><span>Платіж щомісяця</span><b className="tabular-nums text-slate-700">{finFmt(debtPayment)}</b></div>
+                <div className="flex justify-between gap-3"><span>Відсотки до закриття</span><b className="tabular-nums text-slate-700">{finFmt(payoff?.interest || 0)}</b></div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-700"><Wallet className="h-4 w-4 text-emerald-500" />{savings.depositedSavings < 0 ? "Дефіцит" : "На депозиті"} через {horizon} міс.</div>
+          <div className={`mt-3 text-2xl font-black tabular-nums ${savings.depositedSavings < 0 ? "text-rose-600" : "text-emerald-600"}`}>{finFmt(savings.depositedSavings)}</div>
+          <p className={`mt-0.5 text-sm font-semibold ${savingsDelta < 0 ? "text-rose-500" : "text-emerald-600"}`}>{signed(savingsDelta)} до нинішнього запасу</p>
+          {savings.depositedSavings < 0 && <p className="mt-1 text-xs leading-5 text-slate-400">За цих умов витрати перевищують дохід — це нестача коштів, а не доступний залишок.</p>}
+          <div className="mt-3 space-y-1.5 text-xs text-slate-500">
+            <div className="flex justify-between gap-3"><span>Без депозиту</span><b className="tabular-nums text-slate-700">{finFmt(savings.savings)}</b></div>
+            <div className="flex justify-between gap-3"><span>Дохід депозиту на місяць · 10%</span><b className="tabular-nums text-emerald-600">+{finFmt(monthlyDepositIncome)}</b></div>
+            <div className="flex justify-between gap-3"><span>Щомісяця до закриття кредиту</span><b className={`tabular-nums ${monthlyWhileDebt < 0 ? "text-rose-600" : "text-slate-700"}`}>{signed(monthlyWhileDebt)}</b></div>
+            {focusDebt && <div className="flex justify-between gap-3"><span>Після закриття кредиту</span><b className={`tabular-nums ${monthlyAfterDebt < 0 ? "text-rose-600" : "text-emerald-600"}`}>{signed(monthlyAfterDebt)}</b></div>}
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3 text-xs leading-5 text-slate-500">
+        <span className="font-bold text-slate-600">У прогнозі щомісяця:</span> дохід {finFmt(income)}, базова корзина Budget {finFmt(basket)}, регулярні витрати {finFmt(fixedCosts)}, кишеня {finFmt(pocket)}{otherDebtMinimums > 0 ? `, інші кредити ${finFmt(otherDebtMinimums)}` : ""}. Старт депозиту — вже відкладено {finFmt(startingSavings)}.
+        <span className="mt-1 block text-slate-400">Депозит: 10% річних зі щомісячною капіталізацією. Платіж повторюється лише в прогнозі й не змінює плани майбутніх місяців.</span>
+      </div>
+    </section>
+  );
+}
+
+function IncomeDebtAllocationModal({ incomes, debts, value, forecastBeforeAllocation, onClose, onSave }) {
+  const usableIncomes = incomes.filter((x) => (Number(x.amount) || 0) > 0);
+  const [incomeId, setIncomeId] = useState(value?.incomeId || usableIncomes[0]?.id || "");
+  const [debtId, setDebtId] = useState(value?.debtId || debts[0]?.id || "");
+  const [mode, setMode] = useState(value?.mode || "all");
+  const [customAmount, setCustomAmount] = useState(value?.amount || "");
+  const draft = { incomeId, debtId, mode, amount: Number(customAmount) || 0 };
+  const resolved = finResolveDebtAllocation(draft, usableIncomes, debts);
+  const minPayment = Number(resolved.debt?.minPayment) || 0;
+  const totalPayment = resolved.debt ? Math.min(Number(resolved.debt.balance) || 0, Math.max(minPayment, resolved.amount)) : 0;
+  const extraPayment = Math.max(0, totalPayment - minPayment);
+  const debtAfter = resolved.debt ? Math.max(0, (Number(resolved.debt.balance) || 0) - totalPayment) : 0;
+  const monthAfter = forecastBeforeAllocation - extraPayment;
+  const sourceAmount = Number(resolved.income?.amount) || 0;
+  const unused = mode === "all" ? Math.max(0, sourceAmount - resolved.amount) : 0;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/45 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between"><div><h3 className="text-lg font-bold text-slate-900">Розподілити дохід</h3><p className="text-xs text-slate-400">План лише для цього місяця</p></div><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="space-y-3">
+          <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-500">Звідки</span><select value={incomeId} onChange={(e) => setIncomeId(e.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-sky-400 focus:outline-none">{usableIncomes.map((x) => <option key={x.id} value={x.id}>{x.name || "Дохід"} · {finFmt(x.amount)}</option>)}</select></label>
+          <label className="block"><span className="mb-1 block text-xs font-semibold text-slate-500">На який кредит</span><select value={debtId} onChange={(e) => setDebtId(e.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-sky-400 focus:outline-none">{debts.map((x) => <option key={x.id} value={x.id}>{x.name} · {finFmt(x.balance)}</option>)}</select></label>
+          <div><span className="mb-1.5 block text-xs font-semibold text-slate-500">Скільки із цього доходу</span><div className="grid grid-cols-3 gap-2">{[["half", "50%"], ["all", "100%"], ["custom", "Своя сума"]].map(([key, label]) => <button key={key} onClick={() => setMode(key)} className={`rounded-xl px-2 py-2 text-sm font-bold ring-1 ${mode === key ? "bg-sky-500 text-white ring-sky-500" : "bg-white text-slate-600 ring-slate-200"}`}>{label}</button>)}</div></div>
+          {mode === "custom" && <label className="relative block"><input autoFocus type="number" min={0} value={customAmount} onChange={(e) => setCustomAmount(e.target.value)} placeholder="Сума" className="w-full rounded-xl border border-slate-300 py-2 pl-3 pr-8 text-right text-sm font-bold tabular-nums focus:border-sky-400 focus:outline-none" /><span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">₴</span></label>}
+        </div>
+        <div className="mt-4 overflow-hidden rounded-2xl bg-slate-50 text-sm">
+          <div className="flex justify-between gap-3 border-b border-slate-200 px-3 py-2"><span className="text-slate-500">Із доходу на кредит</span><b className="tabular-nums text-sky-700">{finFmt(resolved.amount)}</b></div>
+          <div className="flex justify-between gap-3 border-b border-slate-200 px-3 py-2"><span className="text-slate-500">У цій сумі мінімальний платіж</span><b className="tabular-nums text-slate-800">{finFmt(Math.min(totalPayment, minPayment))}</b></div>
+          <div className="flex justify-between gap-3 px-3 py-2"><span className="text-slate-500">Борг після плану</span><b className="tabular-nums text-slate-800">{finFmt(debtAfter)}</b></div>
+        </div>
+        {resolved.amount > 0 && resolved.amount < minPayment && <p className="mt-2 text-xs text-amber-600">Обрана сума менша за мінімальний платіж {finFmt(minPayment)}, тому в плані все одно буде враховано мінімум.</p>}
+        <div className={`mt-3 rounded-xl px-3 py-2 text-sm ${monthAfter < 0 ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>Після цього місячний прогноз: <b className="tabular-nums">{monthAfter < 0 ? "−" : "+"}{finFmt(Math.abs(monthAfter))}</b>{monthAfter < 0 && <span className="mt-0.5 block text-xs">Частина інших планів не матиме покриття. Дію все одно можна зберегти.</span>}</div>
+        {unused > 0 && <p className="mt-2 text-xs text-slate-400">{finFmt(unused)} не помістяться в залишок кредиту й залишаться доступними.</p>}
+        <button disabled={resolved.amount <= 0} onClick={() => onSave(draft)} className="mt-4 w-full rounded-2xl bg-sky-500 py-3 font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40">Застосувати до місяця</button>
+      </div>
+    </div>
+  );
+}
+
+function FinanceSection({ name, onRename, onGo, moneyTab, onMoneyTab }) {
+  const today = dateKey(Date.now());
+  const [loading, setLoading] = useState(true);
+  const [fview, setFview] = useState("debts"); // debts | spend | impulse
+  const [debts, setDebts] = useState([]);
+  const [allowance, setAllowance] = useState({ amount: 0, period: "day" });
+  const [expenses, setExpenses] = useState([]);
+  const [impulse, setImpulse] = useState({ since: today, best: 0, resisted: 0, slips: [] });
+  const [strategy, setStrategy] = useState("snowball");
+  const [debtEditor, setDebtEditor] = useState(null);
+  const [payFor, setPayFor] = useState(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [expAmt, setExpAmt] = useState("");
+  const [expNote, setExpNote] = useState("");
+  const [toast, setToast] = useState(null);
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2000); }, []);
+
+  const reload = useCallback(async () => {
+    const d = await loadFinanceData();
+    setDebts(d.debts || []); setAllowance(d.allowance || { amount: 0, period: "day" }); setExpenses(d.expenses || []);
+    setImpulse(d.impulse || { since: today, best: 0, resisted: 0, slips: [] });
+    setStrategy(d.settings?.strategy || "snowball");
+    if (!d.impulse) await store.set(FNKEYS.impulse, { since: today, best: 0, resisted: 0, slips: [] });
+    setLoading(false);
+  }, [today]);
+  useEffect(() => { reload(); const onR = () => reload(); window.addEventListener("finance-reset", onR); return () => window.removeEventListener("finance-reset", onR); }, [reload]);
+
+  const saveDebts = useCallback((n) => { setDebts(n); store.set(FNKEYS.debts, n); }, []);
+  const saveAllowance = useCallback((n) => { setAllowance(n); store.set(FNKEYS.allowance, n); }, []);
+  const saveExpenses = useCallback((n) => { setExpenses(n); store.set(FNKEYS.expenses, n); }, []);
+  const saveImpulse = useCallback((n) => { setImpulse(n); store.set(FNKEYS.impulse, n); }, []);
+  const saveStrategy = useCallback(async (st) => { setStrategy(st); const prev = await store.get(FNKEYS.settings, { name: "Finance" }); store.set(FNKEYS.settings, { ...prev, strategy: st }); }, []);
+
+  // debts
+  const upsertDebt = (meta, id) => { if (id) saveDebts(debts.map((x) => (x.id === id ? { ...x, ...meta } : x))); else saveDebts([...debts, { id: ruid("fd"), start: meta.balance, ...meta }]); };
+  const deleteDebt = (id) => saveDebts(debts.filter((x) => x.id !== id));
+  const logPayment = (id, amt) => saveDebts(debts.map((x) => (x.id === id ? { ...x, balance: Math.max(0, (Number(x.balance) || 0) - amt) } : x)));
+
+  const totalDebt = debts.reduce((s, x) => s + (Number(x.balance) || 0), 0);
+  const totalStart = debts.reduce((s, x) => s + (Number(x.start) || Number(x.balance) || 0), 0);
+  const totalPaid = totalStart - totalDebt;
+  const ordered = finOrderDebts(debts, strategy);
+  const focus = ordered.find((x) => x.balance > 0);
+
+  // allowance / expenses
+  const periodStart = allowance.period === "week" ? finWeekStart(today) : today;
+  const periodExp = expenses.filter((e) => e.date >= periodStart);
+  const periodSpent = periodExp.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const periodRemaining = (Number(allowance.amount) || 0) - periodSpent;
+  const logExpense = () => { const a = Number(expAmt); if (!a) return; saveExpenses([{ id: ruid("fe"), date: today, amount: a, note: expNote.trim(), ts: Date.now() }, ...expenses]); setExpAmt(""); setExpNote(""); flash("Записано"); };
+  const delExpense = (id) => saveExpenses(expenses.filter((e) => e.id !== id));
+
+  // impulse
+  const impDays = finDaysBetween(impulse.since, today);
+  const resisted = () => { saveImpulse({ ...impulse, resisted: (impulse.resisted || 0) + 1 }); flash("Молодець — це перемога 💪"); };
+  const slipped = () => { saveImpulse({ ...impulse, since: today, best: Math.max(impulse.best || 0, impDays), slips: [...(impulse.slips || []), today] }); flash("Це трапляється. Завтра — новий день 💛"); };
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-emerald-500"><div className="flex flex-col items-center gap-3"><Wallet className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-emerald-50/40 to-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-emerald-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          {onMoneyTab && <MoneyToggle active={moneyTab} onSet={onMoneyTab} />}
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-5">
+        <p className="mb-3 rounded-2xl bg-emerald-50/70 px-3 py-2 text-xs leading-relaxed text-emerald-800">Гроші й тривога часто ходять поруч. Тут — спокійно, крок за кроком, без осуду. Мета не «ідеально», а трохи ясніше.</p>
+
+        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-emerald-100">
+          {[["debts", "Борги", TrendingDown], ["spend", "Кишеня", Coffee], ["impulse", "Стійкість", ShieldAlert]].map(([k, label, Icon]) => (
+            <button key={k} onClick={() => setFview(k)} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${fview === k ? "bg-emerald-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4" /> {label}</button>
+          ))}
+        </div>
+
+        {fview === "debts" && (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100">
+              <div className="text-sm text-slate-400">Загальний борг</div>
+              <div className="text-3xl font-extrabold tabular-nums text-slate-900">{finFmt(totalDebt)}</div>
+              {totalStart > 0 && <>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-emerald-50"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.min(100, (totalPaid / totalStart) * 100)}%` }} /></div>
+                <div className="mt-1 text-xs text-slate-400">погашено {finFmt(totalPaid)} з {finFmt(totalStart)}</div>
+              </>}
+            </div>
+
+            {debts.length > 0 && (
+              <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-50">
+                <div className="mb-1.5 text-xs font-semibold text-slate-500">Стратегія погашення</div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {[["snowball", "Сніжинка", "найменший борг — швидкі перемоги"], ["avalanche", "Лавина", "найвищий % — менше переплати"], ["smart", "Баланс", "ставка + швидке закриття"]].map(([k, label, desc]) => (
+                    <button key={k} onClick={() => saveStrategy(k)} className={`flex-1 rounded-xl p-2 text-left ring-1 transition ${strategy === k ? "bg-emerald-50 ring-emerald-300" : "bg-white ring-slate-200"}`}><div className="text-sm font-bold text-slate-800">{label}</div><div className="text-[11px] leading-tight text-slate-400">{desc}</div></button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {ordered.map((d) => { const paid = (Number(d.start) || d.balance) - d.balance; const pct = d.start > 0 ? Math.min(1, paid / d.start) : 0; const done = d.balance <= 0; const isFocus = focus && d.id === focus.id; return (
+              <div key={d.id} className={`rounded-2xl bg-white p-4 shadow-sm ring-1 ${isFocus ? "ring-2 ring-emerald-300" : "ring-emerald-50"}`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2"><span className="truncate font-bold text-slate-800">{d.name}</span>{isFocus && <span className="shrink-0 rounded-full bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white">фокус зараз</span>}{done && <span className="shrink-0 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">погашено 🎉</span>}</div>
+                    {d.creditor && <div className="text-xs text-slate-400">кому: {d.creditor}</div>}
+                  </div>
+                  <div className="shrink-0 text-right"><div className="font-extrabold tabular-nums text-slate-900">{finFmt(d.balance)}</div>{d.rate > 0 && <div className="text-[11px] text-slate-400">{d.rate}% · мін {finFmt(d.minPayment)}</div>}</div>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-emerald-400" style={{ width: `${pct * 100}%` }} /></div>
+                <div className="mt-2 flex items-center gap-2">
+                  {!done && <button onClick={() => setPayFor(d)} className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-600">Внести оплату</button>}
+                  <button onClick={() => setDebtEditor({ debt: d })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50">Редагувати</button>
+                  <button onClick={() => { if (confirm("Видалити борг?")) deleteDebt(d.id); }} className="ml-auto rounded-md p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                </div>
+                {isFocus && !done && <div className="mt-2 rounded-lg bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-700">Плати мінімум по всіх, а <b>сюди</b> — усе, що зможеш зверху. Один фокус за раз.</div>}
+              </div>
+            ); })}
+
+            <button onClick={() => setDebtEditor({ debt: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-emerald-300 py-3 text-sm font-semibold text-emerald-600 hover:bg-emerald-50"><Plus className="h-4 w-4" /> Додати борг</button>
+          </div>
+        )}
+
+        {fview === "spend" && (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-600">Ліміт на дрібні витрати</span>
+                <div className="flex gap-1 rounded-full bg-slate-100 p-0.5">
+                  {[["day", "день"], ["week", "тиждень"]].map(([k, l]) => <button key={k} onClick={() => saveAllowance({ ...allowance, period: k })} className={`rounded-full px-2.5 py-1 text-xs font-bold ${allowance.period === k ? "bg-emerald-500 text-white" : "text-slate-500"}`}>{l}</button>)}
+                </div>
+              </div>
+              <div className="flex items-center gap-2"><input type="number" min={0} value={allowance.amount || ""} onChange={(e) => saveAllowance({ ...allowance, amount: Math.max(0, +e.target.value || 0) })} placeholder="0" className="w-28 rounded-lg border border-emerald-200 px-2 py-1 text-right text-sm font-bold tabular-nums focus:border-emerald-400 focus:outline-none" /><span className="text-sm font-bold text-emerald-700">₴ / {allowance.period === "week" ? "тиждень" : "день"}</span></div>
+              <div className={`mt-3 rounded-2xl p-3 text-center ${periodRemaining < 0 ? "bg-amber-50" : "bg-emerald-50"}`}>
+                <div className={`text-[11px] font-medium ${periodRemaining < 0 ? "text-amber-600" : "text-emerald-600"}`}>{periodRemaining < 0 ? "перевитрата" : "лишилось"} на {allowance.period === "week" ? "цей тиждень" : "сьогодні"}</div>
+                <div className={`text-2xl font-extrabold tabular-nums ${periodRemaining < 0 ? "text-amber-600" : "text-emerald-600"}`}>{finFmt(Math.abs(periodRemaining))}</div>
+                <div className="text-[11px] text-slate-400">витрачено {finFmt(periodSpent)}</div>
+              </div>
+            </div>
+            <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-50">
+              <div className="flex gap-2"><input type="number" min={0} value={expAmt} onChange={(e) => setExpAmt(e.target.value)} placeholder="Сума ₴" className="w-24 rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-emerald-400 focus:outline-none" /><input value={expNote} onChange={(e) => setExpNote(e.target.value)} placeholder="На що? (необов'язково)" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-emerald-400 focus:outline-none" onKeyDown={(e) => { if (e.key === "Enter") logExpense(); }} /><button onClick={logExpense} className="shrink-0 rounded-lg bg-emerald-500 px-3 text-sm font-semibold text-white hover:bg-emerald-600">+</button></div>
+            </div>
+            {periodExp.length > 0 && (
+              <div className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-50">
+                <div className="mb-1.5 text-xs font-semibold text-slate-500">Витрати за період</div>
+                <div className="space-y-1">{periodExp.map((e) => <div key={e.id} className="group flex items-center gap-2 text-sm"><span className="tabular-nums font-semibold text-slate-700">{finFmt(e.amount)}</span><span className="min-w-0 flex-1 truncate text-slate-400">{e.note || "—"}</span><span className="text-[11px] text-slate-300">{e.date.slice(5)}</span><button onClick={() => delExpense(e.id)} className="text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>)}</div>
+              </div>
+            )}
+            <button onClick={() => onMoneyTab && onMoneyTab("budget")} className="flex w-full items-center justify-center gap-1.5 rounded-2xl bg-white py-2.5 text-sm font-semibold text-slate-500 shadow-sm ring-1 ring-slate-200 hover:ring-emerald-200"><ShoppingCart className="h-4 w-4" /> Щомісячні покупки — у вкладці Budget</button>
+          </div>
+        )}
+
+        {fview === "impulse" && (
+          <div className="space-y-3">
+            <div className="rounded-3xl bg-gradient-to-br from-emerald-400 to-teal-400 p-6 text-center text-white shadow-sm">
+              <div className="text-5xl">🛡️</div>
+              <div className="mt-2 text-5xl font-black tabular-nums">{impDays}</div>
+              <div className="text-sm font-semibold text-white/90">{impDays === 1 ? "день" : "днів"} без імпульсивної покупки</div>
+              {impulse.best > 0 && <div className="mt-1 text-xs text-white/70">рекорд: {impulse.best} дн</div>}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={resisted} className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-emerald-100 hover:ring-emerald-300"><div className="text-2xl">💪</div><div className="mt-1 text-sm font-bold text-slate-700">Я втрималась</div><div className="text-[11px] text-slate-400">втримань: {impulse.resisted || 0}</div></button>
+              <button onClick={() => { if (confirm("Позначити зрив? Стрік почнеться заново — без осуду.")) slipped(); }} className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-slate-100 hover:ring-slate-300"><div className="text-2xl">🌱</div><div className="mt-1 text-sm font-bold text-slate-700">Був зрив</div><div className="text-[11px] text-slate-400">почати заново</div></button>
+            </div>
+            <p className="rounded-2xl bg-slate-50 px-4 py-3 text-center text-xs leading-relaxed text-slate-500">Зрив — не провал, а дані. Поміть, що передувало пориву (втома? нудьга? стрес?), і наступного разу буде легше. Ти вчишся, а не «не впоралась».</p>
+          </div>
+        )}
+      </main>
+
+      {debtEditor && <FinDebtEditor debt={debtEditor.debt} onClose={() => setDebtEditor(null)} onDelete={debtEditor.debt ? () => { deleteDebt(debtEditor.debt.id); setDebtEditor(null); } : null} onSave={(meta) => { upsertDebt(meta, debtEditor.debt?.id); setDebtEditor(null); }} />}
+      {payFor && <FinPayModal debt={payFor} onClose={() => setPayFor(null)} onPay={(amt) => { logPayment(payFor.id, amt); setPayFor(null); flash("Оплату записано 👏"); }} />}
+
+      {toast && <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg lg:bottom-6">{toast}</div>}
+    </div>
+  );
+}
+
+function FinDebtEditor({ debt, onClose, onSave, onDelete }) {
+  const [name, setName] = useState(debt?.name || "");
+  const [creditor, setCreditor] = useState(debt?.creditor || "");
+  const [balance, setBalance] = useState(debt?.balance ?? "");
+  const [rate, setRate] = useState(debt?.rate ?? "");
+  const [minPayment, setMin] = useState(debt?.minPayment ?? "");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{debt ? "Редагувати борг" : "Новий борг"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва (напр. кредитка, позика від мами)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-emerald-400 focus:outline-none" />
+        <input value={creditor} onChange={(e) => setCreditor(e.target.value)} placeholder="Кому винна (необов'язково)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+        <div className="mb-3 grid grid-cols-3 gap-2">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Баланс ₴</span><input type="number" min={0} value={balance} onChange={(e) => setBalance(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Ставка %</span><input type="number" min={0} step="any" value={rate} onChange={(e) => setRate(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Мін. платіж ₴</span><input type="number" min={0} value={minPayment} onChange={(e) => setMin(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), creditor: creditor.trim(), balance: Number(balance) || 0, rate: Number(rate) || 0, minPayment: Number(minPayment) || 0 }); }} className="flex-1 rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Зберегти</button>
+          {onDelete && <button onClick={onDelete} className="rounded-2xl bg-red-50 px-4 py-3 font-semibold text-red-500 hover:bg-red-100"><Trash2 className="h-5 w-5" /></button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinPayModal({ debt, onClose, onPay }) {
+  const [amt, setAmt] = useState(debt.minPayment || "");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-sm rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-1 text-lg font-bold text-slate-900">Оплата боргу</h3>
+        <p className="mb-3 text-sm text-slate-500">«{debt.name}» · зараз {finFmt(debt.balance)}</p>
+        <input autoFocus type="number" min={0} value={amt} onChange={(e) => setAmt(e.target.value)} placeholder="Сума ₴" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-emerald-400 focus:outline-none" onKeyDown={(e) => { if (e.key === "Enter" && Number(amt) > 0) onPay(Number(amt)); }} />
+        <button onClick={() => { if (Number(amt) > 0) onPay(Number(amt)); }} className="w-full rounded-2xl bg-emerald-500 py-3 font-bold text-white hover:bg-emerald-600">Записати оплату</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Recovery (inside Calm): sobriety + triggers + urge support ---------- */
+const REC_MOODS = ["спокій", "тривога", "сум", "злість", "нудьга", "втома", "радість", "стрес"];
+const REC_COMPANY = ["наодинці", "з друзями", "з родиною", "на людях", "на роботі"];
+const REC_TIME = ["ранок", "день", "вечір", "ніч"];
+const REC_SUBST = { alcohol: { label: "Алкоголь", emoji: "🍷" }, smoke: { label: "Нікотин", emoji: "🚬" }, other: { label: "Інше", emoji: "•" } };
+function recDefault() { return { since: dateKey(Date.now()), best: 0, slips: [] }; }
+
+function RecoveryView({ onExit, onQuickCalm }) {
+  const today = dateKey(Date.now());
+  const [alcohol, setAlcohol] = useState(recDefault());
+  const [smoke, setSmoke] = useState(recDefault());
+  const [triggers, setTriggers] = useState([]);
+  const [reason, setReason] = useState("");
+  const [noteSeen, setNoteSeen] = useState(false);
+  const [urgeOpen, setUrgeOpen] = useState(false);
+  const [logForm, setLogForm] = useState(null); // { substance, type }
+  const [toast, setToast] = useState(null);
+  const flash = (m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2200); };
+
+  const load = useCallback(async () => {
+    setAlcohol((await store.get(RECKEYS.alcohol, null)) || recDefault());
+    setSmoke((await store.get(RECKEYS.smoke, null)) || recDefault());
+    setTriggers(await store.get(RECKEYS.triggers, []));
+    setReason(await store.get(RECKEYS.reason, ""));
+    setNoteSeen(await store.get(RECKEYS.noteSeen, false));
+  }, []);
+  useEffect(() => { load(); const onR = () => load(); window.addEventListener("calm-reset", onR); return () => window.removeEventListener("calm-reset", onR); }, [load]);
+
+  const saveAlcohol = (n) => { setAlcohol(n); store.set(RECKEYS.alcohol, n); };
+  const saveSmoke = (n) => { setSmoke(n); store.set(RECKEYS.smoke, n); };
+  const saveTriggers = (n) => { setTriggers(n); store.set(RECKEYS.triggers, n); };
+  const saveReason = (v) => { setReason(v); store.set(RECKEYS.reason, v); };
+  const dismissNote = () => { setNoteSeen(true); store.set(RECKEYS.noteSeen, true); };
+
+  const resetCounter = (which) => {
+    if (which === "alcohol") { const days = finDaysBetween(alcohol.since, today); saveAlcohol({ since: today, best: Math.max(alcohol.best || 0, days), slips: [...(alcohol.slips || []), today] }); }
+    else { const days = finDaysBetween(smoke.since, today); saveSmoke({ since: today, best: Math.max(smoke.best || 0, days), slips: [...(smoke.slips || []), today] }); }
+  };
+  const saveLog = (entry) => {
+    saveTriggers([{ id: ruid("rt"), date: today, ts: Date.now(), ...entry }, ...triggers]);
+    if (entry.type === "slip" && (entry.substance === "alcohol" || entry.substance === "smoke")) resetCounter(entry.substance);
+    setLogForm(null);
+    flash(entry.type === "slip" ? "Записано. Завтра — новий день 💛" : "Записано. Дякую, що поставила паузу 💪");
+  };
+
+  // pattern summary
+  const patterns = useMemo(() => {
+    if (triggers.length < 2) return null;
+    const top = (key) => { const c = {}; triggers.forEach((t) => { (t[key] || []).forEach ? (t[key] || []).forEach((v) => c[v] = (c[v] || 0) + 1) : (t[key] && (c[t[key]] = (c[t[key]] || 0) + 1)); }); const e = Object.entries(c).sort((a, b) => b[1] - a[1])[0]; return e ? e[0] : null; };
+    return { time: top("time"), mood: top("moods"), company: top("company") };
+  }, [triggers]);
+
+  const Counter = ({ label, emoji, data, which, color }) => {
+    const days = finDaysBetween(data.since, today);
+    return (
+      <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-teal-50">
+        <div className="text-2xl">{emoji}</div>
+        <div className="text-3xl font-black tabular-nums" style={{ color }}>{days}</div>
+        <div className="text-xs font-semibold text-slate-500">{label}</div>
+        <div className="text-[11px] text-slate-400">{days === 1 ? "день" : "днів"}{data.best > 0 ? ` · рекорд ${data.best}` : ""}</div>
+        <button onClick={() => setLogForm({ substance: which, type: "slip" })} className="mt-2 w-full rounded-full bg-slate-50 py-1.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-100">був зрив</button>
+      </div>
+    );
+  };
+
+  return (
+    <div className="mx-auto w-full max-w-lg px-4 pb-16 pt-6">
+      <CalmHeader title="Відновлення" onExit={onExit} />
+      <p className="mb-4 text-sm leading-relaxed text-slate-500">Підтримка, а не контроль. Тут без осуду — кожен день рахується, а зрив не перекреслює прогресу.</p>
+
+      {/* urge button */}
+      <button onClick={() => setUrgeOpen(true)} className="mb-4 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-teal-500 to-emerald-500 p-4 text-left text-white shadow-lg shadow-teal-500/20 transition hover:brightness-105">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/20"><HandHeart className="h-6 w-6" /></span>
+        <span className="flex-1"><span className="block text-lg font-bold">Мені хочеться вжити зараз</span><span className="block text-sm text-white/90">Натисни — перечекаємо разом.</span></span>
+        <ArrowRight className="h-5 w-5" />
+      </button>
+
+      {/* counters */}
+      <div className="grid grid-cols-2 gap-3">
+        <Counter label="без алкоголю" emoji="🍷" data={alcohol} which="alcohol" color="#0d9488" />
+        <Counter label="без нікотину" emoji="🚬" data={smoke} which="smoke" color="#0ea5e9" />
+      </div>
+
+      {/* reason */}
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-teal-50">
+        <div className="mb-1.5 text-sm font-semibold text-slate-700">Моя причина</div>
+        <textarea value={reason} onChange={(e) => saveReason(e.target.value)} rows={2} placeholder="Заради чого я це роблю? (побачиш це в мить пориву)" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-teal-400 focus:outline-none" />
+      </div>
+
+      {/* trigger journal */}
+      <div className="mt-4 flex items-center justify-between">
+        <h2 className="text-sm font-bold text-slate-700">Тригер-журнал</h2>
+        <button onClick={() => setLogForm({ substance: "alcohol", type: "urge" })} className="inline-flex items-center gap-1 rounded-full bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-600"><Plus className="h-3.5 w-3.5" /> Записати</button>
+      </div>
+      {patterns && (patterns.time || patterns.mood || patterns.company) && (
+        <div className="mt-2 rounded-2xl bg-teal-50/70 px-3 py-2 text-xs text-teal-800">Найчастіше пориви: {[patterns.time, patterns.mood, patterns.company].filter(Boolean).join(" · ")}. Помічати — вже половина справи.</div>
+      )}
+      <div className="mt-2 space-y-2">
+        {triggers.length === 0 ? (
+          <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-teal-50">Порожньо. Після пориву чи зриву — запиши, що передувало. З часом побачиш свої патерни.</div>
+        ) : triggers.slice(0, 30).map((t) => (
+          <div key={t.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-teal-50">
+            <div className="flex items-center gap-2 text-sm">
+              <span>{REC_SUBST[t.substance]?.emoji}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t.type === "slip" ? "bg-amber-100 text-amber-700" : "bg-teal-100 text-teal-700"}`}>{t.type === "slip" ? "зрив" : "порив"}</span>
+              <span className="ml-auto text-[11px] text-slate-400">{t.date.slice(5)}</span>
+            </div>
+            {(t.moods?.length || t.company?.length || t.time || t.stress) && <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-slate-500">{[t.time, t.stress && `стрес: ${t.stress}`, ...(t.company || []), ...(t.moods || [])].filter(Boolean).map((x, i) => <span key={i} className="rounded-full bg-slate-100 px-2 py-0.5">{x}</span>)}</div>}
+            {t.note && <div className="mt-1 text-xs text-slate-500">{t.note}</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* professional note */}
+      {!noteSeen && (
+        <div className="mt-4 flex items-start gap-2 rounded-2xl bg-slate-100/70 px-4 py-3 text-sm text-slate-500">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          <p className="flex-1">Ці інструменти підтримують, але не замінюють фахову допомогу — лікаря, нарколога чи групу. Звернутися по підтримку — це сила, а не слабкість. 💛</p>
+          <button onClick={dismissNote} className="rounded-full p-0.5 text-slate-300 hover:text-slate-500"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* urge overlay */}
+      {urgeOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-4 backdrop-blur-sm sm:items-center" onClick={() => setUrgeOpen(false)}>
+          <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center">
+              <div className="text-3xl">🌊</div>
+              <h2 className="mt-1 text-lg font-extrabold text-slate-800">Пориви минають хвилями</h2>
+              <p className="mt-1 text-sm text-slate-500">Не мусиш боротися — просто перечекай хвилю. За кілька хвилин відпустить.</p>
+            </div>
+            {reason.trim() && <div className="mt-3 rounded-2xl bg-teal-50 px-4 py-3 text-center text-sm text-teal-800"><span className="text-[11px] font-semibold uppercase tracking-wide text-teal-500">Моя причина</span><div className="mt-0.5">{reason}</div></div>}
+            <div className="mt-4 space-y-2">
+              <button onClick={() => { setUrgeOpen(false); onQuickCalm("breath"); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 hover:ring-sky-200"><span className="grid h-10 w-10 place-items-center rounded-xl bg-sky-500 text-white"><Wind className="h-5 w-5" /></span><span className="flex-1"><span className="block font-bold text-slate-800">Подихати</span><span className="block text-xs text-slate-400">Сповільнити тіло за 2 хвилини</span></span><ArrowRight className="h-4 w-4 text-slate-300" /></button>
+              <button onClick={() => { setUrgeOpen(false); onQuickCalm("ground"); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 hover:ring-rose-200"><span className="grid h-10 w-10 place-items-center rounded-xl bg-rose-500 text-white"><Anchor className="h-5 w-5" /></span><span className="flex-1"><span className="block font-bold text-slate-800">Заземлитися 5-4-3-2-1</span><span className="block text-xs text-slate-400">Повернутись у тіло й у момент</span></span><ArrowRight className="h-4 w-4 text-slate-300" /></button>
+              <button onClick={() => { setUrgeOpen(false); setLogForm({ substance: "alcohol", type: "urge" }); }} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left ring-1 ring-slate-100 hover:ring-teal-200"><span className="grid h-10 w-10 place-items-center rounded-xl bg-teal-500 text-white"><NotebookPen className="h-5 w-5" /></span><span className="flex-1"><span className="block font-bold text-slate-800">Записати цей порив</span><span className="block text-xs text-slate-400">Що зараз коїться — для патернів</span></span><ArrowRight className="h-4 w-4 text-slate-300" /></button>
+            </div>
+            <button onClick={() => setUrgeOpen(false)} className="mt-3 w-full rounded-2xl py-2.5 text-sm font-semibold text-slate-400 hover:text-slate-600">Мені вже легше</button>
+          </div>
+        </div>
+      )}
+
+      {logForm && <RecoveryLog init={logForm} onClose={() => setLogForm(null)} onSave={saveLog} />}
+      {toast && <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+function RecoveryLog({ init, onClose, onSave }) {
+  const [substance, setSubstance] = useState(init.substance || "alcohol");
+  const [type, setType] = useState(init.type || "urge");
+  const [time, setTime] = useState("");
+  const [stress, setStress] = useState("");
+  const [company, setCompany] = useState([]);
+  const [moods, setMoods] = useState([]);
+  const [note, setNote] = useState("");
+  const toggle = (arr, v, set) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
+  const Chip = ({ on, onClick, children }) => <button onClick={onClick} className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 transition ${on ? "bg-teal-500 text-white ring-teal-500" : "bg-white text-slate-500 ring-slate-200"}`}>{children}</button>;
+  return (
+    <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">Що передувало?</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="mb-3 flex gap-2">
+          {Object.entries(REC_SUBST).map(([k, v]) => <Chip key={k} on={substance === k} onClick={() => setSubstance(k)}>{v.emoji} {v.label}</Chip>)}
+        </div>
+        <div className="mb-3 flex gap-2">
+          <Chip on={type === "urge"} onClick={() => setType("urge")}>Порив (втрималась)</Chip>
+          <Chip on={type === "slip"} onClick={() => setType("slip")}>Зрив</Chip>
+        </div>
+        <div className="mb-2 text-xs font-semibold text-slate-500">Коли</div>
+        <div className="mb-3 flex flex-wrap gap-2">{REC_TIME.map((t) => <Chip key={t} on={time === t} onClick={() => setTime(time === t ? "" : t)}>{t}</Chip>)}</div>
+        <div className="mb-2 text-xs font-semibold text-slate-500">Стрес</div>
+        <div className="mb-3 flex flex-wrap gap-2">{["низький", "середній", "високий"].map((s) => <Chip key={s} on={stress === s} onClick={() => setStress(stress === s ? "" : s)}>{s}</Chip>)}</div>
+        <div className="mb-2 text-xs font-semibold text-slate-500">З ким</div>
+        <div className="mb-3 flex flex-wrap gap-2">{REC_COMPANY.map((c) => <Chip key={c} on={company.includes(c)} onClick={() => toggle(company, c, setCompany)}>{c}</Chip>)}</div>
+        <div className="mb-2 text-xs font-semibold text-slate-500">Настрій / стан</div>
+        <div className="mb-3 flex flex-wrap gap-2">{REC_MOODS.map((m) => <Chip key={m} on={moods.includes(m)} onClick={() => toggle(moods, m, setMoods)}>{m}</Chip>)}</div>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Що ще? (необов'язково)" className="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-teal-400 focus:outline-none" />
+        <button onClick={() => onSave({ substance, type, time, stress, company, moods, note: note.trim() })} className="w-full rounded-2xl bg-teal-500 py-3 font-bold text-white hover:bg-teal-600">{type === "slip" ? "Записати зрив (стрік почнеться заново)" : "Записати"}</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Routine Pomodoro + 2-minute starter (ADHD low-barrier start) ---------- */
+function RoutinePomodoro({ task, mode, settings, onClose, onLog, onSaveSettings }) {
+  const [stage, setStage] = useState(mode === "pomodoro" ? "setup" : "work"); // setup | work | break | done
+  const [workMin, setWorkMin] = useState(settings.work || 25);
+  const [breakMin, setBreakMin] = useState(settings.break || 5);
+  const [left, setLeft] = useState(120);
+  const [cycles, setCycles] = useState(0);
+  const worked = useRef(0);
+  const iv = useRef(null);
+  const p = getPastel(task.color);
+  const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.max(0, s % 60)).padStart(2, "0")}`;
+
+  const run = (secs, isBreak) => {
+    clearInterval(iv.current);
+    setLeft(secs); setStage(isBreak ? "break" : "work");
+    iv.current = setInterval(() => setLeft((l) => {
+      if (!isBreak) worked.current += 1;
+      if (l <= 1) { clearInterval(iv.current); phaseEnd(isBreak); return 0; }
+      return l - 1;
+    }), 1000);
+  };
+  const phaseEnd = (wasBreak) => {
+    if (mode === "2min") { setStage("done"); return; }
+    if (!wasBreak) { setCycles((c) => c + 1); run(breakMin * 60, true); }
+    else run(workMin * 60, false);
+  };
+  useEffect(() => { if (mode === "2min") run(120, false); return () => clearInterval(iv.current); /* eslint-disable-next-line */ }, []);
+  const finish = () => { clearInterval(iv.current); if (worked.current >= 5) onLog(task.id, Math.round(worked.current)); onClose(); };
+  const startPomodoro = () => { onSaveSettings({ work: workMin, break: breakMin }); run(workMin * 60, false); };
+
+  if (mode === "pomodoro" && stage === "setup") {
+    return (
+      <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
+        <div className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="text-4xl">🍅</div>
+          <h3 className="mt-2 text-lg font-extrabold text-slate-900">Помодоро</h3>
+          <p className="mt-0.5 truncate text-sm text-slate-500">{task.title}</p>
+          <div className="my-4 flex justify-center gap-4">
+            <label className="text-sm"><div className="mb-1 text-xs text-slate-400">Робота</div><input type="number" min={1} max={90} value={workMin} onChange={(e) => setWorkMin(Math.max(1, Math.min(90, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-center text-sm" /> <span className="text-xs text-slate-400">хв</span></label>
+            <label className="text-sm"><div className="mb-1 text-xs text-slate-400">Перерва</div><input type="number" min={1} max={30} value={breakMin} onChange={(e) => setBreakMin(Math.max(1, Math.min(30, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-center text-sm" /> <span className="text-xs text-slate-400">хв</span></label>
+          </div>
+          <button onClick={startPomodoro} className="w-full rounded-2xl bg-pink-500 py-3 font-bold text-white shadow-lg shadow-pink-500/20 hover:bg-pink-600">Почати</button>
+          <button onClick={onClose} className="mt-2 w-full py-2 text-sm font-semibold text-slate-400">Скасувати</button>
+        </div>
+      </div>
+    );
+  }
+
+  const isBreak = stage === "break";
+  const done2 = mode === "2min" && stage === "done";
+  return (
+    <div className="fixed inset-0 z-[55] flex flex-col bg-gradient-to-b from-red-50 to-pink-100 p-6">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-bold text-slate-400">{mode === "2min" ? "Старт на 2 хвилини" : `Помодоро · коло ${cycles + 1}`}</span>
+        <button onClick={finish} className="rounded-full bg-white/70 p-2 text-slate-500"><X className="h-5 w-5" /></button>
+      </div>
+      <div className="flex flex-1 flex-col items-center justify-center text-center">
+        <div className="grid h-20 w-20 place-items-center rounded-3xl text-4xl shadow-lg" style={{ backgroundColor: p.card }}>{task.emoji || "⭐"}</div>
+        <h1 className="mt-4 max-w-md text-2xl font-extrabold text-slate-900">{task.title}</h1>
+        {done2 ? (
+          <>
+            <div className="mt-4 text-5xl">🎉</div>
+            <p className="mt-2 max-w-xs text-lg font-bold text-slate-800">Ти почала — це найважче!</p>
+            <p className="mt-1 max-w-xs text-sm text-slate-500">Початок зроблено. Хочеш проїхати ще трохи на цій хвилі?</p>
+            <div className="mt-5 flex gap-2">
+              <button onClick={() => run(300, false)} className="rounded-2xl bg-pink-500 px-5 py-3 font-bold text-white shadow-lg shadow-pink-500/20">Ще 5 хвилин</button>
+              <button onClick={finish} className="rounded-2xl bg-white px-5 py-3 font-bold text-slate-500 ring-1 ring-slate-200">Досить на зараз</button>
+            </div>
+          </>
+        ) : (
+          <>
+            {mode === "2min" && task.twoMin && <p className="mt-2 max-w-sm rounded-2xl bg-white/70 px-4 py-2 text-sm font-semibold text-slate-700">Тільки це: {task.twoMin}</p>}
+            {mode === "2min" && !task.twoMin && <p className="mt-2 max-w-sm text-sm text-slate-500">Просто почни. Дозволено зробити абияк — головне рушити.</p>}
+            <div className={`mt-6 grid h-56 w-56 place-items-center rounded-full text-white ${isBreak ? "bg-gradient-to-br from-sky-300 to-teal-300" : "bg-gradient-to-br from-pink-400 to-fuchsia-400"}`}>
+              <div className="text-center"><div className="text-xs font-semibold uppercase tracking-widest text-white/80">{isBreak ? "Перерва" : "Робота"}</div><div className="text-6xl font-black tabular-nums">{fmt(left)}</div></div>
+            </div>
+            <button onClick={finish} className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 font-bold text-slate-600 shadow-sm ring-1 ring-slate-200"><Check className="h-4 w-4" /> Завершити{worked.current >= 60 ? ` (${Math.round(worked.current / 60)} хв)` : ""}</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Block 6: Wellbeing — mood over time + gratitude + behavioral activation ---------- */
+const ACTIVATION_SEED = ["одна улюблена пісня", "вийти на вулицю на 5 хв", "написати другу пару слів", "склянка води", "розтягнутися 2 хв", "відкрити вікно й подихати"];
+function WellbeingView({ onExit, moods, onMood }) {
+  const today = dateKey(Date.now());
+  const [gratitude, setGratitude] = useState({});
+  const [activation, setActivation] = useState([]);
+  const [notes, setNotes] = useState({});
+  const [gInputs, setGInputs] = useState(["", "", ""]);
+  const [newAct, setNewAct] = useState("");
+  const [picked, setPicked] = useState(null);
+  const [range, setRange] = useState(30);
+
+  useEffect(() => { (async () => {
+    setGratitude(await store.get(RKEYS.gratitude, {}));
+    let a = await store.get(RKEYS.activation, null);
+    if (!a) { a = ACTIVATION_SEED.map((t) => ({ id: ruid("ba"), text: t })); await store.set(RKEYS.activation, a); }
+    setActivation(a);
+    setNotes(await store.get(RKEYS.moodNotes, {}));
+  })(); }, []);
+  useEffect(() => { setGInputs(((gratitude[today]) || ["", "", ""]).concat(["", "", ""]).slice(0, 3)); }, [gratitude, today]);
+
+  const saveGratitude = () => { const items = gInputs.map((s) => s.trim()).filter(Boolean); const next = { ...gratitude, [today]: items }; if (!items.length) delete next[today]; setGratitude(next); store.set(RKEYS.gratitude, next); };
+  const saveActivation = (n) => { setActivation(n); store.set(RKEYS.activation, n); };
+  const saveNote = (patch) => { const next = { ...notes, [today]: { ...(notes[today] || {}), ...patch } }; setNotes(next); store.set(RKEYS.moodNotes, next); };
+  const pickAction = () => { if (!activation.length) return; setPicked(activation[Math.floor(((Date.now() / 1000) % activation.length))] || activation[0]); };
+
+  const chartData = useMemo(() => {
+    const out = []; const now = new Date();
+    for (let i = range - 1; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i); const ds = dateKey(d.getTime()); out.push({ day: `${d.getDate()}.${d.getMonth() + 1}`, score: moods[ds] ?? null }); }
+    return out;
+  }, [moods, range]);
+  const rated = chartData.filter((d) => d.score != null);
+  const avg = rated.length ? (rated.reduce((s, d) => s + d.score, 0) / rated.length) : null;
+  const FACTORS = ["сон", "робота", "стрес", "самотність", "рух", "їжа", "погода", "люди", "здоров'я"];
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
+      <div className="mb-4 flex items-center gap-3">
+        <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-red-100"><ArrowLeft className="h-4 w-4" /></button>
+        <h1 className="text-xl font-extrabold text-slate-900">Настрій і вдячність</h1>
+      </div>
+
+      {/* mood over time */}
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-red-100">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-sm font-bold text-slate-700">Настрій у часі{avg != null ? ` · середнє ${avg.toFixed(1)}` : ""}</span>
+          <div className="flex gap-1 rounded-full bg-slate-100 p-0.5">{[14, 30, 90].map((r) => <button key={r} onClick={() => setRange(r)} className={`rounded-full px-2 py-0.5 text-xs font-bold ${range === r ? "bg-pink-500 text-white" : "text-slate-500"}`}>{r}д</button>)}</div>
+        </div>
+        {rated.length < 2 ? <p className="py-6 text-center text-sm text-slate-400">Відмічай настрій щодня — тут з'явиться графік, і побачиш, що впливає на кращі й гірші дні.</p> : (
+          <div style={{ height: 180 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ left: -20, right: 8, top: 4, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="day" tick={{ fontSize: 10, fill: "#94a3b8" }} interval="preserveStartEnd" minTickGap={24} />
+                <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 10, fill: "#94a3b8" }} />
+                <Tooltip formatter={(v) => MOODS.find((m) => m.score === v)?.label || v} />
+                <Line type="monotone" dataKey="score" stroke="#ec4899" strokeWidth={2.5} dot={{ r: 3, fill: "#ec4899" }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* today mood + tag */}
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-red-100">
+        <div className="mb-2 text-sm font-bold text-slate-700">Сьогодні</div>
+        <div className="flex justify-between">{MOODS.map((m) => <button key={m.score} onClick={() => onMood(m.score)} className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-1.5 transition hover:scale-110 ${moods[today] === m.score ? "bg-pink-50 ring-2 ring-pink-300" : ""}`}><span className="text-2xl">{m.emoji}</span><span className="text-[9px] text-slate-400">{m.label}</span></button>)}</div>
+        <div className="mt-3 text-xs font-semibold text-slate-500">Що вплинуло?</div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">{FACTORS.map((f) => { const on = (notes[today]?.factors || []).includes(f); return <button key={f} onClick={() => { const cur = notes[today]?.factors || []; saveNote({ factors: on ? cur.filter((x) => x !== f) : [...cur, f] }); }} className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${on ? "bg-pink-500 text-white ring-pink-500" : "bg-white text-slate-500 ring-slate-200"}`}>{f}</button>; })}</div>
+        <input value={notes[today]?.note || ""} onChange={(e) => saveNote({ note: e.target.value })} placeholder="Нотатка про день (необов'язково)" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />
+      </div>
+
+      {/* gratitude */}
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-red-100">
+        <div className="mb-2 text-sm font-bold text-slate-700">🙏 3 речі, за які вдячна сьогодні</div>
+        <div className="space-y-2">{[0, 1, 2].map((i) => <input key={i} value={gInputs[i] || ""} onChange={(e) => setGInputs((a) => { const n = [...a]; n[i] = e.target.value; return n; })} onBlur={saveGratitude} placeholder={`${i + 1}…`} className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />)}</div>
+        {Object.keys(gratitude).filter((d) => d !== today).length > 0 && <div className="mt-2 text-[11px] text-slate-400">записів вдячності: {Object.keys(gratitude).length}</div>}
+      </div>
+
+      {/* behavioral activation */}
+      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-red-100">
+        <div className="mb-1 text-sm font-bold text-slate-700">Маленькі дії на день без сил</div>
+        <p className="mb-2 text-xs text-slate-400">Коли енергії нема, не обирай — хай застосунок підкаже одну маленьку дію.</p>
+        <button onClick={pickAction} className="w-full rounded-2xl bg-gradient-to-r from-pink-400 to-fuchsia-400 py-3 font-bold text-white shadow-sm">🎲 Мало енергії — обери за мене</button>
+        {picked && <div className="mt-2 rounded-2xl bg-pink-50 px-4 py-3 text-center"><div className="text-[11px] font-semibold uppercase tracking-wide text-pink-500">спробуй це</div><div className="mt-0.5 text-lg font-bold text-slate-800">{picked.text}</div></div>}
+        <div className="mt-3 space-y-1.5">
+          {activation.map((a) => (
+            <div key={a.id} className="group flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-1.5 text-sm text-slate-600"><span className="flex-1">{a.text}</span><button onClick={() => saveActivation(activation.filter((x) => x.id !== a.id))} className="text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-3.5 w-3.5" /></button></div>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-2"><input value={newAct} onChange={(e) => setNewAct(e.target.value)} placeholder="Додати свою дію…" onKeyDown={(e) => { if (e.key === "Enter" && newAct.trim()) { saveActivation([...activation, { id: ruid("ba"), text: newAct.trim() }]); setNewAct(""); } }} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" /><button onClick={() => { if (newAct.trim()) { saveActivation([...activation, { id: ruid("ba"), text: newAct.trim() }]); setNewAct(""); } }} className="rounded-lg bg-slate-800 px-3 text-sm font-semibold text-white">+</button></div>
+      </div>
+      <p className="mt-4 text-center text-xs leading-relaxed text-slate-400">Якщо пригнічений настрій тримається тижнями — це вагома причина поговорити з фахівцем. Ти не маєш давати собі раду наодинці. 💛</p>
+    </div>
+  );
+}
+
+/* ---------- Block 5: Movement — counter + hourly nudge (on Today) ---------- */
+const STRETCHES = ["встань і потягнись до стелі", "10 присідань", "пройдись до вікна й назад", "покрути плечима й шиєю", "налий води й випий стоячи", "походи хвилину на місці"];
+function MovementCard({ flash }) {
+  const today = dateKey(Date.now());
+  const [count, setCount] = useState(0);
+  const [cfg, setCfg] = useState({ remindersOn: true, snoozeUntil: 0, lastNudge: 0 });
+  const [nudge, setNudge] = useState(false);
+  const [tip, setTip] = useState(STRETCHES[0]);
+
+  useEffect(() => { (async () => {
+    const mv = await store.get(RKEYS.movement, {}); setCount(mv[today] || 0);
+    setCfg(await store.get(RKEYS.movementCfg, { remindersOn: true, snoozeUntil: 0, lastNudge: 0 }));
+  })(); }, [today]);
+  const saveCount = (n) => { setCount(n); store.get(RKEYS.movement, {}).then((mv) => store.set(RKEYS.movement, { ...mv, [today]: n })); };
+  const saveCfg = (c) => { setCfg(c); store.set(RKEYS.movementCfg, c); };
+
+  useEffect(() => {
+    const check = () => {
+      if (!cfg.remindersOn) { setNudge(false); return; }
+      const now = Date.now(); const h = new Date().getHours();
+      if (h < 9 || h >= 18) { setNudge(false); return; }
+      if (now < (cfg.snoozeUntil || 0)) { setNudge(false); return; }
+      if (now - (cfg.lastNudge || 0) > 55 * 60000) setNudge(true);
+    };
+    check(); const iv = setInterval(check, 60000); return () => clearInterval(iv);
+  }, [cfg]);
+
+  const didMove = () => { saveCount(count + 1); saveCfg({ ...cfg, lastNudge: Date.now() }); setNudge(false); flash && flash("Красуня — тіло дякує 💪"); };
+  const snooze = () => { saveCfg({ ...cfg, snoozeUntil: Date.now() + 15 * 60000 }); setNudge(false); };
+  const turnOff = () => { saveCfg({ ...cfg, remindersOn: false }); setNudge(false); };
+
+  return (
+    <div className="mt-4">
+      {nudge && (
+        <div className="mb-3 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-lime-400 to-emerald-400 p-3 text-white shadow-sm">
+          <span className="text-2xl">🧍</span>
+          <div className="flex-1"><div className="text-sm font-bold">Час встати й порухатись</div><div className="text-xs text-white/90">{tip}</div></div>
+          <div className="flex flex-col gap-1">
+            <button onClick={didMove} className="rounded-full bg-white/25 px-3 py-1 text-xs font-bold">Порухалась</button>
+            <div className="flex gap-1"><button onClick={snooze} className="rounded-full bg-white/15 px-2 py-0.5 text-[10px]">+15хв</button><button onClick={turnOff} className="rounded-full bg-white/15 px-2 py-0.5 text-[10px]">вимк</button></div>
+          </div>
+        </div>
+      )}
+      <div className="flex items-center gap-3 rounded-2xl bg-white/80 p-3 shadow-sm ring-1 ring-red-100">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-lime-100 text-xl">🚶</span>
+        <div className="flex-1"><div className="text-sm font-bold text-slate-700">Рух сьогодні: {count}</div><div className="text-[11px] text-slate-400">проти сидіння 9–18 · нагадування {cfg.remindersOn ? "увімкнені" : "вимкнені"}</div></div>
+        <button onClick={() => saveCount(count + 1)} className="rounded-full bg-lime-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-lime-600">+ Порухалась</button>
+        <button onClick={() => saveCfg({ ...cfg, remindersOn: !cfg.remindersOn })} title="Нагадування" className={`grid h-8 w-8 place-items-center rounded-full ${cfg.remindersOn ? "bg-lime-100 text-lime-600" : "bg-slate-100 text-slate-400"}`}>{cfg.remindersOn ? <Clock className="h-4 w-4" /> : <Clock className="h-4 w-4 opacity-50" />}</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Block 4: Meds — refill + wellbeing/side-effect log + doctor taper ---------- */
+const MED_SIDE_FX = ["сонливість", "нудота", "головний біль", "безсоння", "апетит", "тривога", "сухість у роті", "запаморочення"];
+function MedsView({ onExit }) {
+  const today = dateKey(Date.now());
+  const [meds, setMeds] = useState([]);
+  const [log, setLog] = useState({});
+  const [editor, setEditor] = useState(null);
+  const [taperFor, setTaperFor] = useState(null);
+
+  useEffect(() => { (async () => { setMeds(await store.get(RKEYS.meds, [])); setLog(await store.get(RKEYS.medsLog, {})); })(); }, []);
+  const saveMeds = (n) => { setMeds(n); store.set(RKEYS.meds, n); };
+  const saveLog = (n) => { setLog(n); store.set(RKEYS.medsLog, n); };
+  const todayLog = log[today] || {};
+  const setTaken = (medId, v) => { const d = { ...todayLog, taken: { ...(todayLog.taken || {}), [medId]: v } }; saveLog({ ...log, [today]: d }); };
+  const setWell = (patch) => saveLog({ ...log, [today]: { ...todayLog, ...patch } });
+
+  const upsertMed = (m, id) => { if (id) saveMeds(meds.map((x) => (x.id === id ? { ...x, ...m } : x))); else saveMeds([...meds, { id: ruid("med"), taper: [], ...m }]); };
+  const delMed = (id) => saveMeds(meds.filter((x) => x.id !== id));
+  const refill = (id, add) => saveMeds(meds.map((x) => (x.id === id ? { ...x, supply: (Number(x.supply) || 0) + add } : x)));
+
+  const wkData = useMemo(() => { const out = []; const now = new Date(); for (let i = 13; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i); const ds = dateKey(d.getTime()); out.push({ day: `${d.getDate()}.${d.getMonth() + 1}`, w: log[ds]?.wellbeing ?? null }); } return out; }, [log]);
+  const wkRated = wkData.filter((d) => d.w != null);
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
+      <div className="mb-3 flex items-center gap-3">
+        <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-red-100"><ArrowLeft className="h-4 w-4" /></button>
+        <h1 className="text-xl font-extrabold text-slate-900">Ліки й самопочуття</h1>
+      </div>
+      <p className="mb-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">Зміни дози — лише разом із лікарем. Застосунок нічого не призначає й не радить схем: він лише веде облік того, що призначив лікар, і як ти почуваєшся.</p>
+
+      {/* meds list */}
+      <div className="space-y-2">
+        {meds.length === 0 ? <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-red-50">Додай ліки, щоб бачити запас і вести журнал самопочуття.</div> : meds.map((m) => {
+          const daysLeft = m.perDay > 0 ? Math.floor((Number(m.supply) || 0) / m.perDay) : null;
+          const low = daysLeft != null && daysLeft <= 5;
+          return (
+            <div key={m.id} className={`rounded-2xl bg-white p-4 shadow-sm ring-1 ${low ? "ring-2 ring-amber-300" : "ring-red-50"}`}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0"><div className="font-bold text-slate-800">{m.name}</div><div className="text-xs text-slate-400">{m.dose}{m.perDay ? ` · ${m.perDay}×/день` : ""}</div></div>
+                <button onClick={() => setTaken(m.id, !todayLog.taken?.[m.id])} className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${todayLog.taken?.[m.id] ? "bg-green-500 text-white" : "bg-slate-100 text-slate-500"}`}>{todayLog.taken?.[m.id] ? "✓ прийнято" : "прийняти"}</button>
+              </div>
+              {daysLeft != null && (
+                <div className={`mt-2 flex items-center justify-between rounded-xl px-3 py-1.5 text-xs ${low ? "bg-amber-50 text-amber-700" : "bg-slate-50 text-slate-500"}`}>
+                  <span>{low ? "⚠️ " : ""}запас ~{daysLeft} дн ({m.supply} шт)</span>
+                  <span className="flex gap-1"><button onClick={() => refill(m.id, 30)} className="rounded-full bg-white px-2 py-0.5 font-semibold ring-1 ring-slate-200">+30</button><button onClick={() => { const v = prompt("Скільки шт зараз у запасі?", m.supply); if (v != null) upsertMed({ supply: Math.max(0, +v || 0) }, m.id); }} className="rounded-full bg-white px-2 py-0.5 font-semibold ring-1 ring-slate-200">задати</button></span>
+                </div>
+              )}
+              {m.taper?.length > 0 && (
+                <div className="mt-2 rounded-xl bg-sky-50 px-3 py-2">
+                  <div className="text-[11px] font-bold text-sky-700">Схема зниження (за призначенням лікаря)</div>
+                  <div className="mt-1 space-y-0.5">{m.taper.map((t, i) => { const active = t.date <= today; return <div key={i} className={`flex justify-between text-xs ${active ? "text-sky-800 font-semibold" : "text-slate-400"}`}><span>{t.date}</span><span>{t.dose}{t.note ? ` · ${t.note}` : ""}</span></div>; })}</div>
+                </div>
+              )}
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => setEditor({ med: m })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">Редагувати</button>
+                <button onClick={() => setTaperFor(m)} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-sky-600 ring-1 ring-sky-200">Схема лікаря</button>
+                <button onClick={() => { if (confirm("Видалити?")) delMed(m.id); }} className="ml-auto text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            </div>
+          );
+        })}
+        <button onClick={() => setEditor({ med: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-red-300 py-3 text-sm font-semibold text-red-500 hover:bg-red-50"><Plus className="h-4 w-4" /> Додати ліки</button>
+      </div>
+
+      {/* wellbeing log */}
+      <div className="mt-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-red-100">
+        <div className="mb-2 text-sm font-bold text-slate-700">Самопочуття сьогодні</div>
+        <div className="flex justify-between">{MOODS.map((m) => <button key={m.score} onClick={() => setWell({ wellbeing: m.score })} className={`flex flex-col items-center gap-0.5 rounded-2xl px-2 py-1.5 hover:scale-110 ${todayLog.wellbeing === m.score ? "bg-pink-50 ring-2 ring-pink-300" : ""}`}><span className="text-2xl">{m.emoji}</span></button>)}</div>
+        <div className="mt-2 text-xs font-semibold text-slate-500">Побічні ефекти</div>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">{MED_SIDE_FX.map((s) => { const on = (todayLog.sideEffects || []).includes(s); return <button key={s} onClick={() => { const cur = todayLog.sideEffects || []; setWell({ sideEffects: on ? cur.filter((x) => x !== s) : [...cur, s] }); }} className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${on ? "bg-amber-500 text-white ring-amber-500" : "bg-white text-slate-500 ring-slate-200"}`}>{s}</button>; })}</div>
+        <input value={todayLog.note || ""} onChange={(e) => setWell({ note: e.target.value })} placeholder="Нотатка для лікаря (необов'язково)" className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />
+        {wkRated.length >= 2 && (
+          <div className="mt-3" style={{ height: 120 }}>
+            <div className="mb-1 text-[11px] font-semibold text-slate-400">Самопочуття за 2 тижні (покажи лікарю)</div>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={wkData} margin={{ left: -28, right: 8, top: 4, bottom: 0 }}>
+                <XAxis dataKey="day" tick={{ fontSize: 9, fill: "#94a3b8" }} interval="preserveStartEnd" /><YAxis domain={[1, 5]} ticks={[1, 3, 5]} tick={{ fontSize: 9, fill: "#94a3b8" }} />
+                <Tooltip /><Line type="monotone" dataKey="w" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 2 }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {editor && <MedEditor med={editor.med} onClose={() => setEditor(null)} onSave={(m) => { upsertMed(m, editor.med?.id); setEditor(null); }} />}
+      {taperFor && <TaperEditor med={taperFor} onClose={() => setTaperFor(null)} onSave={(taper) => { upsertMed({ taper }, taperFor.id); setTaperFor(null); }} />}
+    </div>
+  );
+}
+
+function MedEditor({ med, onClose, onSave }) {
+  const [name, setName] = useState(med?.name || "");
+  const [dose, setDose] = useState(med?.dose || "");
+  const [perDay, setPerDay] = useState(med?.perDay ?? 1);
+  const [supply, setSupply] = useState(med?.supply ?? "");
+  return (
+    <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{med ? "Редагувати" : "Нові ліки"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400"><X className="h-5 w-5" /></button></div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва (напр. Золофт)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-pink-400 focus:outline-none" />
+        <input value={dose} onChange={(e) => setDose(e.target.value)} placeholder="Доза (напр. 50 мг)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none" />
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Разів на день</span><input type="number" min={0} value={perDay} onChange={(e) => setPerDay(Math.max(0, +e.target.value || 0))} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+          <label className="block"><span className="mb-1 block text-xs text-slate-500">Запас (шт)</span><input type="number" min={0} value={supply} onChange={(e) => setSupply(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+        </div>
+        <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), dose: dose.trim(), perDay: Number(perDay) || 0, supply: Number(supply) || 0 }); }} className="w-full rounded-2xl bg-pink-500 py-3 font-bold text-white hover:bg-pink-600">Зберегти</button>
+      </div>
+    </div>
+  );
+}
+
+function TaperEditor({ med, onClose, onSave }) {
+  const [rows, setRows] = useState(med.taper?.length ? med.taper.map((t) => ({ ...t })) : [{ date: dateKey(Date.now()), dose: "", note: "" }]);
+  const upd = (i, k, v) => setRows((r) => r.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
+  return (
+    <div className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">Схема зниження</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400"><X className="h-5 w-5" /></button></div>
+        <p className="mb-3 rounded-xl bg-sky-50 px-3 py-2 text-xs text-sky-800">Введи саме те, що призначив <b>лікар</b>. Застосунок нічого не вигадує — лише показує й нагадує. Ніколи не змінюй дозу самостійно.</p>
+        <div className="space-y-2">{rows.map((r, i) => (
+          <div key={i} className="flex gap-2">
+            <input type="date" value={r.date} onChange={(e) => upd(i, "date", e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs" />
+            <input value={r.dose} onChange={(e) => upd(i, "dose", e.target.value)} placeholder="доза" className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            <input value={r.note} onChange={(e) => upd(i, "note", e.target.value)} placeholder="нотатка" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+            <button onClick={() => setRows((rr) => rr.filter((_, j) => j !== i))} className="text-slate-300 hover:text-red-500"><X className="h-4 w-4" /></button>
+          </div>
+        ))}</div>
+        <button onClick={() => setRows((r) => [...r, { date: dateKey(Date.now()), dose: "", note: "" }])} className="mt-2 text-sm font-semibold text-sky-600">+ Рядок</button>
+        <button onClick={() => onSave(rows.filter((r) => r.date && r.dose))} className="mt-3 w-full rounded-2xl bg-sky-500 py-3 font-bold text-white hover:bg-sky-600">Зберегти схему</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Block 7: Career growth (inside Management) ---------- */
+const CAREERKEYS = { skills: "career:skills", achievements: "career:achievements", reviews: "career:reviews", path: "career:pathProgress", bookPath: "career:bookProgress", enPath: "career:enProgress", en2Path: "career:en2Progress" };
+async function collectCareerExport() { return { skills: await store.get(CAREERKEYS.skills, []), achievements: await store.get(CAREERKEYS.achievements, []), reviews: await store.get(CAREERKEYS.reviews, []), path: await store.get(CAREERKEYS.path, {}), bookPath: await store.get(CAREERKEYS.bookPath, {}), enPath: await store.get(CAREERKEYS.enPath, {}), en2Path: await store.get(CAREERKEYS.en2Path, {}) }; }
+async function clearCareerData() { for (const k of Object.values(CAREERKEYS)) await store.remove(k); await store.remove("career:seeded"); }
+
+function CareerView() {
+  const today = dateKey(Date.now());
+  const week = finWeekStart(today);
+  const [tab, setTab] = useState("path"); // path | skills | wins | review
+  const [skills, setSkills] = useState([]);
+  const [wins, setWins] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [pathProg, setPathProg] = useState({});
+  const [bookProg, setBookProg] = useState({});
+  const [enProg, setEnProg] = useState({});
+  const [en2Prog, setEn2Prog] = useState({});
+  const [roadmapModules, setRoadmapModules] = useState(null); // fetched from /pm-path.json
+  const [bookModules, setBookModules] = useState(null);        // fetched from /book-course.json
+  const [enModules, setEnModules] = useState(null);            // fetched from /pm-en-course.json
+  const [en2Modules, setEn2Modules] = useState(null);          // fetched from /pm-en2-course.json
+  const [pathTab, setPathTab] = useState("roadmap"); // roadmap | book | en | en2
+  const [skillEd, setSkillEd] = useState(null);
+  const [winText, setWinText] = useState("");
+  const [reviewText, setReviewText] = useState("");
+
+  useEffect(() => { (async () => {
+    let sk = await store.get(CAREERKEYS.skills, []);
+    if (!sk.length && !(await store.get("career:seeded", false))) {
+      const D = (days) => dateKey(Date.now() + days * 86400000);
+      sk = [
+        { id: ruid("sk"), name: "Продуктові основи PM", target: "Roadmap, PRD, discovery, пріоритизація (RICE/MoSCoW), user stories", deadline: D(42), progress: 0 },
+        { id: ruid("sk"), name: "Технічна глибина", target: "System design, API/REST, бази даних, як влаштований веб — щоб говорити з інженерами", deadline: D(90), progress: 0 },
+        { id: ruid("sk"), name: "AI-грамотність", target: "LLM і токени, промпт-інжиніринг, embeddings, RAG, оцінка якості (evals), обмеження й безпека", deadline: D(120), progress: 0 },
+        { id: ruid("sk"), name: "Будувати з AI", target: "OpenAI/Anthropic API, зібрати й показати одну AI-фічу (no-code + трохи коду)", deadline: D(150), progress: 0 },
+        { id: ruid("sk"), name: "Аналітика й метрики", target: "SQL, north-star метрика, воронки, A/B-експерименти, читати дашборди", deadline: D(180), progress: 0 },
+        { id: ruid("sk"), name: "Стейкхолдери й комунікація", target: "Презентувати roadmap, вирівнювати founder/eng/design, писати чіткі специфікації", deadline: "", progress: 0 },
+        { id: ruid("sk"), name: "Портфоліо AI-PM", target: "2 pet-проєкти з AI + оформлені кейси (проблема → рішення → метрика)", deadline: D(270), progress: 0 },
+        { id: ruid("sk"), name: "Підготовка до співбесід", target: "Product sense, system design для PM, AI-кейси, метрики, поведінкові — і подавати заявки", deadline: D(300), progress: 0 },
+      ];
+      await store.set(CAREERKEYS.skills, sk); await store.set("career:seeded", true);
+    }
+    setSkills(sk);
+    setWins(await store.get(CAREERKEYS.achievements, []));
+    setPathProg(await store.get(CAREERKEYS.path, {}));
+    setBookProg(await store.get(CAREERKEYS.bookPath, {}));
+    setEnProg(await store.get(CAREERKEYS.enPath, {}));
+    setEn2Prog(await store.get(CAREERKEYS.en2Path, {}));
+    const rv = await store.get(CAREERKEYS.reviews, []); setReviews(rv);
+    setReviewText((rv.find((r) => r.week === week) || {}).text || "");
+  })(); }, [week]);
+  const setStepDone = (stepId, done) => setPathProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.path, n); return n; });
+  const setBookStepDone = (stepId, done) => setBookProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.bookPath, n); return n; });
+  const setEnStepDone = (stepId, done) => setEnProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.enPath, n); return n; });
+  const setEn2StepDone = (stepId, done) => setEn2Prog((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.en2Path, n); return n; });
+  // fetch each course JSON when needed (roadmap eagerly since it's the default tab; others lazily)
+  useEffect(() => {
+    const grab = (url, set) => fetch(url).then((r) => (r.ok ? r.json() : [])).then((d) => set(Array.isArray(d) ? d : [])).catch(() => set([]));
+    if (roadmapModules === null) grab("/pm-path.json", setRoadmapModules);
+    if (pathTab === "book" && bookModules === null) grab("/book-course.json", setBookModules);
+    if (pathTab === "en" && enModules === null) grab("/pm-en-course.json", setEnModules);
+    if (pathTab === "en2" && en2Modules === null) grab("/pm-en2-course.json", setEn2Modules);
+  }, [pathTab, roadmapModules, bookModules, enModules, en2Modules]);
+  const saveSkills = (n) => { setSkills(n); store.set(CAREERKEYS.skills, n); };
+  const saveWins = (n) => { setWins(n); store.set(CAREERKEYS.achievements, n); };
+  const saveReviews = (n) => { setReviews(n); store.set(CAREERKEYS.reviews, n); };
+
+  const upsertSkill = (m, id) => { if (id) saveSkills(skills.map((x) => (x.id === id ? { ...x, ...m } : x))); else saveSkills([...skills, { id: ruid("sk"), progress: 0, ...m }]); };
+  const setProgress = (id, p) => saveSkills(skills.map((x) => (x.id === id ? { ...x, progress: p } : x)));
+  const addWin = () => { if (!winText.trim()) return; saveWins([{ id: ruid("win"), date: today, text: winText.trim() }, ...wins]); setWinText(""); };
+  const saveReview = () => { const others = reviews.filter((r) => r.week !== week); const next = reviewText.trim() ? [...others, { week, text: reviewText.trim(), ts: Date.now() }] : others; saveReviews(next.sort((a, b) => a.week.localeCompare(b.week))); };
+
+  return (
+    <div>
+      <div className="mb-4 flex gap-1.5 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-rose-100">
+        {[["path", "Шлях", GraduationCap], ["skills", "Цілі", Target], ["wins", "Досягнення", Trophy], ["review", "Огляд", CalendarDays]].map(([k, label, Icon]) => (
+          <button key={k} onClick={() => setTab(k)} className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold transition sm:text-sm ${tab === k ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4 shrink-0" /> {label}</button>
+        ))}
+      </div>
+
+      {tab === "path" && (
+        <div>
+          <div className="mb-3 grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1">
+            {[["roadmap", "🧭 Роадмапа"], ["book", "📚 Managing IT (укр)"], ["en", "🇬🇧 Pro PM (EN)"], ["en2", "🇬🇧 PM Basics (EN)"]].map(([k, label]) => (
+              <button key={k} onClick={() => setPathTab(k)} className={`rounded-xl py-1.5 text-[11px] font-bold leading-tight transition sm:text-xs ${pathTab === k ? "bg-white text-rose-600 shadow-sm" : "text-slate-500"}`}>{label}</button>
+            ))}
+          </div>
+          {pathTab === "roadmap" && <CareerPath modules={roadmapModules || []} heading="Шлях: технічний PM з AI" progress={pathProg} onDone={setStepDone} />}
+          {pathTab === "book" && <CareerPath modules={bookModules || []} heading="Курс: Managing IT (по книзі)" progress={bookProg} onDone={setBookStepDone} />}
+          {pathTab === "en" && <CareerPath modules={enModules || []} heading="PM course · The Professional Project Manager (English)" progress={enProg} onDone={setEnStepDone} />}
+          {pathTab === "en2" && <CareerPath modules={en2Modules || []} heading="PM course · Project Management by A. Watt (English)" progress={en2Prog} onDone={setEn2StepDone} />}
+        </div>
+      )}
+
+      {tab === "skills" && (
+        <div className="space-y-2">
+          {skills.length === 0 && <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-rose-50">Що вчиш чи прокачуєш? Додай ціль із дедлайном і відстежуй прогрес.</div>}
+          {skills.map((s) => (
+            <div key={s.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0"><div className="font-bold text-slate-800">{s.name}</div>{(s.target || s.deadline) && <div className="text-xs text-slate-400">{s.target}{s.deadline ? ` · до ${s.deadline}` : ""}</div>}</div>
+                <span className="shrink-0 text-sm font-bold tabular-nums text-rose-600">{s.progress || 0}%</span>
+              </div>
+              <input type="range" min={0} max={100} step={5} value={s.progress || 0} onChange={(e) => setProgress(s.id, +e.target.value)} className="mt-2 w-full accent-rose-500" />
+              <div className="mt-1 flex gap-2"><button onClick={() => setSkillEd({ skill: s })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">Редагувати</button><button onClick={() => { if (confirm("Видалити ціль?")) saveSkills(skills.filter((x) => x.id !== s.id)); }} className="ml-auto text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button></div>
+            </div>
+          ))}
+          <button onClick={() => setSkillEd({ skill: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-rose-300 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-50"><Plus className="h-4 w-4" /> Ціль / навичка</button>
+        </div>
+      )}
+
+      {tab === "wins" && (
+        <div className="space-y-3">
+          <div className="rounded-2xl bg-rose-50/60 px-4 py-3 text-xs leading-relaxed text-rose-800">Занотовуй робочі перемоги — великі й малі. Це і для резюме, і щоб на важкий день згадати: ти багато можеш.</div>
+          <div className="flex gap-2"><input value={winText} onChange={(e) => setWinText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addWin(); }} placeholder="Що вдалося? (напр. закрила складний баг)" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" /><button onClick={addWin} className="shrink-0 rounded-xl bg-rose-500 px-4 text-sm font-bold text-white hover:bg-rose-600">+</button></div>
+          {wins.length === 0 ? <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-rose-50">Ще порожньо. Перша перемога вже сьогодні? 🏆</div> : (
+            <div className="space-y-2">{wins.map((w) => <div key={w.id} className="group flex items-start gap-2 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-rose-50"><span className="text-lg">🏆</span><span className="min-w-0 flex-1"><span className="block text-sm text-slate-700">{w.text}</span><span className="text-[11px] text-slate-400">{w.date}</span></span><button onClick={() => saveWins(wins.filter((x) => x.id !== w.id))} className="text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-4 w-4" /></button></div>)}</div>
+          )}
+        </div>
+      )}
+
+      {tab === "review" && (
+        <div className="space-y-3">
+          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+            <div className="mb-1 text-sm font-bold text-slate-700">Тиждень від {week}</div>
+            <p className="mb-2 text-xs text-slate-400">Що вдалося на роботі цього тижня? Навіть одне речення рахується.</p>
+            <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} onBlur={saveReview} rows={3} placeholder="Три речі, якими пишаюся цього тижня…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
+          </div>
+          {reviews.filter((r) => r.week !== week).length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Минулі тижні</div>
+              {reviews.filter((r) => r.week !== week).slice().reverse().map((r) => <div key={r.week} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-rose-50"><div className="text-[11px] font-semibold text-slate-400">від {r.week}</div><div className="mt-0.5 whitespace-pre-wrap text-sm text-slate-600">{r.text}</div></div>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {skillEd && <SkillEditor skill={skillEd.skill} onClose={() => setSkillEd(null)} onSave={(m) => { upsertSkill(m, skillEd.skill?.id); setSkillEd(null); }} />}
+    </div>
+  );
+}
+
+function SkillEditor({ skill, onClose, onSave }) {
+  const [name, setName] = useState(skill?.name || "");
+  const [target, setTarget] = useState(skill?.target || "");
+  const [deadline, setDeadline] = useState(skill?.deadline || "");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="text-lg font-bold text-slate-900">{skill ? "Редагувати ціль" : "Нова ціль"}</h3><button onClick={onClose} className="rounded-md p-1 text-slate-400"><X className="h-5 w-5" /></button></div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Що вчу / прокачую (напр. System Design)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold focus:border-rose-400 focus:outline-none" />
+        <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="Ціль (напр. пройти курс, зробити pet-проєкт)" className="mb-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
+        <label className="mb-3 block"><span className="mb-1 block text-xs text-slate-500">Дедлайн (необов'язково)</span><input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+        <button onClick={() => { if (name.trim()) onSave({ name: name.trim(), target: target.trim(), deadline }); }} className="w-full rounded-2xl bg-rose-500 py-3 font-bold text-white hover:bg-rose-600">Зберегти</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Career: Duolingo-style learning path ---------- */
+const PATH_STEP_META = {
+  learn:   { icon: BookOpen,   ring: "bg-rose-500",  label: "Урок" },
+  read:    { icon: BookMarked, ring: "bg-sky-500",     label: "Читання" },
+  explain: { icon: Lightbulb,  ring: "bg-amber-500",   label: "Поясни" },
+  build:   { icon: Wrench,     ring: "bg-emerald-500", label: "Практика" },
+  quiz:    { icon: HelpCircle, ring: "bg-pink-500",  label: "Тест" },
+};
+
+// Learning content is baked in (versioned in code); only per-step completion is stored.
+// Career roadmap is fetched at runtime from /pm-path.json (see CareerView).
+
+// Book course (18+ modules) is fetched at runtime from /book-course.json to keep the bundle small.
+
+const pathStepId = (slug, i) => `${slug}:${i}`;
+
+function CareerPath({ modules = [], heading = "Шлях: технічний PM з AI", progress, onDone }) {
+  const [open, setOpen] = useState(null); // { modIdx, stepIdx }
+  const totalSteps = modules.reduce((s, m) => s + m.steps.length, 0);
+  const doneCount = modules.reduce((s, m) => s + m.steps.filter((_, i) => progress[pathStepId(m.slug, i)]).length, 0);
+  const openMod = open ? modules[open.modIdx] : null;
+  const openStep = openMod ? openMod.steps[open.stepIdx] : null;
+
+  if (!modules.length) return <div className="rounded-2xl bg-white py-10 text-center text-sm text-slate-400 ring-1 ring-rose-50">Курс готується… (контент генерується — зайди трохи згодом)</div>;
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-3xl bg-gradient-to-br from-rose-500 to-pink-500 p-5 text-white shadow-sm">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white/90"><GraduationCap className="h-4 w-4" /> {heading}</div>
+        <div className="mt-1 text-2xl font-extrabold tabular-nums">{doneCount} / {totalSteps} кроків</div>
+        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/25"><div className="h-full rounded-full bg-white transition-all" style={{ width: `${totalSteps ? (doneCount / totalSteps) * 100 : 0}%` }} /></div>
+        <div className="mt-1.5 text-xs leading-relaxed text-white/80">Маленькі кроки: вивчи → поясни своїми словами → збери → пройди тест. Роби по одному на день. 💪</div>
+      </div>
+
+      {modules.map((mod, mi) => {
+        const mDone = mod.steps.filter((_, i) => progress[pathStepId(mod.slug, i)]).length;
+        const modDone = mDone === mod.steps.length;
+        return (
+          <div key={mod.slug} className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
+            <div className="mb-3 flex items-center gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-100 text-2xl">{mod.emoji}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2"><span className="font-bold text-slate-800">{mod.title}</span>{modDone && <Trophy className="h-4 w-4 shrink-0 text-amber-400" />}</div>
+                <div className="text-xs leading-snug text-slate-400">{mod.intro}</div>
+              </div>
+              <span className="shrink-0 text-xs font-bold tabular-nums text-rose-500">{mDone}/{mod.steps.length}</span>
+            </div>
+            <div className="relative">
+              <span className="pointer-events-none absolute bottom-4 left-[18px] top-4 w-0.5 bg-slate-100" aria-hidden />
+              <div className="relative space-y-1">
+                {mod.steps.map((st, si) => {
+                  const sid = pathStepId(mod.slug, si);
+                  const isDone = !!progress[sid];
+                  const prevDone = si === 0 || !!progress[pathStepId(mod.slug, si - 1)];
+                  const locked = !isDone && !prevDone;
+                  const meta = PATH_STEP_META[st.type] || PATH_STEP_META.learn;
+                  const NodeIcon = isDone ? Check : locked ? Lock : meta.icon;
+                  return (
+                    <div key={sid} className="flex items-center gap-3">
+                      <button disabled={locked} onClick={() => setOpen({ modIdx: mi, stepIdx: si })} className={`relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-full text-white shadow-sm transition ${isDone ? "bg-emerald-500" : locked ? "bg-slate-200 text-slate-400" : `${meta.ring} hover:scale-105`}`}><NodeIcon className="h-4 w-4" /></button>
+                      <button disabled={locked} onClick={() => setOpen({ modIdx: mi, stepIdx: si })} className="min-w-0 flex-1 py-1.5 text-left disabled:cursor-default">
+                        <div className={`text-sm font-semibold ${locked ? "text-slate-300" : isDone ? "text-slate-400" : "text-slate-700"}`}>{st.title}</div>
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-slate-300">{meta.label}</div>
+                      </button>
+                      {isDone && <Check className="mr-1 h-4 w-4 shrink-0 text-emerald-400" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {modDone && <div className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-center text-sm font-semibold text-amber-700">🎉 Модуль пройдено!</div>}
+          </div>
+        );
+      })}
+      <p className="px-2 pb-2 text-center text-xs leading-relaxed text-slate-400">Це стартова база. Проходь у своєму темпі, повертайся до уроків будь-коли. Прогрес зберігається і синхронізується.</p>
+
+      {openStep && <PathLessonModal step={openStep} done={!!progress[pathStepId(openMod.slug, open.stepIdx)]} onClose={() => setOpen(null)} onDone={(v) => { onDone(pathStepId(openMod.slug, open.stepIdx), v); setOpen(null); }} />}
+    </div>
+  );
+}
+
+function PathLessonModal({ step, done, onClose, onDone }) {
+  const meta = PATH_STEP_META[step.type] || PATH_STEP_META.learn;
+  const StepIcon = meta.icon;
+  const [picked, setPicked] = useState(null);
+  const [note, setNote] = useState("");
+  const isQuiz = step.type === "quiz" && step.quiz;
+  const correct = isQuiz && picked === step.quiz.answerIndex;
+  const canFinish = done || !isQuiz || correct;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center gap-2">
+          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white ${meta.ring}`}><StepIcon className="h-4 w-4" /></span>
+          <div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{meta.label}</div><h3 className="text-lg font-bold leading-tight text-slate-900">{step.title}</h3></div>
+          <button onClick={onClose} className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        </div>
+
+        {step.body && <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{step.body}</p>}
+
+        {step.example && (
+          <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-sm leading-relaxed text-amber-900 ring-1 ring-amber-100">
+            <div className="mb-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-600">Приклад</div>
+            {step.example}
+          </div>
+        )}
+
+        {step.keyPoints?.length > 0 && (
+          <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5">
+            <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Запам'ятати</div>
+            <ul className="space-y-1">
+              {step.keyPoints.map((k, i) => <li key={i} className="flex gap-2 text-sm text-slate-600"><span className="mt-0.5 shrink-0 text-rose-400">•</span><span>{k}</span></li>)}
+            </ul>
+          </div>
+        )}
+
+        {step.resource?.url && (
+          <a href={step.resource.url} target="_blank" rel="noreferrer" className="mt-3 flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-100"><BookOpen className="h-4 w-4 shrink-0" /> <span className="min-w-0 flex-1 truncate">{step.resource.label || "Джерело"}</span> <ArrowRight className="h-4 w-4 shrink-0" /></a>
+        )}
+
+        {step.type === "explain" && (
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="Поясни своїми словами (для себе — не зберігається)…" className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
+        )}
+
+        {isQuiz && (
+          <div className="mt-3 space-y-2">
+            <p className="text-sm font-semibold text-slate-700">{step.quiz.question}</p>
+            {step.quiz.options.map((opt, i) => {
+              const reveal = picked != null;
+              const isRight = i === step.quiz.answerIndex;
+              const chosen = picked === i;
+              const cls = reveal ? (isRight ? "border-emerald-400 bg-emerald-50 text-emerald-800" : chosen ? "border-red-300 bg-red-50 text-red-700" : "border-slate-200 text-slate-400") : "border-slate-200 text-slate-700 hover:border-rose-300";
+              return <button key={i} disabled={reveal && correct} onClick={() => setPicked(i)} className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm transition ${cls}`}><span className="grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[11px] font-bold">{String.fromCharCode(65 + i)}</span><span className="min-w-0 flex-1">{opt}</span>{reveal && isRight && <Check className="h-4 w-4 shrink-0" />}</button>;
+            })}
+            {picked != null && <div className={`rounded-xl px-3 py-2 text-sm ${correct ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{correct ? "✓ " : "Майже. "}{step.quiz.explanation}</div>}
+          </div>
+        )}
+
+        <button disabled={!canFinish} onClick={() => onDone(true)} className="mt-4 w-full rounded-2xl bg-rose-500 py-3 font-bold text-white transition hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-400">{done ? "Пройдено ✓ · закрити" : isQuiz && !correct ? "Обери правильну відповідь" : "Готово ✓"}</button>
+        {done && <button onClick={() => onDone(false)} className="mt-2 w-full text-center text-xs font-semibold text-slate-400">Скинути крок</button>}
+      </div>
+    </div>
+  );
+}
+
+function ToolkitSection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [tool, setTool] = useState("hub"); // hub | anxiety | chores
+  const [settings, setSettings] = useState({ name: "Toolkit" });
+  const [favorites, setFavorites] = useState([]);
+  const [tried, setTried] = useState([]);
+  const [weekFocus, setWeekFocus] = useState(null);
+  const [members, setMembers] = useState(null);
+  const [list, setList] = useState([]);
+  const [ratings, setRatings] = useState({});
+  const [assignments, setAssignments] = useState({});
+  const [meta, setMeta] = useState({ step: 1, useScores: false, finished: false });
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+
+  const reload = useCallback(async () => {
+    const d = await loadToolkitData();
+    setSettings(d.settings); setFavorites(d.favorites); setTried(d.tried); setWeekFocus(d.weekFocus);
+    setMembers(d.members || [{ id: ruid("m"), name: "Людина 1" }, { id: ruid("m"), name: "Людина 2" }]);
+    setList(d.list); setRatings(d.ratings); setAssignments(d.assignments); setMeta(d.meta);
+    setLoading(false);
+  }, []);
+  useEffect(() => {
+    reload();
+    const onReset = () => { setFavorites([]); setTried([]); setWeekFocus(null); setMembers([{ id: ruid("m"), name: "Людина 1" }, { id: ruid("m"), name: "Людина 2" }]); setList([]); setRatings({}); setAssignments({}); setMeta({ step: 1, useScores: false, finished: false }); setTool("hub"); };
+    window.addEventListener("toolkit-reset", onReset);
+    return () => window.removeEventListener("toolkit-reset", onReset);
+  }, [reload]);
+
+  const saveSettings = useCallback(async (patch) => { const n = { ...settings, ...patch }; setSettings(n); await store.set(TKEYS.settings, n); }, [settings]);
+  const saveFav = useCallback(async (n) => { setFavorites(n); await store.set(TKEYS.anxFav, n); }, []);
+  const saveTried = useCallback(async (n) => { setTried(n); await store.set(TKEYS.anxTried, n); }, []);
+  const saveWeek = useCallback(async (id) => { setWeekFocus(id); await store.set(TKEYS.anxWeek, id); }, []);
+  const saveMembers = useCallback(async (n) => { setMembers(n); await store.set(TKEYS.members, n); }, []);
+  const saveList = useCallback(async (n) => { setList(n); await store.set(TKEYS.list, n); }, []);
+  const saveRatings = useCallback(async (n) => { setRatings(n); await store.set(TKEYS.ratings, n); }, []);
+  const saveAssignments = useCallback(async (n) => { setAssignments(n); await store.set(TKEYS.assignments, n); }, []);
+  const saveMeta = useCallback(async (patch) => { const n = { ...meta, ...patch }; setMeta(n); await store.set(TKEYS.meta, n); }, [meta]);
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-slate-400"><div className="flex flex-col items-center gap-3"><Wrench className="h-8 w-8 animate-pulse text-rose-400" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-slate-50 to-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-rose-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          {tool !== "hub" && <button onClick={() => setTool("hub")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100"><ChevronLeft className="h-4 w-4" /> Інструменти</button>}
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-6">
+        {tool === "hub" && (
+          <div className="space-y-4">
+            <h1 className="text-2xl font-extrabold text-slate-900">Інструменти</h1>
+            <p className="text-sm text-slate-500">Практичні помічники для щоденного життя.</p>
+            <button onClick={() => setTool("chores")} className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-rose-200 hover:shadow-md">
+              <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-rose-100 text-2xl">🧹</span>
+              <span className="min-w-0 flex-1"><span className="block text-lg font-bold text-slate-800">Chore Splitter</span><span className="block text-sm text-slate-400">7-крокова система, щоб чесно поділити хатні справи — по складності, а не по кількості.</span></span>
+              <ChevronRight className="h-5 w-5 text-slate-300" />
+            </button>
+          </div>
+        )}
+        {tool === "chores" && <ChoreSplitter members={members} list={list} ratings={ratings} assignments={assignments} meta={meta} saveMembers={saveMembers} saveList={saveList} saveRatings={saveRatings} saveAssignments={saveAssignments} saveMeta={saveMeta} />}
+      </main>
+    </div>
+  );
+}
+
+/* ---------- Anxiety toolkit (library) ---------- */
+function AnxietyToolkit({ favorites, tried, weekFocus, settings, onFav, onTried, onWeek, onDismissNote }) {
+  const toggle = (arr, id, fn) => fn(arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
+  const focus = ANX_TECHNIQUES.find((t) => t.id === weekFocus);
+  const ordered = [...ANX_TECHNIQUES].sort((a, b) => (favorites.includes(b.id) ? 1 : 0) - (favorites.includes(a.id) ? 1 : 0));
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-extrabold text-slate-900">Anxiety Toolkit</h1>
+        <p className="text-sm text-slate-500">Спокійні техніки, до яких можна повертатись. Це бібліотека — інтерактивні версії живуть у вкладці Calm.</p>
+      </div>
+
+      {focus && (
+        <div className="flex items-center gap-3 rounded-2xl bg-gradient-to-r from-teal-400 to-sky-400 p-4 text-white shadow-sm">
+          <span className="text-2xl">{focus.emoji}</span>
+          <div className="flex-1"><div className="text-xs font-semibold uppercase tracking-wide text-white/80">Фокус тижня</div><div className="font-bold">{focus.name}</div></div>
+          <button onClick={() => onWeek(null)} className="rounded-full bg-white/20 p-1.5 hover:bg-white/30"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      <div className="space-y-2.5">
+        {ordered.map((t) => {
+          const fav = favorites.includes(t.id); const isTried = tried.includes(t.id); const isFocus = weekFocus === t.id;
+          return (
+            <div key={t.id} className={`rounded-2xl border p-4 shadow-sm transition ${isFocus ? "border-teal-300 bg-teal-50/50" : "border-slate-100 bg-white"}`}>
+              <div className="flex items-start gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100 text-xl">{t.emoji}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2"><span className="font-bold text-slate-800">{t.name}</span></div>
+                  <p className="mt-0.5 text-sm text-slate-600">{t.what}</p>
+                  <p className="mt-1 text-xs text-slate-400"><b className="font-semibold text-slate-500">Чому помагає:</b> {t.why}</p>
+                </div>
+                <button onClick={() => toggle(favorites, t.id, onFav)} title="В улюблене" className={`shrink-0 rounded-full p-1.5 transition ${fav ? "text-amber-400" : "text-slate-300 hover:text-amber-400"}`}><Star className={`h-5 w-5 ${fav ? "fill-amber-400" : ""}`} /></button>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button onClick={() => toggle(tried, t.id, onTried)} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition ${isTried ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{isTried ? <><Check className="h-3.5 w-3.5" /> Пробувала</> : "Позначити як спробувала"}</button>
+                <button onClick={() => onWeek(isFocus ? null : t.id)} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition ${isFocus ? "bg-teal-500 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{isFocus ? "Фокус тижня ✓" : "Зробити фокусом тижня"}</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {!settings.noteSeen && (
+        <div className="flex items-start gap-2 rounded-2xl bg-slate-100/70 px-4 py-3 text-sm text-slate-500">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+          <p className="flex-1">Ці техніки доповнюють, але не замінюють професійну допомогу. Якщо тривога сильна або триває тижнями — варто поговорити з терапевтом. 💛</p>
+          <button onClick={onDismissNote} className="rounded-full p-0.5 text-slate-300 hover:text-slate-500"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Chore Splitter (7-step wizard) ---------- */
+const CHORE_STEPS = ["Учасники", "Справи", "Оцінка", "Разом", "Бали", "Розподіл", "Баланс"];
+function ChoreSplitter(props) {
+  const { members, list, ratings, assignments, meta, saveMembers, saveList, saveRatings, saveAssignments, saveMeta } = props;
+  const step = meta.step || 1;
+  const setStep = (s) => saveMeta({ step: Math.max(1, Math.min(7, s)) });
+
+  if (meta.finished) return <ChoreBoard {...props} onEdit={() => saveMeta({ finished: false, step: 7 })} />;
+
+  return (
+    <div>
+      <div className="mb-1 flex items-center gap-2"><span className="text-2xl">🧹</span><h1 className="text-2xl font-extrabold text-slate-900">Chore Splitter</h1></div>
+      {/* stepper */}
+      <div className="mb-5 flex items-center gap-1 overflow-x-auto pb-1">
+        {CHORE_STEPS.map((s, i) => {
+          const n = i + 1, active = n === step, done = n < step;
+          return (
+            <button key={s} onClick={() => setStep(n)} className="flex items-center gap-1">
+              {i > 0 && <span className={`h-0.5 w-3 ${done || active ? "bg-rose-400" : "bg-slate-200"}`} />}
+              <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-bold transition ${active ? "bg-rose-600 text-white" : done ? "bg-rose-100 text-rose-600" : "bg-slate-100 text-slate-400"}`}>{done ? "✓" : n}</span>
+              <span className={`hidden whitespace-nowrap text-xs font-medium sm:inline ${active ? "text-rose-700" : "text-slate-400"}`}>{s}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        {step === 1 && <StepMembers members={members} onSave={saveMembers} />}
+        {step === 2 && <StepBrainstorm list={list} onSave={saveList} />}
+        {step === 3 && <StepRatings members={members} list={list} ratings={ratings} onSave={saveRatings} />}
+        {step === 4 && <StepMerge members={members} list={list} ratings={ratings} />}
+        {step === 5 && <StepScores members={members} list={list} ratings={ratings} meta={meta} onSaveRatings={saveRatings} onSaveMeta={saveMeta} />}
+        {step === 6 && <StepAssign members={members} list={list} ratings={ratings} assignments={assignments} meta={meta} onSave={saveAssignments} />}
+        {step === 7 && <StepBalance members={members} list={list} ratings={ratings} assignments={assignments} meta={meta} onSave={saveAssignments} onFinish={() => saveMeta({ finished: true })} />}
+      </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <button disabled={step <= 1} onClick={() => setStep(step - 1)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Назад</button>
+        <span className="text-xs text-slate-400">Крок {step} / 7</span>
+        {step < 7
+          ? <button disabled={step === 2 && list.length === 0} onClick={() => setStep(step + 1)} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
+          : <span />}
+      </div>
+    </div>
+  );
+}
+
+function StepMembers({ members, onSave }) {
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Хто ділить справи?</h2>
+      <p className="mb-4 text-sm text-slate-500">Додай учасників дому. Імена можна змінювати.</p>
+      <div className="space-y-2">
+        {members.map((m, i) => (
+          <div key={m.id} className="flex items-center gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-rose-100 text-sm font-bold text-rose-600">{i + 1}</span>
+            <input value={m.name} onChange={(e) => onSave(members.map((x) => x.id === m.id ? { ...x, name: e.target.value } : x))} className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
+            {members.length > 2 && <button onClick={() => onSave(members.filter((x) => x.id !== m.id))} className="rounded p-1.5 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>}
+          </div>
+        ))}
+      </div>
+      <button onClick={() => onSave([...members, { id: ruid("m"), name: `Людина ${members.length + 1}` }])} className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"><Plus className="h-4 w-4" /> Додати учасника</button>
+    </div>
+  );
+}
+
+function StepBrainstorm({ list, onSave }) {
+  const [text, setText] = useState("");
+  const has = (t) => list.some((c) => c.text.toLowerCase() === t.toLowerCase());
+  const add = (t) => { const v = t.trim(); if (v && !has(v)) onSave([...list, { id: ruid("ch"), text: v }]); };
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Всі хатні справи в один список</h2>
+      <p className="mb-3 text-sm text-slate-500">💡 Розбивай великі справи на маленькі: «прання» → «завантажити» + «розвісити» + «скласти». Так нічого не загубиться й легше ділити.</p>
+
+      <div className="mb-3 flex items-center gap-2">
+        <input value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { add(text); setText(""); } }} placeholder="Додати справу…" className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
+        <button onClick={() => { add(text); setText(""); }} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700"><Plus className="h-4 w-4" /></button>
+      </div>
+
+      <div className="mb-4 space-y-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Готовий чек-лист по кімнатах — тапни, щоб додати</div>
+        {CHORE_ROOMS.map((r) => (
+          <div key={r.room}>
+            <div className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-slate-600"><Home className="h-3.5 w-3.5 text-slate-400" /> {r.room}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {r.items.map((it) => { const added = has(it); return (
+                <button key={it} onClick={() => added ? onSave(list.filter((c) => c.text.toLowerCase() !== it.toLowerCase())) : add(it)} className={`rounded-full px-3 py-1 text-xs font-medium transition ${added ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{added ? "✓ " : "+ "}{it}</button>
+              ); })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {list.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Твій список · {list.length}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {list.map((c) => (
+              <span key={c.id} className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-3 py-1 text-sm text-rose-700">{c.text}<button onClick={() => onSave(list.filter((x) => x.id !== c.id))} className="text-rose-300 hover:text-red-500"><X className="h-3.5 w-3.5" /></button></span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StepRatings({ members, list, ratings, onSave }) {
+  const [mi, setMi] = useState(0);
+  const member = members[mi];
+  const setAtt = (choreId, attitude) => {
+    const next = { ...ratings, [choreId]: { ...(ratings[choreId] || {}), [member.id]: { ...(ratings[choreId]?.[member.id] || {}), attitude } } };
+    onSave(next);
+  };
+  const ratedCount = (m) => list.filter((c) => ratings[c.id]?.[m.id]?.attitude).length;
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Приватна оцінка ставлення</h2>
+      <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">🔒 Оцінюй чесно й наодинці. Відповіді іншого тут <b>не показуються</b> — по черзі, по одній людині.</p>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {members.map((m, i) => (
+          <button key={m.id} onClick={() => setMi(i)} className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${i === mi ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{m.name} <span className="opacity-70">({ratedCount(m)}/{list.length})</span></button>
+        ))}
+      </div>
+      <div className="space-y-2">
+        {list.map((c) => {
+          const cur = ratings[c.id]?.[member.id]?.attitude;
+          return (
+            <div key={c.id} className="flex items-center gap-2 rounded-xl border border-slate-100 p-2">
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">{c.text}</span>
+              <div className="flex shrink-0 gap-1">
+                {ATT_ORDER.map((a) => (
+                  <button key={a} onClick={() => setAtt(c.id, a)} title={ATT[a].label} className="grid h-9 w-9 place-items-center rounded-lg text-lg transition" style={cur === a ? { backgroundColor: ATT[a].color + "22", boxShadow: `0 0 0 2px ${ATT[a].color}` } : { backgroundColor: "#f8fafc" }}>{ATT[a].emoji}</button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StepMerge({ members, list, ratings }) {
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Спільна картина</h2>
+      <p className="mb-3 text-sm text-slate-500">Ставлення кожного до кожної справи. Поки без розподілу — просто дивимось разом.</p>
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-3 py-2 font-medium">Справа</th>{members.map((m) => <th key={m.id} className="px-3 py-2 font-medium">{m.name}</th>)}</tr></thead>
+          <tbody className="divide-y divide-slate-100">
+            {list.map((c) => (
+              <tr key={c.id}><td className="px-3 py-2 text-slate-700">{c.text}</td>{members.map((m) => { const a = ratings[c.id]?.[m.id]?.attitude; return <td key={m.id} className="px-3 py-2">{a ? <span className="inline-flex items-center gap-1"><span>{ATT[a].emoji}</span><span className="text-xs" style={{ color: ATT[a].color }}>{ATT[a].label}</span></span> : <span className="text-slate-300">—</span>}</td>; })}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StepScores({ members, list, ratings, meta, onSaveRatings, onSaveMeta }) {
+  const use = meta.useScores;
+  const setScore = (choreId, memberId, score) => {
+    const s = Math.max(1, Math.min(10, Number(score) || 1));
+    onSaveRatings({ ...ratings, [choreId]: { ...(ratings[choreId] || {}), [memberId]: { ...(ratings[choreId]?.[memberId] || {}), score: s } } });
+  };
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Бали 1–10 <span className="text-sm font-normal text-slate-400">(необовʼязково)</span></h2>
+      <p className="mb-3 text-sm text-slate-500">Точніше за «подобається/терпимо/ненавиджу»: <b>1</b> = щиро подобається, <b>10</b> = «краще перееду, ніж робитиму це». Можна пропустити.</p>
+      <label className="mb-4 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+        <span className="text-sm font-medium text-slate-700">Використати бали 1–10</span>
+        <input type="checkbox" checked={use} onChange={(e) => onSaveMeta({ useScores: e.target.checked })} className="h-4 w-4 accent-rose-600" />
+      </label>
+      {use && (
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-3 py-2 font-medium">Справа</th>{members.map((m) => <th key={m.id} className="px-3 py-2 font-medium">{m.name}</th>)}</tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {list.map((c) => (
+                <tr key={c.id}><td className="px-3 py-2 text-slate-700">{c.text}</td>{members.map((m) => { const r = ratings[c.id]?.[m.id]; const val = r?.score ?? ATT[r?.attitude]?.weight ?? ""; return <td key={m.id} className="px-3 py-2"><input type="number" min="1" max="10" value={val} onChange={(e) => setScore(c.id, m.id, e.target.value)} className="w-16 rounded-lg border border-slate-300 px-2 py-1 text-sm" /></td>; })}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!use && <p className="text-sm text-slate-400">Пропускаєш — розподіл рахуватиметься по «подобається/терпимо/ненавиджу».</p>}
+    </div>
+  );
+}
+
+function StepAssign({ members, list, ratings, assignments, meta, onSave }) {
+  const auto = () => {
+    const next = { ...assignments };
+    for (const c of list) {
+      let best = null, bestScore = Infinity;
+      for (const m of members) { const s = choreScore(ratings, c.id, m.id, meta.useScores); if (s != null && s < bestScore) { bestScore = s; best = m.id; } }
+      if (best) next[c.id] = { memberId: best, delegate: assignments[c.id]?.delegate || false };
+    }
+    onSave(next);
+  };
+  const setAssignee = (choreId, memberId) => onSave({ ...assignments, [choreId]: { ...(assignments[choreId] || {}), memberId } });
+  const toggleDeleg = (choreId) => onSave({ ...assignments, [choreId]: { ...(assignments[choreId] || {}), delegate: !assignments[choreId]?.delegate } });
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Розподіл</h2>
+      <p className="mb-3 text-sm text-slate-500">Кожну справу — тому, кому вона <b>найменш неприємна</b> (менший бал/ставлення). «Можна делегувати?» — підстрахування на важкий день.</p>
+      <button onClick={auto} className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"><SparklesIcon className="h-4 w-4" /> Призначити автоматично</button>
+      <div className="space-y-2">
+        {list.map((c) => {
+          const a = assignments[c.id];
+          return (
+            <div key={c.id} className="rounded-xl border border-slate-100 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="min-w-0 flex-1 text-sm font-medium text-slate-800">{c.text}</span>
+                <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500"><input type="checkbox" checked={!!a?.delegate} onChange={() => toggleDeleg(c.id)} className="h-3.5 w-3.5 accent-green-600" /> Можна делегувати</label>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {members.map((m) => { const s = choreScore(ratings, c.id, m.id, meta.useScores); const sel = a?.memberId === m.id; return (
+                  <button key={m.id} onClick={() => setAssignee(c.id, m.id)} className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm font-medium transition ${sel ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{m.name}{s != null && <span className={`text-xs ${sel ? "text-white/70" : "text-slate-400"}`}>· {s}</span>}</button>
+                ); })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function memberTotals(members, list, ratings, assignments, useScores) {
+  const totals = {}; for (const m of members) totals[m.id] = 0;
+  for (const c of list) { const a = assignments[c.id]; if (!a?.memberId) continue; const s = choreScore(ratings, c.id, a.memberId, useScores); if (s != null && totals[a.memberId] != null) totals[a.memberId] += s; }
+  return totals;
+}
+
+function StepBalance({ members, list, ratings, assignments, meta, onSave, onFinish }) {
+  const totals = memberTotals(members, list, ratings, assignments, meta.useScores);
+  const max = Math.max(1, ...Object.values(totals));
+  const move = (choreId, toId) => onSave({ ...assignments, [choreId]: { ...(assignments[choreId] || {}), memberId: toId } });
+  const colors = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#8b5cf6"];
+  return (
+    <div>
+      <h2 className="mb-1 text-lg font-bold text-slate-900">Баланс по складності</h2>
+      <p className="mb-3 text-sm text-slate-500">Рівняй за <b>сумарною складністю</b>, а не за кількістю: одна «10» переважує п'ять «2». Переноси справи, поки суми не стануть чесними.</p>
+
+      <div className="mb-4 space-y-2">
+        {members.map((m, i) => (
+          <div key={m.id}>
+            <div className="mb-1 flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">{m.name}</span><span className="font-bold tabular-nums" style={{ color: colors[i % colors.length] }}>{totals[m.id]}</span></div>
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full transition-all" style={{ width: `${(totals[m.id] / max) * 100}%`, backgroundColor: colors[i % colors.length] }} /></div>
+          </div>
+        ))}
+      </div>
+
+      <div className="space-y-3">
+        {members.map((m) => (
+          <div key={m.id} className="rounded-xl border border-slate-100 p-3">
+            <div className="mb-1.5 text-sm font-bold text-slate-700">{m.name}</div>
+            <div className="space-y-1">
+              {list.filter((c) => assignments[c.id]?.memberId === m.id).map((c) => {
+                const s = choreScore(ratings, c.id, m.id, meta.useScores);
+                const others = members.filter((x) => x.id !== m.id);
+                return (
+                  <div key={c.id} className="flex items-center gap-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate text-slate-700">{c.text} {s != null && <span className="text-xs text-slate-400">· {s}</span>} {assignments[c.id]?.delegate && <span className="text-xs text-green-600">↔</span>}</span>
+                    {others.map((o) => <button key={o.id} onClick={() => move(c.id, o.id)} title={`Перенести до ${o.name}`} className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-200">→ {o.name}</button>)}
+                  </div>
+                );
+              })}
+              {list.filter((c) => assignments[c.id]?.memberId === m.id).length === 0 && <div className="text-xs text-slate-300">поки нічого</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button onClick={onFinish} className="mt-4 w-full rounded-2xl bg-rose-600 py-3 font-bold text-white shadow-lg shadow-rose-500/20 hover:bg-rose-700">Готово — показати дошку 📋</button>
+    </div>
+  );
+}
+
+function ChoreBoard({ members, list, ratings, assignments, meta, saveMeta, onEdit }) {
+  const totals = memberTotals(members, list, ratings, assignments, meta.useScores);
+  const colors = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#8b5cf6"];
+  return (
+    <div>
+      <div className="mb-1 flex items-center gap-2"><span className="text-2xl">📋</span><h1 className="text-2xl font-extrabold text-slate-900">Наша дошка справ</h1></div>
+      <p className="mb-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">📌 Повісь це на видному місці у спільному просторі (холодильник, коридор). З СДУГ: <b>з очей — з голови</b>. Зелене — можна делегувати на важкий день.</p>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {members.map((m, i) => {
+          const mine = list.filter((c) => assignments[c.id]?.memberId === m.id);
+          return (
+            <div key={m.id} className="rounded-2xl border-2 bg-white p-4 shadow-sm" style={{ borderColor: colors[i % colors.length] + "55" }}>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-lg font-extrabold" style={{ color: colors[i % colors.length] }}>{m.name}</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold tabular-nums text-slate-500">склад. {totals[m.id]}</span>
+              </div>
+              <ul className="space-y-1.5">
+                {mine.map((c) => { const deleg = assignments[c.id]?.delegate; return (
+                  <li key={c.id} className={`flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm ${deleg ? "bg-green-50 text-green-800" : "bg-slate-50 text-slate-700"}`}>
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${deleg ? "bg-green-500" : "bg-slate-300"}`} />
+                    <span className="flex-1">{c.text}</span>
+                    {deleg && <span className="text-[10px] font-semibold uppercase text-green-600">делег.</span>}
+                  </li>
+                ); })}
+                {mine.length === 0 && <li className="px-2 py-1 text-sm text-slate-300">—</li>}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-5 flex flex-wrap gap-3">
+        <button onClick={onEdit} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Pencil className="h-4 w-4" /> Редагувати розподіл</button>
+        <button onClick={() => saveMeta({ finished: false, step: 1 })} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><RefreshCw className="h-4 w-4" /> Пройти заново</button>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* BOOKS — section UI                                                  */
+/* ================================================================== */
+function BooksSection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [books, setBooks] = useState([]);
+  const [filter, setFilter] = useState("all"); // all | reading | want | done
+  const [bview, setBview] = useState("shelf"); // shelf | roadmap
+  const [courseId, setCourseId] = useState("ct");
+  const [courseModules, setCourseModules] = useState({}); // courseId -> modules[]
+  const [courseProg, setCourseProg] = useState({}); // courseId -> progress map
+  const [editor, setEditor] = useState(null); // null | { book } (book=null → нова)
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [toast, setToast] = useState(null);
+
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2400); }, []);
+
+  useEffect(() => {
+    (async () => {
+      let list = await store.get(BOKEYS.list, []);
+      // one-time: put the roadmap books onto the shelf
+      if (!(await store.get("books:ctSeeded", false))) {
+        if (!list.some((b) => (b.title || "").toLowerCase().includes("мистецтво мислити"))) {
+          list = [...list, { id: ruid("b"), title: "Мистецтво мислити", author: "Стелла Коттрелл", status: "reading", totalPages: 288, currentPage: 0, rating: 0, notes: "Покроковий шлях по книзі — у вкладці «Роадмапа» 📕", added: Date.now(), finished: null }];
+          await store.set(BOKEYS.list, list);
+        }
+        await store.set("books:ctSeeded", true);
+      }
+      if (!(await store.get("books:fearSeeded", false))) {
+        if (!list.some((b) => (b.title || "").toLowerCase().includes("таблетка від страху"))) {
+          list = [...list, { id: ruid("b"), title: "Таблетка від страху", author: "Андрій Курпатов", status: "reading", totalPages: 77, currentPage: 0, rating: 0, notes: "Роадмапа книги — у вкладці «Роадмапа» 💊", added: Date.now(), finished: null }];
+          await store.set(BOKEYS.list, list);
+        }
+        await store.set("books:fearSeeded", true);
+      }
+      setBooks(list);
+      const prog = {};
+      for (const c of BOOK_COURSES) prog[c.id] = await store.get(c.progressKey, {});
+      setCourseProg(prog);
+      setLoading(false);
+    })();
+    const onReset = () => { setBooks([]); setFilter("all"); setCourseProg({}); setBview("shelf"); };
+    window.addEventListener("books-reset", onReset);
+    return () => window.removeEventListener("books-reset", onReset);
+  }, []);
+
+  // fetch the current roadmap course when needed
+  useEffect(() => {
+    if (bview !== "roadmap" || courseModules[courseId]) return;
+    const course = BOOK_COURSES.find((c) => c.id === courseId);
+    if (!course) return;
+    (async () => {
+      try { const r = await fetch(course.file); const mods = await r.json(); setCourseModules((p) => ({ ...p, [courseId]: mods })); }
+      catch { setCourseModules((p) => ({ ...p, [courseId]: [] })); }
+    })();
+  }, [bview, courseId, courseModules]);
+
+  const setCourseStepDone = useCallback((stepId, done) => {
+    const course = BOOK_COURSES.find((c) => c.id === courseId);
+    if (!course) return;
+    setCourseProg((prev) => {
+      const cur = { ...(prev[courseId] || {}) };
+      if (done) cur[stepId] = true; else delete cur[stepId];
+      store.set(course.progressKey, cur);
+      return { ...prev, [courseId]: cur };
+    });
+  }, [courseId]);
+
+  const save = useCallback(async (next) => { setBooks(next); await store.set(BOKEYS.list, next); }, []);
+
+  const upsert = useCallback(async (data, id) => {
+    if (id) await save(books.map((b) => (b.id === id ? { ...b, ...data } : b)));
+    else await save([...books, { id: ruid("b"), added: Date.now(), rating: 0, currentPage: 0, finished: null, ...data }]);
+    setEditor(null);
+    flash("Збережено 📚");
+  }, [books, save, flash]);
+
+  const remove = useCallback(async (id) => { await save(books.filter((b) => b.id !== id)); flash("Видалено"); }, [books, save, flash]);
+
+  const setStatus = useCallback(async (id, status) => {
+    await save(books.map((b) => {
+      if (b.id !== id) return b;
+      const patch = { status };
+      if (status === "done") { patch.finished = Date.now(); if (b.totalPages) patch.currentPage = b.totalPages; }
+      if (status === "reading" && b.status !== "reading") patch.finished = null;
+      return { ...b, ...patch };
+    }));
+    flash(status === "done" ? "Вітаю з прочитаною книгою! 🎉" : status === "reading" ? "Гарного читання 📖" : "У списку бажань");
+  }, [books, save, flash]);
+
+  const setProgress = useCallback(async (id, page) => {
+    await save(books.map((b) => (b.id === id ? { ...b, currentPage: Math.max(0, Math.min(b.totalPages || page, page)) } : b)));
+  }, [books, save]);
+
+  const setRating = useCallback(async (id, rating) => {
+    await save(books.map((b) => (b.id === id ? { ...b, rating } : b)));
+  }, [books, save]);
+
+  const counts = useMemo(() => {
+    const c = { all: books.length, reading: 0, want: 0, done: 0 };
+    for (const b of books) c[b.status] = (c[b.status] || 0) + 1;
+    return c;
+  }, [books]);
+
+  const shown = useMemo(() => {
+    const order = { reading: 0, want: 1, done: 2 };
+    const list = filter === "all" ? books : books.filter((b) => b.status === filter);
+    return [...list].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || (b.finished || b.added || 0) - (a.finished || a.added || 0));
+  }, [books, filter]);
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-violet-400"><div className="flex flex-col items-center gap-3"><BookMarked className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  const FILTERS = [
+    { id: "all", label: `Всі (${counts.all})` },
+    { id: "reading", label: `Читаю (${counts.reading})` },
+    { id: "want", label: `Хочу (${counts.want})` },
+    { id: "done", label: `Прочитано (${counts.done})` },
+  ];
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-violet-50 via-purple-50/40 to-white">
+      <header className="sticky top-0 z-20 border-b border-violet-100 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-1 px-4">
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-violet-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          )}
+          <NavButton active={bview === "shelf"} onClick={() => setBview("shelf")} icon={BookOpen}>Полиця</NavButton>
+          <NavButton active={bview === "roadmap"} onClick={() => setBview("roadmap")} icon={GraduationCap}>Роадмапа</NavButton>
+          {bview === "shelf" && FILTERS.map((f) => (
+            <button key={f.id} onClick={() => setFilter(f.id)} className={`rounded-lg px-2.5 py-1.5 text-sm font-medium transition ${filter === f.id ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-slate-100"}`}>{f.label}</button>
+          ))}
+        </div>
+      </header>
+
+      <main className="mx-auto w-full max-w-3xl px-4 py-6">
+        {bview === "roadmap" ? (
+          <div>
+            <div className="mb-4 flex flex-wrap gap-2">
+              {BOOK_COURSES.map((c) => {
+                const prog = courseProg[c.id] || {};
+                const mods = courseModules[c.id];
+                const doneN = Object.keys(prog).length;
+                return (
+                  <button key={c.id} onClick={() => setCourseId(c.id)}
+                    className={`flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold transition ${courseId === c.id ? "bg-violet-600 text-white shadow" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-violet-300"}`}>
+                    <span>{c.emoji}</span>
+                    <span>{c.label}</span>
+                    {doneN > 0 && <span className={`rounded-full px-1.5 text-xs tabular-nums ${courseId === c.id ? "bg-white/20" : "bg-violet-50 text-violet-600"}`}>{doneN}{mods ? `/${mods.reduce((s, m) => s + m.steps.length, 0)}` : ""}</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <CareerPath
+              modules={courseModules[courseId] || []}
+              heading={(BOOK_COURSES.find((c) => c.id === courseId) || {}).heading || ""}
+              progress={courseProg[courseId] || {}}
+              onDone={setCourseStepDone}
+            />
+          </div>
+        ) : (
+        <>
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div className="text-sm text-slate-500">
+            {counts.reading > 0 ? `Зараз читаєш: ${counts.reading}` : "Нічого не читаєш зараз — обери наступну книгу ✨"}
+          </div>
+          <button onClick={() => setEditor({ book: null })} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700"><Plus className="h-4 w-4" /> Додати книгу</button>
+        </div>
+
+        {shown.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-violet-200 bg-white/60 px-6 py-14 text-center">
+            <BookMarked className="h-10 w-10 text-violet-300" />
+            <div className="font-semibold text-slate-700">{filter === "all" ? "Тут поки порожньо" : "У цьому списку нічого нема"}</div>
+            <div className="text-sm text-slate-400">Додай книгу, яку читаєш або хочеш прочитати 📚</div>
+            <button onClick={() => setEditor({ book: null })} className="mt-1 inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"><Plus className="h-4 w-4" /> Додати книгу</button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {shown.map((b) => (
+              <BookCard key={b.id} book={b} onEdit={() => setEditor({ book: b })} onDelete={() => remove(b.id)} onStatus={(s) => setStatus(b.id, s)} onProgress={(p) => setProgress(b.id, p)} onRate={(r) => setRating(b.id, r)} />
+            ))}
+          </div>
+        )}
+        </>
+        )}
+      </main>
+
+      {editor && <BookForm book={editor.book} onClose={() => setEditor(null)} onSave={(data) => upsert(data, editor.book?.id)} />}
+      {toast && <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+function BookCard({ book, onEdit, onDelete, onStatus, onProgress, onRate }) {
+  const st = bookStatus(book.status);
+  const pct = book.totalPages > 0 ? Math.min(100, Math.round(((book.currentPage || 0) / book.totalPages) * 100)) : null;
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-violet-200">
+      <div className="flex items-start gap-3">
+        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-violet-50 text-lg">{book.status === "done" ? "✅" : book.status === "reading" ? "📖" : "📚"}</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-slate-800">{book.title}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.color}`}>{st.label}</span>
+          </div>
+          {book.author && <div className="mt-0.5 text-sm text-slate-500">{book.author}</div>}
+
+          {book.status === "reading" && book.totalPages > 0 && (
+            <div className="mt-2 flex items-center gap-2">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${pct}%` }} /></div>
+              <input
+                type="number" min={0} max={book.totalPages} value={book.currentPage || 0}
+                onChange={(e) => onProgress(parseInt(e.target.value || "0", 10))}
+                className="w-16 rounded-lg border border-slate-200 px-1.5 py-0.5 text-right text-xs tabular-nums focus:border-violet-300 focus:outline-none"
+              />
+              <span className="shrink-0 text-xs tabular-nums text-slate-400">з {book.totalPages} · {pct}%</span>
+            </div>
+          )}
+
+          {book.status === "done" && (
+            <div className="mt-1.5 flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((r) => (
+                <button key={r} onClick={() => onRate(r === book.rating ? 0 : r)} title={`${r}/5`}>
+                  <Star className={`h-4 w-4 ${r <= (book.rating || 0) ? "fill-amber-400 text-amber-400" : "text-slate-200"}`} />
+                </button>
+              ))}
+              {book.finished && <span className="ml-2 text-xs text-slate-400">{new Date(book.finished).toLocaleDateString()}</span>}
+            </div>
+          )}
+
+          {book.notes && <div className="mt-1.5 text-xs text-slate-400">{book.notes}</div>}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1">
+          {book.status === "want" && (
+            <button onClick={() => onStatus("reading")} className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700">Почати</button>
+          )}
+          {book.status === "reading" && (
+            <button onClick={() => onStatus("done")} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">Прочитала ✓</button>
+          )}
+          {book.status === "done" && (
+            <button onClick={() => onStatus("reading")} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-50">Перечитати</button>
+          )}
+          <button onClick={onEdit} className="rounded-lg p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600" title="Редагувати"><Pencil className="h-4 w-4" /></button>
+          <button onClick={onDelete} className="rounded-lg p-1.5 text-slate-300 transition hover:bg-rose-50 hover:text-rose-500" title="Видалити"><Trash2 className="h-4 w-4" /></button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BookForm({ book, onClose, onSave }) {
+  const [title, setTitle] = useState(book?.title || "");
+  const [author, setAuthor] = useState(book?.author || "");
+  const [totalPages, setTotalPages] = useState(book?.totalPages || "");
+  const [status, setStatus] = useState(book?.status || "want");
+  const [notes, setNotes] = useState(book?.notes || "");
+
+  const submit = () => {
+    if (!title.trim()) return;
+    onSave({ title: title.trim(), author: author.trim(), totalPages: parseInt(totalPages, 10) || 0, status, notes: notes.trim() });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-4 sm:items-center" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-lg font-bold text-slate-900">{book ? "Редагувати книгу" : "Нова книга"}</div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Назва *</label>
+            <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="Напр. «Кобзар»" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Автор</label>
+            <input value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="Тарас Шевченко" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none" />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Сторінок</label>
+              <input type="number" min={0} value={totalPages} onChange={(e) => setTotalPages(e.target.value)} placeholder="0" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none" />
+            </div>
+            <div className="flex-1">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Статус</label>
+              <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none">
+                {BOOK_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">Нотатки</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Чому хочу прочитати, хто порадив…" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-violet-400 focus:outline-none" />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Скасувати</button>
+          <button onClick={submit} disabled={!title.trim()} className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-40">Зберегти</button>
+        </div>
+      </div>
+    </div>
+  );
+}
