@@ -16,14 +16,6 @@
   "kb": 121
  },
  {
-  "exercise": "plank",
-  "file": "plank.json",
-  "title": "Plank",
-  "author": "/wkpc5j44yer2eqq6",
-  "source": "https://assets-v2.lottiefiles.com/a/b8ff5496-4162-11ee-8471-fb5cac1c4de6/gNKfESVe8P.json",
-  "kb": 182
- },
- {
   "exercise": "forearmPlank",
   "file": "forearmPlank.json",
   "title": "Plank",
@@ -72,36 +64,12 @@
   "kb": 50
  },
  {
-  "exercise": "bridge",
-  "file": "bridge.json",
-  "title": "ejercicio",
-  "author": "/q528mhbui01yefz6",
-  "source": "https://assets-v2.lottiefiles.com/a/1ade7ed8-1168-11ee-9aa1-3711ec6287bb/50jDO5lY4V.json",
-  "kb": 438
- },
- {
   "exercise": "balance",
   "file": "balance.json",
   "title": "Young woman meditating in yoga tree pose",
   "author": "/farfique",
   "source": "https://assets-v2.lottiefiles.com/a/f68cecbe-1166-11ee-963c-b3bc8c065267/1g7JsWrUaJ.json",
   "kb": 100
- },
- {
-  "exercise": "childPose",
-  "file": "childPose.json",
-  "title": "woman meditation",
-  "author": "/k7ap4vxyqw74oou4",
-  "source": "https://assets-v2.lottiefiles.com/a/5d6fa5f0-1182-11ee-b6dd-636ce2c932fe/FujvLlQN1s.json",
-  "kb": 118
- },
- {
-  "exercise": "reachUp",
-  "file": "reachUp.json",
-  "title": "Warmup Exercise",
-  "author": "/kamotionstudio",
-  "source": "https://assets-v2.lottiefiles.com/a/58ad2858-37a7-11ee-9ba1-3fa336466e28/QmQwAWUkGR.json",
-  "kb": 69
  },
  {
   "exercise": "downDog",
@@ -136,8 +104,96 @@
   "kb": 72
  },
  {
-  "exercise": "sideStretch",
-  "file": "sideStretch.json",
+  "exercise": "sideBend",
+  "file": "sideBend.json",
+  "title": "stretch",
+  "author": "/pwcmgde35hyg4ek7",
+  "source": "https://assets-v2.lottiefiles.com/a/337515f2-ba01-4224-b85f-0a935192ce01/KhCoG3ZNPf.json",
+  "kb": 134
+ },
+ {
+  "exercise": "cobra",
+  "file": "cobra.json",
+  "title": "Bhujangasana",
+  "author": "/httpslottiefiles.",
+  "source": "https://assets-v2.lottiefiles.com/a/dc4d2d8c-1189-11ee-a6ed-9780a2ffe6fb/OxOuYlJMjP.json",
+  "kb": 29
+ },
+ {
+  "exercise": "lotus",
+  "file": "lotus.json",
+  "title": "Girl yoga",
+  "author": "/bib",
+  "source": "https://assets-v2.lottiefiles.com/a/ced29b74-1166-11ee-b704-bb55d6385ad8/fZh27ExxXQ.json",
+  "kb": 64
+ },
+ {
+  "exercise": "plieSquat",
+  "file": "plieSquat.json",
+  "title": "squat",
+  "author": "/wkpc5j44yer2eqq6",
+  "source": "https://assets-v2.lottiefiles.com/a/88fb0ee2-1189-11ee-8b12-5f9f28e44169/YqYx6DWCzi.json",
+  "kb": 188
+ },
+ {
+  "exercise": "chairWork",
+  "file": "chairWork.json",
+  "title": "Exercise on a chair",
+  "author": "/xj7pjavd3u",
+  "source": "https://assets-v2.lottiefiles.com/a/a6ba4516-1179-11ee-833c-6740abd6010c/LdwhhfflIJ.json",
+  "kb": 155
+ },
+ {
+  "exercise": "stepChair",
+  "file": "stepChair.json",
+  "title": "Step Up On Chair",
+  "author": "/buixuandinh",
+  "source": "https://assets-v2.lottiefiles.com/a/8c2fd882-116a-11ee-ae26-37d18dd2eef5/MaTae8Wo0w.json",
+  "kb": 129
+ },
+ {
+  "exercise": "seatedAbs",
+  "file": "seatedAbs.json",
+  "title": "Seated Abs Circle",
+  "author": "/buixuandinh",
+  "source": "https://assets-v2.lottiefiles.com/a/1fa5e47a-116c-11ee-8360-73820466daa2/Geh7ftvpke.json",
+  "kb": 87
+ },
+ {
+  "exercise": "hipThrust",
+  "file": "hipThrust.json",
+  "title": "Barbell Hip Thrust Exercise for Glutes",
+  "author": "/vectorfitexercises",
+  "source": "https://assets-v2.lottiefiles.com/a/fc5ddd86-330f-4579-b69b-d37545df217d/Umin2UVmtk.json",
+  "kb": 70
+ },
+ {
+  "exercise": "neckRoll",
+  "file": "neckRoll.json",
+  "title": "Yoga neck exercise",
+  "author": "/indrum",
+  "source": "https://assets-v2.lottiefiles.com/a/a2cafaa4-116a-11ee-bbaa-1323a5142b6b/AvhnmUY9RG.json",
+  "kb": 42
+ },
+ {
+  "exercise": "birdDog",
+  "file": "birdDog.json",
+  "title": "Plank",
+  "author": "/wkpc5j44yer2eqq6",
+  "source": "https://assets-v2.lottiefiles.com/a/b8ff5496-4162-11ee-8471-fb5cac1c4de6/gNKfESVe8P.json",
+  "kb": 182
+ },
+ {
+  "exercise": "marchInPlace",
+  "file": "marchInPlace.json",
+  "title": "Warmup Exercise",
+  "author": "/kamotionstudio",
+  "source": "https://assets-v2.lottiefiles.com/a/58ad2858-37a7-11ee-9ba1-3fa336466e28/QmQwAWUkGR.json",
+  "kb": 69
+ },
+ {
+  "exercise": "lungeWoman",
+  "file": "lungeWoman.json",
   "title": "Exercise",
   "author": "/suhayrasarwar",
   "source": "https://assets-v2.lottiefiles.com/a/fae82e24-1182-11ee-8f9c-dfcf3885aa39/svDKQ16o23.json",
