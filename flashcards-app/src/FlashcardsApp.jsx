@@ -23,6 +23,7 @@ import {
   HandHeart, ShoppingCart, Wallet, ShoppingBasket, Search,
   Package, Lock, HelpCircle, Stethoscope, TestTube2, Minus,
 } from "lucide-react";
+import lottie from "lottie-web";
 import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signInWithLink, signOutCloud, refreshSession, syncNow } from "./cloud.js";
 
 /* ------------------------------------------------------------------ */
@@ -1614,178 +1615,67 @@ async function clearFitnessData() { for (const k of Object.values(FTKEYS)) await
 // Exercises are poses for a rigged figure: every joint has an angle, and SVG
 // animates between two keyframes. Angles: 0 = limb points down, +90 = left,
 // -90 = right, 180 = up. Arms are relative to the torso, legs are absolute.
-// Poses: base joint angles per body position. 0 = limb points down, +90 = left,
-// -90 = right, 180 = up. Arms rotate relative to the torso, legs are absolute.
-const FT_POSES = {
-  standing: { oy: 0, rot: 0, base: { hL: -3, hR: 3, sL: 12, sR: -12 } },
-  // lying: the whole figure is tipped 90° (head to the left), so joint angles
-  // are written as if the person were standing — much easier to reason about.
-  supine:   { oy: 36, rot: -90, base: { torso: 0, sL: 10, sR: -10, hL: 0, hR: 2 } },
-  side:     { oy: 36, rot: -90, base: { torso: 0, sL: 150, eL: 60, sR: -8, hL: 0, hR: 0 } },
-  seated:   { oy: 32, rot: 0, base: { torso: 0, sL: -72, sR: -108, hL: -88, hR: -92 } },
-  quad:     { oy: 20, rot: 0, base: { torso: -74, sL: 74, sR: 74, hL: 0, kL: -88, hR: -2, kR: -88 } },
-  prone:    { oy: 20, rot: 0, base: { torso: -76, sL: 76, sR: 76, hL: -58, hR: -62 } },
-};
+// Each exercise points at a Lottie animation stored in /public/lottie
+// (free animations from LottieFiles, see public/lottie/attribution.json).
 const EXERCISES = {
-  /* ——— КАЛЛАНЕТИКА · стоячи ——— */
-  reachUp: { name: "Витягування вгору", emoji: "🌱", group: "Калланетика", dur: 4.2, pose: "standing",
-    tip: "Тягнись маківкою і пальцями вгору, ребра донизу, живіт підтягнутий. Тримай і дихай.",
-    a: { sL: 168, sR: -168 }, b: { dy: -1.5, sL: 176, sR: -176 } },
-  armPulse: { name: "Пульси руками", emoji: "🙆‍♀️", group: "Калланетика", dur: 1.5, pose: "standing",
-    tip: "Руки в сторони на рівні плечей, пульсуй угору маленькою амплітудою. Плечі опущені.",
-    a: { sL: 84, eL: -6, sR: -84, eR: 6 }, b: { dy: -0.6, sL: 102, sR: -102 } },
-  armCircles: { name: "Кола плечима", emoji: "🔄", group: "Калланетика", dur: 2.8, pose: "standing",
-    tip: "Малі кола плечима назад, руки розслаблені. Розкриває грудний відділ.",
-    a: { sL: 26, eL: -56, sR: -26, eR: 56 }, b: { sL: -4, eL: -22, sR: 4, eR: 22 } },
-  sideStretch: { name: "Нахил убік", emoji: "🌿", group: "Калланетика", dur: 4.2, pose: "standing",
-    tip: "Тягнись убік і вгору, таз на місці, обидві стопи притиснуті. Статичне утримання.",
-    a: { torso: 15, sL: 164, sR: -10, hL: -5, hR: 5 }, b: { torso: 18, sL: 160, sR: -8, hL: -5, hR: 5 } },
-  rollDown: { name: "Скручування вниз", emoji: "🍃", group: "Калланетика", dur: 4.6, pose: "standing",
-    tip: "Опускайся хребець за хребцем, шия розслаблена, коліна м'які. Дуже повільно.",
-    a: { torso: -22, sL: -20, sR: 20 }, b: { torso: -64, sL: -6, sR: 6 } },
-  wallChair: { name: "«Стілець» біля стіни", emoji: "🪑", group: "Калланетика", dur: 4.2, pose: "standing",
-    tip: "Спина притиснута до стіни, стегна паралельно підлозі. Тримай і дихай рівно.",
-    a: { dy: 11, sL: 86, sR: -86, hL: -12, kL: 12, hR: 12, kR: -12 },
-    b: { dy: 12, sL: 87, sR: -87, hL: -13, kL: 13, hR: 13, kR: -13 } },
-  chairPulse: { name: "«Стілець» — пульси", emoji: "🔥", group: "Калланетика", dur: 1.7, pose: "standing",
-    tip: "З положення напівприсіду пульсуй униз на 2–3 см. Спина рівна, вага на п'ятах.",
-    a: { dy: 6, torso: 7, sL: 74, eL: 8, sR: -74, eR: -8, hL: -9, kL: 9, hR: 9, kR: -9 },
-    b: { dy: 12, torso: 11, sL: 76, eL: 6, sR: -76, eR: -6, hL: -14, kL: 14, hR: 14, kR: -14 } },
-  calfRaise: { name: "Підйом на носки", emoji: "🩰", group: "Калланетика", dur: 2.2, pose: "standing",
-    tip: "Піднімайся високо на півпальці, коліна прямі, утримуй рівновагу.",
-    a: { sL: 76, sR: -76 }, b: { dy: -4, sL: 80, sR: -80 } },
-  balance: { name: "Рівновага на нозі", emoji: "🦩", group: "Калланетика", dur: 4.4, pose: "standing",
-    tip: "Стій на одній нозі, друга зігнута. Дивись в одну точку, таз рівно.",
-    a: { sL: 158, sR: -158, hL: -2, hR: -22, kR: 78 }, b: { sL: 162, sR: -162, hL: -2, hR: -24, kR: 80 } },
-  backLegLift: { name: "Підйом ноги назад", emoji: "🕊️", group: "Калланетика", dur: 2.4, pose: "standing",
-    tip: "Нога пряма, підіймай сідницею, не прогинай поперек. Пульсуй угору.",
-    a: { torso: 12, sL: 58, eL: 22, sR: -58, eR: -22, hL: -2, hR: -16 },
-    b: { dy: -1, torso: 16, sL: 60, eL: 20, sR: -60, eR: -20, hL: -2, hR: -36 } },
-  sideLegStand: { name: "Нога вбік стоячи", emoji: "📐", group: "Калланетика", dur: 2.6, pose: "standing",
-    tip: "Підіймай пряму ногу вбік без нахилу корпусу. Носок тягни на себе.",
-    a: { sL: 94, sR: -94, hR: 22 }, b: { sL: 98, sR: -98, hR: 42 } },
-  quadStretch: { name: "Розтяжка стегна", emoji: "🧵", group: "Калланетика", dur: 4.4, pose: "standing",
-    tip: "П'ятку до сідниці, коліно вниз, таз підкручений. Утримуй без ривків.",
-    a: { sL: 150, sR: -46, eR: -70, hR: -14, kR: 150 }, b: { sL: 154, sR: -48, eR: -72, hR: -16, kR: 154 } },
-  /* ——— КАЛЛАНЕТИКА · живіт ——— */
-  curlUp: { name: "Скручування", emoji: "🔺", group: "Калланетика", dur: 2.4, pose: "supine",
-    tip: "Підіймай лопатки повільно, підборіддя не тисни до грудей. Пульсуй угору.",
-    a: { torso: -6, sL: 148, eL: 62, sR: -148, eR: -62, hL: -45, kL: 132, hR: -48, kR: 136 },
-    b: { torso: -28, sL: 140, eL: 62, sR: -140, eR: -62, hL: -45, kL: 132, hR: -48, kR: 136 } },
-  curlHold: { name: "Утримання скручування", emoji: "⏳", group: "Калланетика", dur: 4.2, pose: "supine",
-    tip: "Лопатки над підлогою, руки витягнуті вперед. Тримай і рівно дихай.",
-    a: { torso: -26, sL: 26, sR: -26, hL: -45, kL: 132, hR: -48, kR: 136 },
-    b: { torso: -28, sL: 28, sR: -28, hL: -45, kL: 132, hR: -48, kR: 136 } },
-  obliqueCurl: { name: "Косі скручування", emoji: "🌀", group: "Калланетика", dur: 2.6, pose: "supine",
-    tip: "Тягнись плечем до протилежного коліна, поперек притиснутий.",
-    a: { torso: -10, sL: 146, eL: 60, sR: -40, hL: -45, kL: 130, hR: -55, kR: 120 },
-    b: { torso: -30, sL: 140, eL: 60, sR: -70, hL: -40, kL: 126, hR: -70, kR: 110 } },
-  legRaise: { name: "Підйом прямих ніг", emoji: "📏", group: "Калланетика", dur: 2.8, pose: "supine",
-    tip: "Поперек притиснутий до підлоги, ноги прямі, опускай повільно.",
-    a: { hL: -14, hR: -12 }, b: { hL: -84, hR: -82 } },
-  hold45: { name: "Утримання ніг 45°", emoji: "⛰️", group: "Калланетика", dur: 4.2, pose: "supine",
-    tip: "Ноги під кутом 45°, поперек притиснутий. Тисне на спину — підніми ноги вище.",
-    a: { hL: -44, hR: -42 }, b: { hL: -46, hR: -44 } },
-  scissorsLift: { name: "Ножиці", emoji: "✂️", group: "Калланетика", dur: 2.0, pose: "supine",
-    tip: "Ноги прямі, рухи повільні й контрольовані. Поперек не відривай.",
-    a: { hL: -68, hR: -22 }, b: { hL: -22, hR: -68 } },
-  bicycle: { name: "Велосипед", emoji: "🚲", group: "Калланетика", dur: 2.2, pose: "supine",
-    tip: "Повільно, ніби педалюєш у сповільненій зйомці. Живіт підтягнутий.",
-    a: { torso: -8, sL: 148, eL: 60, sR: -148, eR: -60, hL: -70, kL: 76, hR: -24, kR: 18 },
-    b: { torso: -8, sL: 148, eL: 60, sR: -148, eR: -60, hL: -24, kL: 18, hR: -70, kR: 76 } },
-  forearmPlank: { name: "Планка на передпліччях", emoji: "🧱", group: "Калланетика", dur: 4.2, pose: "prone",
-    tip: "Лікті під плечима, таз не провисає, живіт підтягнутий. Тримай.",
-    a: { sL: 82, eL: -74, sR: 82, eR: 74 }, b: { dy: -0.8, sL: 83, eL: -74, sR: 83, eR: 74 } },
-  /* ——— КАЛЛАНЕТИКА · сідниці й ноги ——— */
-  bridgeHold: { name: "Місток — утримання", emoji: "🌉", group: "Калланетика", dur: 4.4, pose: "supine",
-    tip: "Таз угору, сідниці стиснуті, коліна над п'ятами. Утримуй лінію.",
-    a: { dy: -8, torso: 22, hL: -48, kL: 138, hR: -50, kR: 140 },
-    b: { dy: -9, torso: 23, hL: -50, kL: 140, hR: -52, kR: 142 } },
-  bridgePulse: { name: "Місток-пульси", emoji: "⚡", group: "Калланетика", dur: 1.9, pose: "supine",
-    tip: "З верхньої точки пульсуй тазом угору на 2–3 см. Поперек не прогинай.",
-    a: { dy: -3, torso: 12, hL: -40, kL: 128, hR: -42, kR: 130 },
-    b: { dy: -10, torso: 26, hL: -54, kL: 144, hR: -56, kR: 146 } },
-  bridgeOneLeg: { name: "Місток на одній нозі", emoji: "🦵", group: "Калланетика", dur: 4.2, pose: "supine",
-    tip: "Одна нога витягнута, таз не завалюється. Найважча версія містка.",
-    a: { dy: -8, torso: 22, hL: -48, kL: 138, hR: -62, kR: 0 },
-    b: { dy: -9, torso: 23, hL: -50, kL: 140, hR: -66, kR: 0 } },
-  sideLegLift: { name: "Підйом ноги на боці", emoji: "🧜‍♀️", group: "Калланетика", dur: 2.6, pose: "side",
-    tip: "Корпус нерухомий, нога пряма. Підіймай без ривка, опускай повільно.",
-    a: { hR: -4 }, b: { hR: -34 } },
-  sideLegHold: { name: "Утримання ноги на боці", emoji: "⏱️", group: "Калланетика", dur: 4.2, pose: "side",
-    tip: "Підніми ногу і тримай. Носок вперед, таз не завалюється назад.",
-    a: { hR: -28 }, b: { hR: -30 } },
-  clam: { name: "«Мушля»", emoji: "🐚", group: "Калланетика", dur: 2.4, pose: "side",
-    tip: "Стопи разом, коліно відкривається вгору. Таз нерухомий — працює сідниця.",
-    a: { hL: -22, kL: 66, hR: -22, kR: 66 }, b: { hL: -22, kL: 66, hR: -48, kR: 88 } },
-  donkeyKick: { name: "Мах ногою в упорі", emoji: "🐴", group: "Калланетика", dur: 2.2, pose: "quad",
-    tip: "Стоячи на колінах і долонях, підіймай зігнуту ногу вгору. Спина рівна.",
-    a: { hR: -44, kR: -52 }, b: { hR: -76, kR: -34 } },
-  legBackHold: { name: "Нога назад в упорі", emoji: "➡️", group: "Калланетика", dur: 4.2, pose: "quad",
-    tip: "Витягни ногу назад на рівень таза і тримай. Таз не розвертай.",
-    a: { hR: -92, kR: 0 }, b: { hR: -94, kR: 0 } },
-  gluteStretch: { name: "Розтяжка сідниці", emoji: "🪷", group: "Калланетика", dur: 4.6, pose: "supine",
-    tip: "Щиколотку на коліно, підтягуй стегно до себе. Плечі на підлозі.",
-    a: { sL: 60, eL: 40, sR: -60, eR: -40, hL: -62, kL: 108, hR: -80, kR: 58 },
-    b: { sL: 66, eL: 44, sR: -66, eR: -44, hL: -70, kL: 112, hR: -86, kR: 60 } },
-  seatedStretch: { name: "Нахил сидячи", emoji: "🧘‍♀️", group: "Калланетика", dur: 4.6, pose: "seated",
-    tip: "Тягнись грудьми до ніг, спина довга, коліна м'які. Без ривків.",
-    a: { torso: -26, sL: -82, sR: -98 }, b: { torso: -46, sL: -96, sR: -84 } },
-  catStretch: { name: "Кішка-корова", emoji: "🐈", group: "Калланетика", dur: 3.8, pose: "quad",
-    tip: "Вдих — прогин, видих — округли спину. Дуже повільно, за диханням.",
-    a: { torso: -70, sL: 70 }, b: { dy: -3, torso: -94, sL: 94, sR: 94 } },
-  childPose: { name: "Поза дитини", emoji: "🍂", group: "Калланетика", dur: 4.8, pose: "quad",
-    tip: "Сідай на п'ятки, лоб до підлоги, руки вперед. Дихай у спину.",
-    a: { dy: 8, torso: -86, sL: 86, sR: 86, kL: -150, kR: -150 },
-    b: { dy: 9, torso: -87, sL: 87, sR: 87, kL: -152, kR: -152 } },
+  /* ——— КАЛЛАНЕТИКА ——— */
+  reachUp:      { name: "Витягування вгору", emoji: "🌱", group: "Калланетика", lottie: "reachUp",
+    tip: "Тягнись маківкою і пальцями вгору, ребра донизу, живіт підтягнутий. Тримай і дихай." },
+  sideStretch:  { name: "Розтяжка вбік", emoji: "🌿", group: "Калланетика", lottie: "sideStretch",
+    tip: "Тягнись убік і вгору, таз на місці, обидві стопи притиснуті до підлоги." },
+  chairPulse:   { name: "Присід із пульсами", emoji: "🔥", group: "Калланетика", lottie: "squat",
+    tip: "Присідай неглибоко і пульсуй на 2–3 см. Спина рівна, вага на п'ятах." },
+  balance:      { name: "Рівновага на нозі", emoji: "🦩", group: "Калланетика", lottie: "balance",
+    tip: "Стій на одній нозі, друга зігнута. Дивись в одну точку, таз рівно." },
+  curlUp:       { name: "Скручування", emoji: "🔺", group: "Калланетика", lottie: "curlUp",
+    tip: "Підіймай лопатки повільно, підборіддя не тисни до грудей. Пульсуй угору." },
+  obliqueCurl:  { name: "Косі скручування", emoji: "🌀", group: "Калланетика", lottie: "obliqueCurl",
+    tip: "Повертай корпус із контролем, стопи на підлозі, поперек стабільний." },
+  reverseCrunch:{ name: "Зворотні скручування", emoji: "🔄", group: "Калланетика", lottie: "reverseCrunch",
+    tip: "Підтягуй коліна до грудей, таз відривай м'яко, без розгойдування." },
+  scissorsLift: { name: "Ножиці", emoji: "✂️", group: "Калланетика", lottie: "scissorsLift",
+    tip: "Ноги прямі, рухи повільні й контрольовані. Поперек не відривай." },
+  bridge:       { name: "Місток", emoji: "🌉", group: "Калланетика", lottie: "bridge",
+    tip: "Підіймай таз силою сідниць, зверху затримка. Поперек не прогинай." },
+  sideLegLift:  { name: "Підйом ноги на боці", emoji: "🧜‍♀️", group: "Калланетика", lottie: "sideLegLift",
+    tip: "Корпус нерухомий, нога пряма. Підіймай без ривка, опускай повільно." },
+  downDog:      { name: "Собака мордою вниз", emoji: "🐕", group: "Калланетика", lottie: "downDog",
+    tip: "Таз угору, спина довга, п'ятки тягни до підлоги. Дихай глибоко." },
+  childPose:    { name: "Поза спокою", emoji: "🍂", group: "Калланетика", lottie: "childPose",
+    tip: "Сядь зручно, спина довга, плечі опущені. Кілька повільних вдихів і видихів." },
   /* ——— загальні ——— */
-  squat: { name: "Присідання", emoji: "🦿", group: "Ноги", dur: 2.2, pose: "standing",
-    tip: "Коліна за напрямком стоп, спина рівна, таз назад.",
-    a: { dy: 2, torso: 6, sL: 72, eL: 10, sR: -72, eR: -10, hL: -6, kL: 6, hR: 6, kR: -6 },
-    b: { dy: 14, torso: 14, sL: 76, eL: 6, sR: -76, eR: -6, hL: -16, kL: 16, hR: 16, kR: -16 } },
-  lunge: { name: "Випади", emoji: "🚶‍♀️", group: "Ноги", dur: 2.6, pose: "standing",
-    tip: "Обидва коліна ~90°, корпус вертикальний.",
-    a: { torso: 5, sL: 60, eL: 20, sR: -60, eR: -20, hL: -20, kL: 24, hR: 22, kR: -6 },
-    b: { dy: 8, torso: 7, sL: 62, eL: 18, sR: -62, eR: -18, hL: -26, kL: 34, hR: 28, kR: -10 } },
-  pushup: { name: "Віджимання", emoji: "💪", group: "Верх", dur: 2.4, pose: "prone",
-    tip: "Тіло — пряма лінія, лікті ближче до корпусу.",
-    a: {}, b: { dy: 6, sL: 58, eL: 42, sR: 58, eR: -42 } },
-  plank: { name: "Планка", emoji: "🧗‍♀️", group: "Кор", dur: 3.4, pose: "prone",
-    tip: "Таз не провисає, живіт підтягнутий, дихай рівно.",
-    a: {}, b: { dy: -1 } },
-  climber: { name: "Скелелаз", emoji: "⛰️", group: "Кардіо", dur: 1.1, pose: "prone",
-    tip: "Таз низько, коліно тягни до грудей, темп швидкий.",
-    a: { hL: -34, kL: 44 }, b: { hL: -58, kL: 0, hR: -34, kR: 44 } },
-  jack: { name: "Стрибки «зірочка»", emoji: "⭐", group: "Кардіо", dur: 1.1, pose: "standing",
-    tip: "М'яко приземляйся на носок, коліна трохи зігнуті.",
-    a: { sL: 88, sR: -88, hL: -6, hR: 6 }, b: { dy: -2.5, sL: 166, sR: -166, hL: -20, hR: 20 } },
-  highknees: { name: "Високі коліна", emoji: "🏃‍♀️", group: "Кардіо", dur: 0.95, pose: "standing",
-    tip: "Коліно вище стегна, працюй руками, спина рівна.",
-    a: { torso: 2, sL: 50, eL: 58, sR: -118, eR: -38, hL: -4, hR: 36, kR: -62 },
-    b: { torso: 2, sL: 118, eL: 38, sR: -50, eR: -58, hL: 38, kL: -62, hR: -4 } },
-  hamstring: { name: "Нахил до ніг", emoji: "🌸", group: "Розтяжка", dur: 4.2, pose: "standing",
-    tip: "Коліна м'які, тягнись грудьми до стегон, без ривків.",
-    a: { torso: -52, sL: -18, sR: 18 }, b: { torso: -64, sL: -6, sR: 6 } },
-  shoulder: { name: "Розтяжка плечей", emoji: "💫", group: "Розтяжка", dur: 3.8, pose: "standing",
-    tip: "Тягни лікоть до грудей, плече опущене вниз.",
-    a: { sL: 94, eL: 80, sR: -18 }, b: { sL: 18, sR: -94, eR: -80 } },
+  squat:        { name: "Присідання", emoji: "🦿", group: "Ноги", lottie: "squat",
+    tip: "Коліна за напрямком стоп, спина рівна, таз назад." },
+  lunge:        { name: "Випади", emoji: "🚶‍♀️", group: "Ноги", lottie: "lunge",
+    tip: "Обидва коліна ~90°, корпус вертикальний, коліно не завалюється всередину." },
+  pushup:       { name: "Віджимання", emoji: "💪", group: "Верх", lottie: "pushup",
+    tip: "Тіло — пряма лінія, лікті ближче до корпусу." },
+  plank:        { name: "Планка", emoji: "🧗‍♀️", group: "Кор", lottie: "plank",
+    tip: "Таз не провисає, живіт підтягнутий, дихай рівно." },
+  forearmPlank: { name: "Планка на передпліччях", emoji: "🧱", group: "Кор", lottie: "forearmPlank",
+    tip: "Лікті під плечима, таз не провисає, живіт підтягнутий." },
+  jack:         { name: "Стрибки «зірочка»", emoji: "⭐", group: "Кардіо", lottie: "jack",
+    tip: "М'яко приземляйся на носок, коліна трохи зігнуті." },
+  highknees:    { name: "Високі коліна", emoji: "🏃‍♀️", group: "Кардіо", lottie: "highknees",
+    tip: "Коліно вище стегна, працюй руками, спина рівна." },
 };
 const FT_WORKOUTS = [
-  { id: "callanetics", name: "Калланетика", emoji: "🩰", desc: "30 вправ · повільні утримання і мікропульси на глибокі м'язи",
-    items: ["reachUp", "armCircles", "armPulse", "sideStretch", "rollDown", "wallChair", "chairPulse", "calfRaise", "balance",
-            "backLegLift", "sideLegStand", "quadStretch", "curlUp", "curlHold", "obliqueCurl", "legRaise", "hold45",
-            "scissorsLift", "bicycle", "forearmPlank", "bridgeHold", "bridgePulse", "bridgeOneLeg", "sideLegLift",
-            "sideLegHold", "clam", "donkeyKick", "legBackHold", "gluteStretch", "seatedStretch"] },
+  { id: "callanetics", name: "Калланетика", emoji: "🩰", desc: "28 позицій · повільні утримання і мікропульси на глибокі м'язи",
+    items: ["reachUp", "sideStretch", "chairPulse", "balance", "sideLegLift", "bridge", "curlUp", "obliqueCurl",
+            "reverseCrunch", "scissorsLift", "forearmPlank", "downDog",
+            "chairPulse", "balance", "sideLegLift", "bridge", "curlUp", "obliqueCurl",
+            "reverseCrunch", "scissorsLift", "forearmPlank", "plank",
+            "sideLegLift", "bridge", "curlUp", "sideStretch", "reachUp", "childPose"] },
   { id: "warmup", name: "Розминка", emoji: "🔥", desc: "Прокинутись і розігріти тіло",
-    items: ["jack", "highknees", "catStretch", "squat", "shoulder"] },
+    items: ["reachUp", "jack", "highknees", "sideStretch", "squat", "downDog"] },
   { id: "strength", name: "Сила вдома", emoji: "💪", desc: "Все тіло, без обладнання",
-    items: ["squat", "pushup", "lunge", "bridgePulse", "plank", "squat", "pushup", "plank"] },
+    items: ["squat", "pushup", "lunge", "bridge", "plank", "squat", "pushup", "forearmPlank"] },
   { id: "core", name: "Прес і кор", emoji: "🧱", desc: "Живіт, спина, стабільність",
-    items: ["curlUp", "plank", "climber", "bridgePulse", "scissorsLift", "plank"] },
+    items: ["curlUp", "obliqueCurl", "reverseCrunch", "plank", "scissorsLift", "forearmPlank", "bridge"] },
   { id: "cardio", name: "Кардіо-заряд", emoji: "⚡", desc: "Розігнати кров і підняти пульс",
-    items: ["jack", "highknees", "climber", "squat", "jack", "highknees"] },
+    items: ["jack", "highknees", "squat", "lunge", "jack", "highknees"] },
   { id: "stretch", name: "Вечірня розтяжка", emoji: "🌙", desc: "Спокійний розтяг перед сном",
-    items: ["catStretch", "hamstring", "shoulder", "seatedStretch", "gluteStretch", "childPose"] },
+    items: ["downDog", "sideStretch", "reachUp", "bridge", "childPose"] },
 ];
 const FT_DURATIONS = [20, 30, 45, 60, 90];
 const FT_REST = 10, FT_LONG_REST = 20, FT_LONG_EVERY = 4;
@@ -9045,110 +8935,38 @@ function CalmHeaderPlaceholder() {}
 /* ================================================================== */
 /* FITNESS — section UI                                                */
 /* ================================================================== */
-const FT_INK = "#2f2a28", FT_SKIN = "#f7d3b0", FT_SKIN_D = "#eec19a", FT_HAIR = "#f0c05a", FT_HAIR_D = "#d9a63f",
-      FT_TOP = "#5fb17c", FT_TOP_D = "#4e9a69", FT_PANTS = "#333a45", FT_PANTS_D = "#282e38", FT_SHOE = "#ffffff";
-// tapered rounded limb from (0,0) to (0,len)
-function ftLimb(len, w1, w2) {
-  const a = w1 / 2, b = w2 / 2;
-  return `M ${-a} 0 Q ${-a - 0.4} ${len * 0.55} ${-b} ${len} Q ${-b} ${len + b * 1.15} 0 ${len + b * 1.15} Q ${b} ${len + b * 1.15} ${b} ${len} Q ${a + 0.4} ${len * 0.55} ${a} 0 Q 0 ${-a * 0.75} ${-a} 0 Z`;
-}
+const FT_CACHE = {};
 function GirlFigure({ id, size = 200, playing = true }) {
   const ex = EXERCISES[id];
-  if (!ex) return null;
-  const pose = FT_POSES[ex.pose] || FT_POSES.standing;
-  const A = { ...pose.base, ...(ex.a || {}) };
-  const B = { ...pose.base, ...(ex.a || {}), ...(ex.b || {}) };
-  const dur = `${ex.dur}s`;
-  const g = (k) => [A[k] || 0, B[k] || 0];
-  const ease = { calcMode: "spline", keyTimes: "0;0.5;1", keySplines: "0.45 0 0.55 1;0.45 0 0.55 1" };
-  const Joint = ({ x = 0, y = 0, k, children }) => {
-    const [a, b] = g(k);
-    return (
-      <g transform={`translate(${x},${y})`}>
-        <g transform={`rotate(${a})`}>
-          {playing && a !== b && (
-            <animateTransform attributeName="transform" type="rotate" dur={dur} repeatCount="indefinite"
-              values={`${a};${b};${a}`} {...ease} />
-          )}
-          {children}
-        </g>
-      </g>
-    );
-  };
-  const [dyA, dyB] = g("dy");
-  const S = { stroke: FT_INK, strokeWidth: 1.5, strokeLinejoin: "round", strokeLinecap: "round" };
-  const legPart = (side) => {
-    const near = side < 0;
-    return (
-      <Joint x={near ? -4 : 4} y={-1} k={near ? "hL" : "hR"}>
-        <path d={ftLimb(20, 11, 7.4)} fill={near ? FT_PANTS : FT_PANTS_D} {...S} />
-        <Joint y={20} k={near ? "kL" : "kR"}>
-          <path d={ftLimb(20, 7.6, 4.6)} fill={near ? FT_PANTS : FT_PANTS_D} {...S} />
-          <path d="M -2.6 19.6 q 0.2 -1.8 2.2 -1.8 q 4.8 0.4 5.8 2.8 q 0.6 2 -1.6 2.4 l -4.6 0 q -1.8 -0.4 -1.8 -3.4 Z" fill={FT_SHOE} {...S} />
-        </Joint>
-      </Joint>
-    );
-  };
-  const armPart = (side) => {
-    const near = side < 0;
-    const skin = near ? FT_SKIN : FT_SKIN_D;
-    return (
-      <Joint x={near ? -6.4 : 6.4} y={-21.5} k={near ? "sL" : "sR"}>
-        <path d={ftLimb(13, 6.2, 4.6)} fill={skin} {...S} />
-        <Joint y={13} k={near ? "eL" : "eR"}>
-          <path d={ftLimb(12, 4.6, 3.4)} fill={skin} {...S} />
-          <ellipse cx="0" cy="13" rx="2.4" ry="2.9" fill={skin} {...S} />
-        </Joint>
-      </Joint>
-    );
-  };
-  return (
-    <svg viewBox="0 0 100 100" width={size} height={size} style={{ overflow: "visible" }}>
-      <ellipse cx="50" cy="96.5" rx="26" ry="2.6" fill="#0f766e" opacity="0.09" />
-      <g transform={`translate(0,${pose.oy})`}>
-        <g transform={`translate(0,${dyA})`}>
-          {playing && dyA !== dyB && (
-            <animateTransform attributeName="transform" type="translate" dur={dur} repeatCount="indefinite"
-              values={`0 ${dyA};0 ${dyB};0 ${dyA}`} {...ease} />
-          )}
-          <g transform={`rotate(${pose.rot || 0} 50 52)`}>
-          <g transform="translate(50,52)">
-            {legPart(1)}
-            {armPart(1)}
-            {legPart(-1)}
-            <Joint k="torso">
-              {/* torso: hips 0 → shoulders -22 */}
-              <path d="M -8.2 1.6 C -9.4 -2.6 -6.8 -5.6 -5.4 -9 C -4.4 -11.6 -5.8 -13.6 -6.7 -16.2 C -7.7 -19 -7.5 -21.2 -7 -22.2 Q 0 -25.6 7 -22.2 C 7.5 -21.2 7.7 -19 6.7 -16.2 C 5.8 -13.6 4.4 -11.6 5.4 -9 C 6.8 -5.6 9.4 -2.6 8.2 1.6 Q 0 4 -8.2 1.6 Z" fill={FT_SKIN} {...S} />
-              {/* crop top */}
-              <path d="M -7.1 -22.4 Q 0 -25.8 7.1 -22.4 C 7.6 -21.2 7.8 -19 6.8 -16 Q 0 -12.8 -6.8 -16 C -7.8 -19 -7.6 -21.2 -7.1 -22.4 Z" fill={FT_TOP} {...S} />
-              <path d="M -6.8 -16 Q 0 -12.8 6.8 -16 L 6.5 -14.4 Q 0 -11.3 -6.5 -14.4 Z" fill={FT_TOP_D} stroke="none" />
-              <path d="M -6 -23.2 L -3.2 -26.2 M 6 -23.2 L 3.2 -26.2" stroke={FT_TOP} strokeWidth="2.2" strokeLinecap="round" fill="none" />
-              {/* leggings yoke */}
-              <path d="M -8.6 -2.6 Q 0 -0.2 8.6 -2.6 C 9.2 1.4 8.8 3.8 8.2 5.6 Q 0 8 -8.2 5.6 C -8.8 3.8 -9.2 1.4 -8.6 -2.6 Z" fill={FT_PANTS} {...S} />
-              {/* neck */}
-              <path d="M -2 -23.4 h 4 v 3.2 h -4 Z" fill={FT_SKIN_D} stroke="none" />
-              {/* head */}
-              <g transform="translate(0,-31.5)">
-                <g>
-                  {playing && <animateTransform attributeName="transform" type="rotate" dur={`${ex.dur * 1.35}s`} repeatCount="indefinite" values="-4;5;-4" calcMode="spline" keyTimes="0;0.5;1" keySplines="0.45 0 0.55 1;0.45 0 0.55 1" />}
-                  <path d="M -5.4 1.6 q -6.4 2.6 -6.2 9.2 q 0.2 4.6 3.4 6.4 q -3.4 -6.6 2.4 -13.2 Z" fill={FT_HAIR} {...S} />
-                </g>
-                <path d="M -6.6 0.4 C -8.4 -6.6 -4.6 -10.6 0 -10.6 C 4.6 -10.6 8.4 -6.6 6.6 0.4 C 6.1 2.2 5.2 3.2 4 3.6 L -4 3.6 C -5.2 3.2 -6.1 2.2 -6.6 0.4 Z" fill={FT_HAIR} {...S} />
-                <ellipse cx="0" cy="-0.6" rx="5.4" ry="6.2" fill={FT_SKIN} {...S} />
-                <path d="M -5.6 -3.4 C -4.6 -8.8 4.6 -8.8 5.6 -3.4 C 3.2 -6.4 -3 -6.6 -5.6 -3.4 Z" fill={FT_HAIR} {...S} />
-                <path d="M -3.1 -0.8 q 1.1 1.3 2.2 0 M 0.9 -0.8 q 1.1 1.3 2.2 0" stroke={FT_INK} strokeWidth="0.95" fill="none" strokeLinecap="round" />
-                <path d="M -1.2 2.5 q 1.2 1.2 2.4 0" stroke={FT_INK} strokeWidth="0.9" fill="none" strokeLinecap="round" />
-                <circle cx="-3.9" cy="1.2" r="1.05" fill="#f6a7a0" opacity="0.65" />
-                <circle cx="3.9" cy="1.2" r="1.05" fill="#f6a7a0" opacity="0.65" />
-              </g>
-              {armPart(-1)}
-            </Joint>
-          </g>
-          </g>
-        </g>
-      </g>
-    </svg>
-  );
+  const host = useRef(null);
+  const animRef = useRef(null);
+  const file = ex && ex.lottie;
+
+  useEffect(() => {
+    if (!file || !host.current) return;
+    let dead = false;
+    const build = (data) => {
+      if (dead || !host.current) return;
+      host.current.innerHTML = "";
+      animRef.current = lottie.loadAnimation({
+        container: host.current, renderer: "svg", loop: true, autoplay: true,
+        animationData: JSON.parse(JSON.stringify(data)),
+        rendererSettings: { preserveAspectRatio: "xMidYMid meet", progressiveLoad: true },
+      });
+      if (!playing) animRef.current.pause();
+    };
+    if (FT_CACHE[file]) build(FT_CACHE[file]);
+    else fetch(`/lottie/${file}.json`).then((r) => r.json()).then((d) => { FT_CACHE[file] = d; build(d); }).catch(() => {});
+    return () => { dead = true; if (animRef.current) { animRef.current.destroy(); animRef.current = null; } };
+  }, [file]);
+
+  useEffect(() => {
+    if (!animRef.current) return;
+    if (playing) animRef.current.play(); else animRef.current.pause();
+  }, [playing]);
+
+  if (!file) return <div style={{ width: size, height: size }} className="grid place-items-center text-4xl">{ex ? ex.emoji : "🤸"}</div>;
+  return <div ref={host} style={{ width: size, height: size }} aria-label={ex.name} />;
 }
 
 function FitnessSection({ name, onRename }) {
@@ -9276,7 +9094,8 @@ function FitnessSection({ name, onRename }) {
               </div>
 
               <p className="mt-6 text-center text-xs text-slate-400">Пауза між вправами — 10 с, а після кожної 4-ї — 20 с.</p>
-              <p className="mt-4 text-center text-xs leading-relaxed text-slate-400">Слухай тіло: біль — це стоп-сигнал, а не «терпи». Якщо є проблеми зі спиною, суглобами, серцем чи ти вагітна — спершу порадься з лікарем. 💚</p>
+              <p className="mt-4 text-center text-[11px] text-slate-300">Анімації — LottieFiles (Lottie Simple License)</p>
+              <p className="mt-2 text-center text-xs leading-relaxed text-slate-400">Слухай тіло: біль — це стоп-сигнал, а не «терпи». Якщо є проблеми зі спиною, суглобами, серцем чи ти вагітна — спершу порадься з лікарем. 💚</p>
             </>
           )}
         </div>
