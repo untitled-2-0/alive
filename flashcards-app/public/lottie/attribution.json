@@ -8,14 +8,6 @@
   "kb": 189
  },
  {
-  "exercise": "lunge",
-  "file": "lunge.json",
-  "title": "Lunge",
-  "author": "/buixuandinh",
-  "source": "https://assets-v2.lottiefiles.com/a/8c3bfbda-116a-11ee-ae27-27c841c68b90/VRVJi9ciFL.json",
-  "kb": 121
- },
- {
   "exercise": "forearmPlank",
   "file": "forearmPlank.json",
   "title": "Plank",
@@ -262,5 +254,54 @@
   "author": "/buixuandinh",
   "source": "https://assets-v2.lottiefiles.com/a/dc68e41e-1189-11ee-a704-a3ee683b17ee/k7MgKMWvYN.json",
   "kb": 183
+ },
+ {
+  "exercise": "shoulderRoll",
+  "title": "Shoulder Stretch",
+  "author": "/buixuandinh",
+  "source": "https://lottiefiles.com/free-animation/66353",
+  "license": "Lottie Simple License (FL 9.13.21)"
+ },
+ {
+  "exercise": "hipRotation",
+  "title": "Single Leg Hip Rotation",
+  "author": "/buixuandinh",
+  "source": "https://lottiefiles.com/free-animation/90057",
+  "license": "Lottie Simple License (FL 9.13.21)"
+ },
+ {
+  "exercise": "seatedCross",
+  "title": "Girl yoga",
+  "author": "/bib",
+  "source": "https://lottiefiles.com/free-animation/40066",
+  "license": "Lottie Simple License (FL 9.13.21)"
+ },
+ {
+  "exercise": "seatedTwistEx",
+  "title": "Russian Twists",
+  "author": "?",
+  "source": "https://lottiefiles.com/free-animation/49709",
+  "license": "Lottie Simple License (FL 9.13.21)"
+ },
+ {
+  "exercise": "bentOver",
+  "title": "Bent-over Row (Side)- Exercise animation",
+  "author": "/h5a2piwti6",
+  "source": "https://lottiefiles.com/free-animation/1047566",
+  "license": "Lottie Simple License (FL 9.13.21)"
+ },
+ {
+  "exercise": "lungeBack",
+  "title": "Exercise",
+  "author": "/suhayrasarwar",
+  "source": "https://lottiefiles.com/free-animation/127741",
+  "license": "Lottie Simple License (FL 9.13.21)"
+ },
+ {
+  "exercise": "lotusCalm",
+  "title": "Girl in lotus position practicing yoga",
+  "author": "/user186280",
+  "source": "https://lottiefiles.com/free-animation/18758",
+  "license": "Lottie Simple License (FL 9.13.21)"
  }
 ]
