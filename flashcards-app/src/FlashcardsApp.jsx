@@ -1169,6 +1169,22 @@ const CKEYS = {
   coping: "calm:coping",             // coping-with-stress entries
   rabbit: "calm:rabbitHole",         // reverse-the-rabbit-hole entries
   solvefull: "calm:solveFull",       // full problem-solving cycle entries
+  focusplan: "calm:focusPlan",       // ADHD focus-plan worksheet entries
+  adhdtips: "calm:adhdTips",         // checked ADHD management tips
+  productive: "calm:productiveWorry", // productive-worry worksheet entries
+  control: "calm:circleOfControl",     // circle-of-control entries
+  socialanx: "calm:socialAnxiety",     // exploring-social-anxiety entries
+  dbtchain: "calm:dbtBehaviorChain",   // DBT behavior-chain entries
+  habitplan: "calm:habitPlan",         // healthy habit-plan entries
+  discrepancy: "calm:buildingDiscrepancy", // continue-vs-quit entries
+  growth: "calm:growthMindset",       // growth-mindset reframing entries
+  gratitude: "calm:gratitude",        // gratitude practice entries
+  selfcare: "calm:selfCareAssessment", // self-care ratings by domain
+  gratitudeweek: "calm:gratitudeWeek", // seven-day gratitude journal
+  esteemweek: "calm:selfEsteemWeek",   // seven-day self-esteem journal
+  innercoach: "calm:innerCoach",       // inner critic vs coach entries
+  habitbreak: "calm:habitBreakdown",   // five-step habit breakdown entries
+  goalbreak: "calm:goalBreakdown",     // goal-to-tasks breakdown entries
   sessions: "calm:sessions",
   settings: "calm:settings",
   plan: "calm:planDone", // { [date]: { [itemId]: true } } — supportive-plan daily check-off
@@ -1218,6 +1234,32 @@ const CALM_TECHNIQUES = {
   coping: { label: "Стрес і копінг", icon: ShieldAlert },
   rabbit: { label: "Реверс кролячої нори", icon: ArrowLeftRight },
   solvefull: { label: "Розв'язання проблеми", icon: ListChecks },
+  focusplan: { label: "План фокусу", icon: Target },
+  adhdtips: { label: "Поради для РДУГ", icon: CheckCircle2 },
+  productive: { label: "Продуктивне хвилювання", icon: ArrowRight },
+  control: { label: "Коло контролю", icon: Circle },
+  socialanx: { label: "Соціальна тривога", icon: Users },
+  avoidance: { label: "Цикл уникнення", icon: RefreshCw },
+  rain: { label: "RAIN", icon: Droplet },
+  dbtstop: { label: "STOP", icon: HandHeart },
+  dbttipp: { label: "TIPP", icon: HeartPulse },
+  dbtaccepts: { label: "ACCEPTS", icon: ShieldAlert },
+  dbtimprove: { label: "IMPROVE", icon: Sparkles },
+  dbtradical: { label: "Радикальне прийняття", icon: Leaf },
+  dbtopposite: { label: "Протилежна дія", icon: ArrowLeftRight },
+  dbtdearman: { label: "DEAR MAN", icon: Users },
+  dbtchain: { label: "Аналіз ланцюжка", icon: ListTree },
+  urgesurf: { label: "Серфінг потягу", icon: Waves },
+  habitplan: { label: "План звички", icon: Repeat },
+  discrepancy: { label: "Побудова розбіжності", icon: Scale },
+  growth: { label: "Мислення зростання", icon: TrendingUp },
+  gratitude: { label: "Практики вдячності", icon: Heart },
+  selfcare: { label: "Оцінка турботи про себе", icon: HandHeart },
+  gratitudeweek: { label: "7 днів вдячності", icon: BookOpen },
+  esteemweek: { label: "Журнал самооцінки", icon: Star },
+  innercoach: { label: "Мій внутрішній тренер", icon: Trophy },
+  habitbreak: { label: "Розкладання звички", icon: ListChecks },
+  goalbreak: { label: "Розкладання цілі", icon: Target },
   fear: { label: "Сходинки страху", icon: TrendingUp },
   focus: { label: "Таймер фокусу", icon: Timer },
   worry: { label: "Час для тривоги", icon: Hourglass },
@@ -1253,9 +1295,25 @@ async function loadCalmData() {
   const coping = await store.get(CKEYS.coping, []);
   const rabbit = await store.get(CKEYS.rabbit, []);
   const solvefull = await store.get(CKEYS.solvefull, []);
+  const focusplan = await store.get(CKEYS.focusplan, []);
+  const adhdtips = await store.get(CKEYS.adhdtips, []);
+  const productive = await store.get(CKEYS.productive, []);
+  const control = await store.get(CKEYS.control, []);
+  const socialanx = await store.get(CKEYS.socialanx, []);
+  const dbtchain = await store.get(CKEYS.dbtchain, []);
+  const habitplan = await store.get(CKEYS.habitplan, []);
+  const discrepancy = await store.get(CKEYS.discrepancy, []);
+  const growth = await store.get(CKEYS.growth, []);
+  const gratitude = await store.get(CKEYS.gratitude, []);
+  const selfcare = await store.get(CKEYS.selfcare, {});
+  const gratitudeweek = await store.get(CKEYS.gratitudeweek, {});
+  const esteemweek = await store.get(CKEYS.esteemweek, {});
+  const innercoach = await store.get(CKEYS.innercoach, []);
+  const habitbreak = await store.get(CKEYS.habitbreak, []);
+  const goalbreak = await store.get(CKEYS.goalbreak, []);
   const sessions = await store.get(CKEYS.sessions, []);
   const settings = await store.get(CKEYS.settings, { name: "Спокій" });
-  return { fears, thoughts, decat, rules, wdep, dibs, dtr, darrow, activity, rumination, abcde, ifthen, probsolve, facts, imagexp, intero, eventvis, pleasant, eval9, trigrec, behexp, reframe, socratic, abc, whatif, coping, rabbit, solvefull, sessions, settings };
+  return { fears, thoughts, decat, rules, wdep, dibs, dtr, darrow, activity, rumination, abcde, ifthen, probsolve, facts, imagexp, intero, eventvis, pleasant, eval9, trigrec, behexp, reframe, socratic, abc, whatif, coping, rabbit, solvefull, focusplan, adhdtips, productive, control, socialanx, dbtchain, habitplan, discrepancy, growth, gratitude, selfcare, gratitudeweek, esteemweek, innercoach, habitbreak, goalbreak, sessions, settings };
 }
 // Recovery lives inside the Calm tab; its data rides along in Calm's export/reset.
 const RECKEYS = { alcohol: "recovery:alcohol", smoke: "recovery:smoke", triggers: "recovery:triggers", reason: "recovery:reason", noteSeen: "recovery:noteSeen" };
@@ -1263,7 +1321,7 @@ async function collectCalmExport() {
   const d = await loadCalmData();
   const recovery = {};
   for (const [k, key] of Object.entries(RECKEYS)) recovery[k] = await store.get(key, null);
-  return { fears: d.fears, thoughts: d.thoughts, sessions: d.sessions, settings: d.settings, recovery, plan: await store.get(CKEYS.plan, {}) };
+  return { fears: d.fears, thoughts: d.thoughts, focusplan: d.focusplan, adhdtips: d.adhdtips, sessions: d.sessions, settings: d.settings, recovery, plan: await store.get(CKEYS.plan, {}) };
 }
 async function clearCalmData() {
   for (const k of Object.values(CKEYS)) await store.remove(k);
@@ -6321,6 +6379,22 @@ function CalmSection({ name, onRename }) {
   const [coping, setCoping] = useState([]);
   const [rabbit, setRabbit] = useState([]);
   const [solvefull, setSolvefull] = useState([]);
+  const [focusplan, setFocusplan] = useState([]);
+  const [adhdtips, setAdhdtips] = useState([]);
+  const [productive, setProductive] = useState([]);
+  const [control, setControl] = useState([]);
+  const [socialanx, setSocialanx] = useState([]);
+  const [dbtchain, setDbtchain] = useState([]);
+  const [habitplan, setHabitplan] = useState([]);
+  const [discrepancy, setDiscrepancy] = useState([]);
+  const [growth, setGrowth] = useState([]);
+  const [gratitude, setGratitude] = useState([]);
+  const [selfcare, setSelfcare] = useState({});
+  const [gratitudeweek, setGratitudeweek] = useState({});
+  const [esteemweek, setEsteemweek] = useState({});
+  const [innercoach, setInnercoach] = useState([]);
+  const [habitbreak, setHabitbreak] = useState([]);
+  const [goalbreak, setGoalbreak] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [settings, setSettings] = useState({ name: "Спокій", tick: true, pattern: "box" });
   const [toast, setToast] = useState(null);
@@ -6332,13 +6406,13 @@ function CalmSection({ name, onRename }) {
 
   const reload = useCallback(async () => {
     const d = await loadCalmData();
-    setFears(d.fears); setThoughts(d.thoughts); setDecat(d.decat || []); setRules(d.rules || []); setWdep(d.wdep || []); setDibs(d.dibs || []); setDtr(d.dtr || []); setDarrow(d.darrow || []); setActivity(d.activity || {}); setRumination(d.rumination || []); setAbcde(d.abcde || []); setIfthen(d.ifthen || []); setProbsolve(d.probsolve || []); setFacts(d.facts || []); setImagexp(d.imagexp || []); setIntero(d.intero || []); setEventvis(d.eventvis || []); setPleasant(d.pleasant || {}); setEval9(d.eval9 || []); setTrigrec(d.trigrec || []); setBehexp(d.behexp || []); setReframe(d.reframe || []); setSocratic(d.socratic || []); setAbc(d.abc || []); setWhatif(d.whatif || []); setCoping(d.coping || []); setRabbit(d.rabbit || []); setSolvefull(d.solvefull || []); setSessions(d.sessions);
+    setFears(d.fears); setThoughts(d.thoughts); setDecat(d.decat || []); setRules(d.rules || []); setWdep(d.wdep || []); setDibs(d.dibs || []); setDtr(d.dtr || []); setDarrow(d.darrow || []); setActivity(d.activity || {}); setRumination(d.rumination || []); setAbcde(d.abcde || []); setIfthen(d.ifthen || []); setProbsolve(d.probsolve || []); setFacts(d.facts || []); setImagexp(d.imagexp || []); setIntero(d.intero || []); setEventvis(d.eventvis || []); setPleasant(d.pleasant || {}); setEval9(d.eval9 || []); setTrigrec(d.trigrec || []); setBehexp(d.behexp || []); setReframe(d.reframe || []); setSocratic(d.socratic || []); setAbc(d.abc || []); setWhatif(d.whatif || []); setCoping(d.coping || []); setRabbit(d.rabbit || []); setSolvefull(d.solvefull || []); setFocusplan(d.focusplan || []); setAdhdtips(d.adhdtips || []); setProductive(d.productive || []); setControl(d.control || []); setSocialanx(d.socialanx || []); setDbtchain(d.dbtchain || []); setHabitplan(d.habitplan || []); setDiscrepancy(d.discrepancy || []); setGrowth(d.growth || []); setGratitude(d.gratitude || []); setSelfcare(d.selfcare || {}); setGratitudeweek(d.gratitudeweek || {}); setEsteemweek(d.esteemweek || {}); setInnercoach(d.innercoach || []); setHabitbreak(d.habitbreak || []); setGoalbreak(d.goalbreak || []); setSessions(d.sessions);
     setSettings({ tick: true, pattern: "box", ...d.settings });
     setLoading(false);
   }, []);
   useEffect(() => {
     reload();
-    const onReset = () => { setFears([]); setThoughts([]); setDecat([]); setRules([]); setWdep([]); setDibs([]); setDtr([]); setDarrow([]); setActivity({}); setRumination([]); setAbcde([]); setIfthen([]); setProbsolve([]); setFacts([]); setImagexp([]); setIntero([]); setEventvis([]); setPleasant({}); setEval9([]); setTrigrec([]); setBehexp([]); setReframe([]); setSocratic([]); setAbc([]); setWhatif([]); setCoping([]); setRabbit([]); setSolvefull([]); setSessions([]); setCview("hub"); };
+    const onReset = () => { setFears([]); setThoughts([]); setDecat([]); setRules([]); setWdep([]); setDibs([]); setDtr([]); setDarrow([]); setActivity({}); setRumination([]); setAbcde([]); setIfthen([]); setProbsolve([]); setFacts([]); setImagexp([]); setIntero([]); setEventvis([]); setPleasant({}); setEval9([]); setTrigrec([]); setBehexp([]); setReframe([]); setSocratic([]); setAbc([]); setWhatif([]); setCoping([]); setRabbit([]); setSolvefull([]); setFocusplan([]); setAdhdtips([]); setProductive([]); setControl([]); setSocialanx([]); setDbtchain([]); setHabitplan([]); setDiscrepancy([]); setGrowth([]); setGratitude([]); setSelfcare({}); setGratitudeweek({}); setEsteemweek({}); setInnercoach([]); setHabitbreak([]); setGoalbreak([]); setSessions([]); setCview("hub"); };
     window.addEventListener("calm-reset", onReset);
     return () => window.removeEventListener("calm-reset", onReset);
   }, [reload]);
@@ -6382,6 +6456,22 @@ function CalmSection({ name, onRename }) {
   const saveCoping = useCallback(async (next) => { setCoping(next); await store.set(CKEYS.coping, next); }, []);
   const saveRabbit = useCallback(async (next) => { setRabbit(next); await store.set(CKEYS.rabbit, next); }, []);
   const saveSolvefull = useCallback(async (next) => { setSolvefull(next); await store.set(CKEYS.solvefull, next); }, []);
+  const saveFocusplan = useCallback(async (next) => { setFocusplan(next); await store.set(CKEYS.focusplan, next); }, []);
+  const saveAdhdtips = useCallback(async (next) => { setAdhdtips(next); await store.set(CKEYS.adhdtips, next); }, []);
+  const saveProductive = useCallback(async (next) => { setProductive(next); await store.set(CKEYS.productive, next); }, []);
+  const saveControl = useCallback(async (next) => { setControl(next); await store.set(CKEYS.control, next); }, []);
+  const saveSocialanx = useCallback(async (next) => { setSocialanx(next); await store.set(CKEYS.socialanx, next); }, []);
+  const saveDbtchain = useCallback(async (next) => { setDbtchain(next); await store.set(CKEYS.dbtchain, next); }, []);
+  const saveHabitplan = useCallback(async (next) => { setHabitplan(next); await store.set(CKEYS.habitplan, next); }, []);
+  const saveDiscrepancy = useCallback(async (next) => { setDiscrepancy(next); await store.set(CKEYS.discrepancy, next); }, []);
+  const saveGrowth = useCallback(async (next) => { setGrowth(next); await store.set(CKEYS.growth, next); }, []);
+  const saveGratitude = useCallback(async (next) => { setGratitude(next); await store.set(CKEYS.gratitude, next); }, []);
+  const saveSelfcare = useCallback(async (next) => { setSelfcare(next); await store.set(CKEYS.selfcare, next); }, []);
+  const saveGratitudeweek = useCallback(async (next) => { setGratitudeweek(next); await store.set(CKEYS.gratitudeweek, next); }, []);
+  const saveEsteemweek = useCallback(async (next) => { setEsteemweek(next); await store.set(CKEYS.esteemweek, next); }, []);
+  const saveInnercoach = useCallback(async (next) => { setInnercoach(next); await store.set(CKEYS.innercoach, next); }, []);
+  const saveHabitbreak = useCallback(async (next) => { setHabitbreak(next); await store.set(CKEYS.habitbreak, next); }, []);
+  const saveGoalbreak = useCallback(async (next) => { setGoalbreak(next); await store.set(CKEYS.goalbreak, next); }, []);
 
   const streak = useMemo(() => calmStreak(sessions, today), [sessions, today]);
   const minutes = useMemo(() => calmMinutes(sessions), [sessions]);
@@ -6397,8 +6487,11 @@ function CalmSection({ name, onRename }) {
       { id: "pmr", label: "Розслаблення м'язів", desc: "Напруж і відпусти — від голови до п'ят", icon: HeartPulse, color: "#14b8a6" },
       { id: "ground", label: "Заземлення 5-4-3-2-1", desc: "Повернися до своїх відчуттів", icon: Anchor, color: "#6366f1" },
       { id: "worry", label: "Час для тривоги", desc: "Виділений час потривожитись — і відпустити", icon: Hourglass, color: "#f472b6" },
+      { id: "productive", label: "Продуктивне хвилювання", desc: "Хвилювання → один наступний крок → відкласти", icon: ArrowRight, color: "#4338ca" },
+      { id: "control", label: "Коло контролю", desc: "Що в моїй владі — а що можна відпустити", icon: Circle, color: "#2563eb" },
+      { id: "avoidance", label: "Цикл уникнення", desc: "Тривога → уникнення → полегшення → посилення", icon: RefreshCw, color: "#4f46e5" },
+      { id: "socialanx", label: "Соціальна тривога", desc: "Ситуації, страхи, вплив на життя й бажані зміни", icon: Users, color: "#7c3aed" },
       { id: "focus", label: "Таймер фокусу", desc: "Спокійний вдих, потім зосереджена робота", icon: Timer, color: "#10b981" },
-      { id: "coping", label: "Стрес і копінг", desc: "Тригери стресу → що контролюю → кращий копінг", icon: ShieldAlert, color: "#c2410c" },
     ]},
     { title: "Думки під контроль (КПТ)", items: [
       { id: "thought", label: "Журнал думок", desc: "Розплутати тривожну думку", icon: NotebookPen, color: "#8b5cf6" },
@@ -6416,9 +6509,11 @@ function CalmSection({ name, onRename }) {
       { id: "rabbit", label: "Реверс кролячої нори", desc: "На кожен поганий сценарій — рівно ймовірний добрий", icon: ArrowLeftRight, color: "#e11d48" },
     ]},
     { title: "Депресія · енергія і дія", items: [
+      { id: "growth", label: "Мислення зростання", desc: "Від «я не можу» до навчання й наступного кроку", icon: TrendingUp, color: "#15803d" },
+      { id: "gratitude", label: "Практики вдячності", desc: "Помічати хороше — велике й зовсім маленьке", icon: Heart, color: "#ca8a04" },
+      { id: "gratitudeweek", label: "7 днів вдячності", desc: "Щодня три нові запитання про хороше", icon: BookOpen, color: "#a16207" },
       { id: "activity", label: "Розклад активності", desc: "Тижнева сітка справ — запланувала і зробила", icon: CalendarDays, color: "#0891b2" },
       { id: "rumination", label: "Румінації", desc: "Впіймати думки, що крутяться по колу", icon: RefreshCw, color: "#db2777" },
-      { id: "wdep", label: "WDEP", desc: "Хочу → Роблю → Чи працює → План", icon: Compass, color: "#0284c7" },
       { id: "pleasant", label: "Приємні активності", desc: "Щодня — одна радість або одне досягнення", icon: Smile, color: "#16a34a" },
     ]},
     { title: "Страхи та уникнення", items: [
@@ -6430,13 +6525,42 @@ function CalmSection({ name, onRename }) {
       { id: "behexp", label: "Поведінковий експеримент", desc: "Перевірити страшне переконання дією", icon: TestTube2, color: "#7e22ce" },
     ]},
     { title: "РДУГ · фокус і рішення", items: [
+      { id: "focusplan", label: "План фокусу", desc: "Завдання → кроки → розклад → підготовка → результат", icon: Target, color: "#0f766e" },
+      { id: "adhdtips", label: "Поради для РДУГ", desc: "9 практичних правил для справ, фокусу й відволікань", icon: CheckCircle2, color: "#2563eb" },
       { id: "probsolve", label: "Розбір проблеми", desc: "Проблема → мета → що пробувала → результат", icon: Wrench, color: "#ea580c" },
+    ]},
+    { title: "Прийняття рішень", items: [
       { id: "facts", label: "Лише факти", desc: "Хто, що, де, коли, чому — без домислів", icon: Search, color: "#57534e" },
-      { id: "abc", label: "ABC-аналіз", desc: "Що передує поведінці — і що з неї виходить", icon: GripVertical, color: "#1d4ed8" },
+    ]},
+    { title: "Розв'язання проблеми", items: [
       { id: "solvefull", label: "Розв'язання проблеми", desc: "Повний цикл: ідеї → зважити → рішення → план → ревізія", icon: ListChecks, color: "#065f46" },
+      { id: "habitbreak", label: "Розкладання звички", desc: "Від двох хвилин до повної нової звички", icon: ListChecks, color: "#16a34a" },
+      { id: "goalbreak", label: "Розкладання цілі", desc: "Велика ціль → малі завдання → час → розклад", icon: Target, color: "#0f766e" },
+      { id: "wdep", label: "WDEP", desc: "Хочу → Роблю → Чи працює → План", icon: Compass, color: "#0284c7" },
+    ]},
+    { title: "Низька самооцінка", items: [
+      { id: "rain", label: "RAIN · підтримка себе", desc: "Розпізнати → дозволити → дослідити → підтримати", icon: Droplet, color: "#16a34a" },
+      { id: "selfcare", label: "Оцінка турботи про себе", desc: "Фізична, емоційна, соціальна й інші сфери", icon: HandHeart, color: "#3f8f3f" },
+      { id: "esteemweek", label: "7 днів самооцінки", desc: "Щодня помічати свої зусилля, радість і гордість", icon: Star, color: "#9333ea" },
+      { id: "innercoach", label: "Мій внутрішній тренер", desc: "Перетворити голос критика на добру підтримку", icon: Trophy, color: "#65a30d" },
+    ]},
+    { title: "DBT · регуляція емоцій", items: [
+      { id: "dbtstop", label: "STOP", desc: "Зупинись і не дай імпульсу керувати діями", icon: HandHeart, color: "#dc2626" },
+      { id: "dbttipp", label: "TIPP", desc: "Швидко знизити фізіологічну інтенсивність емоції", icon: HeartPulse, color: "#0284c7" },
+      { id: "dbtaccepts", label: "ACCEPTS", desc: "Пережити кризову мить без шкідливої дії", icon: ShieldAlert, color: "#7c3aed" },
+      { id: "dbtimprove", label: "IMPROVE", desc: "Зробити важкий момент трохи стерпнішим", icon: Sparkles, color: "#d97706" },
+      { id: "dbtradical", label: "Радикальне прийняття", desc: "Визнати реальність, не схвалюючи її", icon: Leaf, color: "#059669" },
+      { id: "dbtopposite", label: "Протилежна дія", desc: "Діяти всупереч емоційному імпульсу", icon: ArrowLeftRight, color: "#db2777" },
+      { id: "dbtdearman", label: "DEAR MAN", desc: "Просити, відмовляти й захищати межі", icon: Users, color: "#4f46e5" },
+      { id: "dbtchain", label: "Аналіз ланцюжка", desc: "Що крок за кроком привело до проблемної поведінки", icon: ListTree, color: "#312e81" },
     ]},
     { title: "Залежність", items: [
       { id: "recovery", label: "Відновлення", desc: "Тверезість, тригери й підтримка в мить пориву", icon: HandHeart, color: "#0d9488" },
+      { id: "urgesurf", label: "Серфінг потягу", desc: "Помітити хвилю потягу й дочекатися її спаду", icon: Waves, color: "#0891b2" },
+      { id: "habitplan", label: "План звички", desc: "Після старої звички → нова звичка → винагорода", icon: Repeat, color: "#334155" },
+      { id: "discrepancy", label: "Побудова розбіжності", desc: "Як зміниться життя: продовжити чи припинити", icon: Scale, color: "#7c2d12" },
+      { id: "coping", label: "Стрес і копінг", desc: "Тригери стресу → що контролюю → кращий копінг", icon: ShieldAlert, color: "#c2410c" },
+      { id: "abc", label: "ABC-аналіз", desc: "Що передує поведінці — і що з неї виходить", icon: GripVertical, color: "#1d4ed8" },
     ]},
   ];
 
@@ -6550,6 +6674,20 @@ function CalmSection({ name, onRename }) {
       {cview === "wdep" && <WdepJournal entries={wdep} onExit={back} onSave={async (entry, sec) => { await saveWdep([entry, ...wdep]); log("wdep", sec); flash("План записано 🌿"); }} onDelete={async (id) => saveWdep(wdep.filter((t) => t.id !== id))} />}
       {cview === "rabbit" && <SimpleJournal spec={RABBIT_SPEC} entries={rabbit} onExit={back} onSave={async (entry, sec) => { await saveRabbit([entry, ...rabbit]); log("rabbit", sec); flash("Нору реверсовано 🐇"); }} onDelete={async (id) => saveRabbit(rabbit.filter((t) => t.id !== id))} />}
       {cview === "solvefull" && <SimpleJournal spec={SOLVEFULL_SPEC} entries={solvefull} onExit={back} onSave={async (entry, sec) => { await saveSolvefull([entry, ...solvefull]); log("solvefull", sec); flash("Рішення ухвалено 🌿"); }} onDelete={async (id) => saveSolvefull(solvefull.filter((t) => t.id !== id))} />}
+      {cview === "focusplan" && <FocusPlanJournal entries={focusplan} onExit={back} onSave={async (entry, sec) => { await saveFocusplan([entry, ...focusplan]); log("focusplan", sec); flash("План фокусу готовий 🎯"); }} onDelete={async (id) => saveFocusplan(focusplan.filter((t) => t.id !== id))} />}
+      {cview === "adhdtips" && <AdhdTipsView checked={adhdtips} onExit={back} onChange={saveAdhdtips} />}
+      {cview === "productive" && <ProductiveWorryJournal entries={productive} onExit={back} onSave={async (entry, sec) => { await saveProductive([entry, ...productive]); log("productive", sec); flash("Наступні кроки записано 🌿"); }} onDelete={async (id) => saveProductive(productive.filter((t) => t.id !== id))} />}
+      {cview === "control" && <SimpleJournal spec={CONTROL_SPEC} entries={control} onExit={back} onSave={async (entry, sec) => { await saveControl([entry, ...control]); log("control", sec); flash("Коло контролю готове 🌿"); }} onDelete={async (id) => saveControl(control.filter((t) => t.id !== id))} />}
+      {cview === "avoidance" && <AvoidanceCycleView onExit={back} onGo={() => setCview("fear")} />}
+      {cview === "socialanx" && <SimpleJournal spec={SOCIAL_ANX_SPEC} entries={socialanx} onExit={back} onSave={async (entry, sec) => { await saveSocialanx([entry, ...socialanx]); log("socialanx", sec); flash("Соціальну тривогу досліджено 🌿"); }} onDelete={async (id) => saveSocialanx(socialanx.filter((t) => t.id !== id))} />}
+      {cview === "rain" && <RainPractice onExit={back} onDone={done("rain")} />}
+      {cview === "selfcare" && <SelfCareAssessment value={selfcare} onExit={back} onSave={saveSelfcare} />}
+      {cview === "esteemweek" && <EsteemWeek value={esteemweek} onExit={back} onSave={saveEsteemweek} />}
+      {cview === "innercoach" && <SimpleJournal spec={INNER_COACH_SPEC} entries={innercoach} onExit={back} onSave={async (entry, sec) => { await saveInnercoach([entry, ...innercoach]); log("innercoach", sec); flash("Тренер відповів критикові 🌱"); }} onDelete={async (id) => saveInnercoach(innercoach.filter((t) => t.id !== id))} />}
+      {cview === "habitbreak" && <SimpleJournal spec={HABIT_BREAK_SPEC} entries={habitbreak} onExit={back} onSave={async (entry, sec) => { await saveHabitbreak([entry, ...habitbreak]); log("habitbreak", sec); flash("Звичку розкладено на кроки 🌱"); }} onDelete={async (id) => saveHabitbreak(habitbreak.filter((t) => t.id !== id))} />}
+      {cview === "goalbreak" && <SimpleJournal spec={GOAL_BREAK_SPEC} entries={goalbreak} onExit={back} onSave={async (entry, sec) => { await saveGoalbreak([entry, ...goalbreak]); log("goalbreak", sec); flash("Ціль розкладено на завдання 🎯"); }} onDelete={async (id) => saveGoalbreak(goalbreak.filter((t) => t.id !== id))} />}
+      {DBT_SKILLS[cview] && <DbtSkillView skill={DBT_SKILLS[cview]} onExit={back} onDone={done(cview)} />}
+      {cview === "dbtchain" && <SimpleJournal spec={DBT_CHAIN_SPEC} entries={dbtchain} onExit={back} onSave={async (entry, sec) => { await saveDbtchain([entry, ...dbtchain]); log("dbtchain", sec); flash("Ланцюжок розібрано 🌿"); }} onDelete={async (id) => saveDbtchain(dbtchain.filter((t) => t.id !== id))} />}
       {cview === "coping" && <SimpleJournal spec={COPING_SPEC} entries={coping} onExit={back} onSave={async (entry, sec) => { await saveCoping([entry, ...coping]); log("coping", sec); flash("Копінг оновлено 🌿"); }} onDelete={async (id) => saveCoping(coping.filter((t) => t.id !== id))} />}
       {cview === "trigrec" && <SimpleJournal spec={TRIGREC_SPEC} entries={trigrec} onExit={back} onSave={async (entry, sec) => { await saveTrigrec([entry, ...trigrec]); log("trigrec", sec); flash("Тригер розібрано 🌿"); }} onDelete={async (id) => saveTrigrec(trigrec.filter((t) => t.id !== id))} />}
       {cview === "behexp" && <SimpleJournal spec={BEHEXP_SPEC} entries={behexp} onExit={back} onSave={async (entry, sec) => { await saveBehexp([entry, ...behexp]); log("behexp", sec); flash("Експеримент записано 🧪"); }} onDelete={async (id) => saveBehexp(behexp.filter((t) => t.id !== id))} />}
@@ -6579,6 +6717,12 @@ function CalmSection({ name, onRename }) {
       {cview === "stats" && <CalmStats sessions={sessions} onExit={back} />}
       {cview === "plan" && <CalmPlan onExit={back} onGo={(v) => setCview(v)} />}
       {cview === "recovery" && <RecoveryView onExit={back} onQuickCalm={(v) => setCview(v)} />}
+      {cview === "urgesurf" && <UrgeSurfingPractice onExit={back} onDone={done("urgesurf")} />}
+      {cview === "habitplan" && <SimpleJournal spec={HABIT_PLAN_SPEC} entries={habitplan} onExit={back} onSave={async (entry, sec) => { await saveHabitplan([entry, ...habitplan]); log("habitplan", sec); flash("План звички готовий 🌿"); }} onDelete={async (id) => saveHabitplan(habitplan.filter((t) => t.id !== id))} />}
+      {cview === "discrepancy" && <SimpleJournal spec={DISCREPANCY_SPEC} entries={discrepancy} onExit={back} onSave={async (entry, sec) => { await saveDiscrepancy([entry, ...discrepancy]); log("discrepancy", sec); flash("Наслідки зіставлено 🌿"); }} onDelete={async (id) => saveDiscrepancy(discrepancy.filter((t) => t.id !== id))} />}
+      {cview === "growth" && <SimpleJournal spec={GROWTH_SPEC} entries={growth} onExit={back} onSave={async (entry, sec) => { await saveGrowth([entry, ...growth]); log("growth", sec); flash("Думку перетворено на крок 🌱"); }} onDelete={async (id) => saveGrowth(growth.filter((t) => t.id !== id))} />}
+      {cview === "gratitude" && <SimpleJournal spec={GRATITUDE_SPEC} entries={gratitude} onExit={back} onSave={async (entry, sec) => { await saveGratitude([entry, ...gratitude]); log("gratitude", sec); flash("Вдячність збережено 💛"); }} onDelete={async (id) => saveGratitude(gratitude.filter((t) => t.id !== id))} />}
+      {cview === "gratitudeweek" && <GratitudeWeek value={gratitudeweek} onExit={back} onSave={saveGratitudeweek} />}
 
       {toast && <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
     </div>
@@ -8151,6 +8295,240 @@ function SimpleJournal({ spec, entries = [], onExit, onSave, onDelete }) {
   );
 }
 
+/* ---------- Focus plan — worksheet layout based on the supplied form ---------- */
+function FocusPlanJournal({ entries = [], onExit, onSave, onDelete }) {
+  const blank = () => ({
+    task: "", parts: Array.from({ length: 5 }, () => ({ task: "", time: "" })),
+    schedule: Array.from({ length: 4 }, () => ({ when: "", reminder: "" })),
+    distractions: "", unavoidable: "", materials: "", physical: "", outcome: "",
+  });
+  const startRef = useRef(Date.now());
+  const [f, setF] = useState(blank);
+  const [openId, setOpenId] = useState(null);
+  const field = "w-full resize-none bg-transparent px-3 py-2 text-sm text-slate-700 outline-none placeholder:text-slate-300";
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const setRow = (group, i, k, v) => setF((p) => ({ ...p, [group]: p[group].map((row, n) => n === i ? { ...row, [k]: v } : row) }));
+  const save = () => {
+    if (!f.task.trim()) return;
+    onSave({ id: ruid("fp"), ts: Date.now(), date: dateKey(Date.now()), ...f }, (Date.now() - startRef.current) / 1000);
+    setF(blank()); startRef.current = Date.now();
+  };
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 pb-20 pt-6">
+      <CalmHeader title="План фокусу" onExit={onExit} />
+      <p className="mb-5 text-sm leading-relaxed text-slate-500">Заповнюй по черзі: одна справа → маленькі частини → конкретний час → підготовка → результат.</p>
+
+      <div className="space-y-5 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-teal-100 sm:p-6">
+        <section>
+          <h2 className="font-extrabold text-slate-800">Крок 1 · Визнач завдання</h2>
+          <p className="mb-2 text-xs text-slate-400">Одна справа, яку потрібно завершити цього тижня.</p>
+          <textarea value={f.task} onChange={(e) => set("task", e.target.value)} rows={2} placeholder="Напр.: прибрати квартиру до приходу гостей" className={`${field} rounded-2xl border border-slate-200`} />
+        </section>
+
+        <section>
+          <h2 className="font-extrabold text-slate-800">Крок 2 · Розбий завдання на менші частини</h2>
+          <p className="mb-2 text-xs text-slate-400">Маленькі конкретні кроки легше почати й завершити.</p>
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <div className="grid grid-cols-[2rem_1fr_7rem] bg-slate-50 px-2 py-2 text-xs font-bold text-slate-600"><span /><span>Частина завдання</span><span>Час</span></div>
+            {f.parts.map((row, i) => <div key={i} className="grid grid-cols-[2rem_1fr_7rem] items-center border-t border-slate-200 px-2"><b className="text-sm text-slate-400">{i + 1}</b><input value={row.task} onChange={(e) => setRow("parts", i, "task", e.target.value)} className="min-w-0 border-x border-slate-200 px-3 py-2 text-sm outline-none" placeholder="Що зробити?" /><input value={row.time} onChange={(e) => setRow("parts", i, "time", e.target.value)} className="min-w-0 px-3 py-2 text-sm outline-none" placeholder="15 хв" /></div>)}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="font-extrabold text-slate-800">Крок 3 · Створи розклад</h2>
+          <p className="mb-2 text-xs text-slate-400">Признач конкретний час або прив'яжи крок до щоденної дії. Додай спосіб нагадати собі.</p>
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <div className="grid grid-cols-2 bg-slate-50 py-2 text-center text-xs font-bold text-slate-600"><span>Коли роблю</span><span className="border-l border-slate-200">Нагадування</span></div>
+            {f.schedule.map((row, i) => <div key={i} className="grid grid-cols-2 border-t border-slate-200"><input value={row.when} onChange={(e) => setRow("schedule", i, "when", e.target.value)} className="min-w-0 px-3 py-2 text-sm outline-none" placeholder="День і час" /><input value={row.reminder} onChange={(e) => setRow("schedule", i, "reminder", e.target.value)} className="min-w-0 border-l border-slate-200 px-3 py-2 text-sm outline-none" placeholder="Будильник / календар" /></div>)}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="font-extrabold text-slate-800">Крок 4 · Підготуйся до завдання</h2>
+          <p className="mb-2 text-xs text-slate-400">Підготуй усе до запланованого часу, щоб початок вимагав якомога менше зусиль.</p>
+          <div className="grid overflow-hidden rounded-2xl border border-slate-200 sm:grid-cols-2">
+            {[
+              ["distractions", "Прибрати відволікання", "Що вимкнути, сховати або перенести до початку?"],
+              ["unavoidable", "План на неминучі відволікання", "Якщо X станеться, то що я зроблю?"],
+              ["materials", "Матеріали й усе необхідне", "Що підготувати заздалегідь?"],
+              ["physical", "Фізична підготовка", "Одяг, їжа, вода, дорога, сон."],
+            ].map(([k, title, hint], i) => <div key={k} className={`min-h-40 p-3 ${i % 2 ? "sm:border-l" : ""} ${i > 0 ? "border-t sm:border-t-0" : ""} ${i > 1 ? "sm:border-t" : ""} border-slate-200`}><div className="text-sm font-bold text-slate-700">{title}</div><div className="text-xs text-slate-400">{hint}</div><textarea value={f[k]} onChange={(e) => set(k, e.target.value)} rows={4} className={`${field} mt-2`} /></div>)}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="font-extrabold text-slate-800">Крок 5 · Уяви результат</h2>
+          <p className="mb-2 text-xs text-slate-400">Яку користь дасть завершення справи і як ти почуватимешся після цього?</p>
+          <textarea value={f.outcome} onChange={(e) => set("outcome", e.target.value)} rows={4} className={`${field} rounded-2xl border border-slate-200`} />
+        </section>
+
+        <button onClick={save} disabled={!f.task.trim()} className="w-full rounded-2xl bg-teal-700 py-3 font-bold text-white shadow-lg transition hover:bg-teal-800 disabled:opacity-40">Зберегти план</button>
+      </div>
+
+      {entries.length > 0 && <div className="mt-6"><div className="mb-2 text-sm font-bold text-slate-600">Мої плани</div><div className="space-y-2">{entries.map((e) => <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100"><button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left"><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-700">{e.task}</span><span className="text-xs text-slate-400">{e.date}</span></span><ChevronDown className={`h-4 w-4 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} /></button>{openId === e.id && <div className="mt-3 border-t border-slate-100 pt-3 text-sm text-slate-600"><div className="space-y-1">{(e.parts || []).filter((x) => x.task).map((x, i) => <div key={i}>{i + 1}. {x.task}{x.time ? ` — ${x.time}` : ""}</div>)}</div>{e.outcome && <p className="mt-3 whitespace-pre-wrap"><b>Результат:</b> {e.outcome}</p>}<button onClick={() => onDelete(e.id)} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-rose-400"><Trash2 className="h-3.5 w-3.5" /> Видалити план</button></div>}</div>)}</div></div>}
+    </div>
+  );
+}
+
+const ADHD_TIPS = [
+  ["Створи щоденний розклад", "На початку краще запланувати менше, ніж забагато. Закладай час на підготовку й дорогу, а також відпочинок і турботу про себе."],
+  ["Розбивай великі справи на маленькі частини", "Замість «прибрати кухню» запиши «помити посуд» і «протерти стільниці». Якщо справу важко розділити — обмеж її часом, наприклад 20 хвилинами."],
+  ["Дозволь собі трохи дискомфорту", "Не обов'язково бути на 100% у настрої щось робити. Іноді треба почати попри небажання — після старту справа часто виявляється легшою, ніж здавалося."],
+  ["Зосередься на результаті", "Уяви, як почуватимешся після завершення. Ми часто переоцінюємо складність справи й недооцінюємо задоволення від готового результату."],
+  ["Підготуй плани для відволікань", "Запиши типові відволікання й створи для кожного план «якщо–то»: «Якщо мене кличуть на каву під час роботи, то запропоную зустрітися в обід»."],
+  ["Розпізнавай прокрастинацію", "Безцільний скрол, перемикання каналів та інші автоматичні заняття можуть бути нецікавими, але легшими за справу. Помічений патерн легше зупинити."],
+  ["Створи місце без відволікань", "Тримай робоче місце охайним і підготуй усе потрібне. Вимкни звук телефона й прибери його. Якщо окремого місця немає — використовуй сигнал: зачинені двері або музику."],
+  ["Чітко визнач мету й не звертай зі шляху", "Якщо йдеш по молоко — прямуй до потрібного відділу. Якщо відкриваєш комп'ютер оплатити рахунок — не заходь спочатку в соцмережі."],
+  ["Нагороджуй себе за завершення", "Обери невелику приємну винагороду, якої не маєш щодня: особливу страву чи цікаве заняття. Навіть маленька нагорода робить нудну справу привабливішою."],
+];
+
+function AdhdTipsView({ checked = [], onExit, onChange }) {
+  const toggle = (i) => onChange(checked.includes(i) ? checked.filter((x) => x !== i) : [...checked, i]);
+  return <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6"><CalmHeader title="Поради для РДУГ" onExit={onExit} /><p className="mb-4 text-sm text-slate-500">Обери 1–2 правила на зараз. Відмічай ті, які вже пробуєш — прогрес збережеться.</p><div className="space-y-3">{ADHD_TIPS.map(([title, text], i) => { const done = checked.includes(i); return <button key={title} onClick={() => toggle(i)} className={`flex w-full items-start gap-3 rounded-2xl p-4 text-left shadow-sm ring-1 transition ${done ? "bg-blue-50 ring-blue-200" : "bg-white ring-slate-100 hover:ring-blue-200"}`}><span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md border-2 ${done ? "border-blue-500 bg-blue-500 text-white" : "border-slate-300 text-transparent"}`}><Check className="h-4 w-4" /></span><span><span className={`block font-bold ${done ? "text-blue-800" : "text-slate-800"}`}>{title}</span><span className="mt-1 block text-sm leading-relaxed text-slate-500">{text}</span></span></button>; })}</div><div className="mt-5 rounded-2xl bg-blue-50 p-4 text-center text-sm font-semibold text-blue-700">Відмічено: {checked.length} із {ADHD_TIPS.length}</div></div>;
+}
+
+function ProductiveWorryJournal({ entries = [], onExit, onSave, onDelete }) {
+  const empty = () => Array.from({ length: 5 }, () => ({ worry: "", next: "" }));
+  const [rows, setRows] = useState(empty);
+  const startRef = useRef(Date.now());
+  const update = (i, k, v) => setRows((p) => p.map((r, n) => n === i ? { ...r, [k]: v } : r));
+  const save = () => { const filled = rows.filter((r) => r.worry.trim() || r.next.trim()); if (!filled.length) return; onSave({ id: ruid("pw"), date: dateKey(Date.now()), ts: Date.now(), rows: filled }, (Date.now() - startRef.current) / 1000); setRows(empty()); startRef.current = Date.now(); };
+  return <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6"><CalmHeader title="Продуктивне хвилювання" onExit={onExit} /><div className="mb-5 space-y-2 text-sm leading-relaxed text-slate-500"><p>Хвилювання часто схоже на бігову доріжку: думки біжать, але нікуди не приводять.</p><p>Запиши найважливіші хвилювання. Для кожного визнач <b className="text-slate-700">лише один наступний крок і коли ти його зробиш</b> — не намагайся розв’язати всю проблему одразу. Потім дозволь собі відкласти хвилювання до часу дії.</p></div><div className="space-y-3">{rows.map((r, i) => <div key={i} className="overflow-hidden rounded-2xl border-2 border-indigo-200 bg-white shadow-sm"><div className="grid grid-cols-[7rem_1fr] border-b border-indigo-200"><label className="bg-indigo-700 px-3 py-3 text-sm font-bold text-white">Хвилювання</label><textarea value={r.worry} onChange={(e) => update(i, "worry", e.target.value)} rows={2} placeholder="Що зараз найбільше непокоїть?" className="resize-none px-3 py-3 text-sm outline-none" /></div><div className="grid grid-cols-[7rem_1fr]"><label className="bg-indigo-50 px-3 py-3 text-sm font-bold text-indigo-800">Наступний крок</label><textarea value={r.next} onChange={(e) => update(i, "next", e.target.value)} rows={2} placeholder="Що конкретно зроблю і коли?" className="resize-none px-3 py-3 text-sm outline-none" /></div></div>)}</div><button onClick={save} disabled={!rows.some((r) => r.worry.trim() || r.next.trim())} className="mt-4 w-full rounded-2xl bg-indigo-700 py-3 font-bold text-white shadow-lg disabled:opacity-40">Зберегти</button>{entries.length > 0 && <div className="mt-6"><div className="mb-2 text-sm font-bold text-slate-600">Мої записи</div>{entries.map((e) => <div key={e.id} className="mb-2 rounded-2xl bg-white p-3 text-sm shadow-sm ring-1 ring-slate-100"><div className="flex items-center justify-between"><b className="text-slate-700">{e.rows?.[0]?.worry || "Хвилювання"}</b><button onClick={() => onDelete(e.id)} className="text-rose-400"><Trash2 className="h-4 w-4" /></button></div><div className="mt-1 text-xs text-slate-400">{e.date} · {e.rows?.length || 0} пунктів</div></div>)}</div>}</div>;
+}
+
+function AvoidanceCycleView({ onExit, onGo }) {
+  const steps = [
+    { n: "1", title: "Тривога", color: "bg-sky-500", text: "Ситуація запускає тривожну реакцію: найгірші сценарії, сумніви у своїй здатності впоратися, прискорене серцебиття, напруга, страх або дратівливість." },
+    { n: "2", title: "Уникнення", color: "bg-blue-500", text: "Ти уникаєш тригера, щоб не відчувати дискомфорт: скасовуєш плани, відкладаєш важливу справу, відволікаєшся або приглушуєш почуття." },
+    { n: "3", title: "Тимчасове полегшення", color: "bg-indigo-600", text: "Уникнення швидко знижує напругу, тому мозок запам'ятовує його як «порятунок». Але справа лишається, можливості втрачаються, а залежність від уникнення росте." },
+    { n: "4", title: "Посилення", color: "bg-indigo-800", text: "Уникнення починає здаватися єдиним способом почуватися краще. Наступного разу схожа ситуація викликає ще сильнішу тривогу — і бажання втекти зростає." },
+  ];
+  return <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6"><CalmHeader title="Цикл уникнення" onExit={onExit} /><p className="mb-5 text-sm leading-relaxed text-slate-500">Уникнення допомагає на хвилину, але підживлює тривогу надовго. Ось як працює ця пастка:</p><div className="relative space-y-3">{steps.map((s, i) => <div key={s.n} className="relative flex gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-100"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${s.color} font-extrabold text-white`}>{s.n}</span><div><h2 className="font-extrabold text-slate-800">{s.title}</h2><p className="mt-1 text-sm leading-relaxed text-slate-500">{s.text}</p></div>{i < steps.length - 1 && <ArrowRight className="absolute -bottom-3 left-7 z-10 h-5 w-5 rotate-90 rounded-full bg-white text-indigo-400" />}</div>)}</div><div className="mt-5 rounded-3xl bg-gradient-to-br from-teal-50 to-sky-50 p-5 ring-1 ring-teal-100"><h2 className="font-extrabold text-teal-800">Як розірвати цикл</h2><p className="mt-1 text-sm leading-relaxed text-teal-700">Не потрібно одразу перемагати весь страх. Обери найменший безпечний крок назустріч ситуації, залишайся в ній достатньо довго, щоб тривога почала спадати сама, і повторюй. Так мозок вчиться: «я можу це витримати».</p><button onClick={onGo} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white">Перейти до сходинок страху <ArrowRight className="h-4 w-4" /></button></div></div>;
+}
+
+function RainPractice({ onExit, onDone }) {
+  const startRef = useRef(Date.now());
+  const [step, setStep] = useState(0);
+  const stages = [
+    { letter: "R", title: "Розпізнай", text: "Зверни увагу на теперішній момент. Повільно оглянь простір довкола. Поміть свої думки, почуття й тілесні відчуття. Назви почуття вголос або подумки." },
+    { letter: "A", title: "Дозволь", text: "Спостерігай за переживанням, ніби дивишся фільм. Дозволь думкам, почуттям і відчуттям приходити та йти без осуду. Скажи собі: «Зараз це саме так»." },
+    { letter: "I", title: "Досліди", text: "Які слова звучать у голові? Які емоції ти відчуваєш і звідки вони? Де вони живуть у тілі? Чого потребує найвразливіша частина тебе: прийняття, прощення, любові чи належності?" },
+    { letter: "N", title: "Підтримай", text: "Постався до свого досвіду лагідно. Скажи собі те, що зараз потрібно почути: «Я поруч», «Зі мною все гаразд», «Я заслуговую на турботу». Уяви тепло близької людини, тварини або важливого образу." },
+  ];
+  const current = stages[step];
+  const finish = () => onDone((Date.now() - startRef.current) / 1000);
+  return <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-4 pb-20 pt-6"><CalmHeader title="RAIN · усвідомлена підтримка" onExit={onExit} /><div className="mb-5 rounded-2xl bg-slate-800 p-4 text-sm leading-relaxed text-white"><b>Підготовка.</b> Сядь або ляж зручно. Заплющ очі чи пом'якши погляд. Зроби три повільні глибокі вдихи. На кожному кроці можна побути кілька хвилин.</div><div className="mb-4 flex gap-2">{stages.map((s, i) => <button key={s.letter} onClick={() => setStep(i)} className={`grid h-11 flex-1 place-items-center rounded-xl text-lg font-black transition ${i === step ? "bg-green-600 text-white shadow-md" : i < step ? "bg-green-100 text-green-700" : "bg-white text-slate-300 ring-1 ring-slate-100"}`}>{s.letter}</button>)}</div><div className="flex flex-1 flex-col justify-center rounded-3xl bg-white p-6 shadow-sm ring-1 ring-green-100"><div className="mb-4 flex items-center gap-4"><span className="grid h-20 w-20 shrink-0 place-items-center rounded-3xl bg-green-600 text-5xl font-black text-white">{current.letter}</span><div><div className="text-xs font-bold uppercase tracking-widest text-green-500">Крок {step + 1} із 4</div><h2 className="text-2xl font-extrabold text-slate-800">{current.title}</h2></div></div><p className="text-base leading-relaxed text-slate-600">{current.text}</p><div className="mt-8 flex gap-3">{step > 0 && <button onClick={() => setStep((s) => s - 1)} className="rounded-2xl bg-slate-100 px-5 py-3 font-bold text-slate-600">Назад</button>}<button onClick={() => step < 3 ? setStep((s) => s + 1) : finish()} className="flex-1 rounded-2xl bg-green-600 py-3 font-bold text-white shadow-lg">{step < 3 ? "Далі" : "Завершити практику"}</button></div></div><p className="mt-5 text-center text-sm text-slate-400">На завершення зроби три повільні глибокі вдихи. Продовжуй ставитися до себе уважно й лагідно протягом дня.</p></div>;
+}
+
+const SELFCARE_GROUPS = [
+  ["Фізична турбота", ["Збалансовано харчуюся", "Дбаю про особисту гігієну", "Рухаюся або тренуюся", "Їм регулярно", "Достатньо сплю", "Відпочиваю, коли хворію", "Проходжу профілактичні огляди"]],
+  ["Психологічна й емоційна", ["Беру паузу від обов'язків", "Маю хобі", "Відпочиваю від телефона й повідомлень", "Здорово виражаю почуття", "Помічаю свої сильні сторони й досягнення", "Роблю щось заспокійливе", "Говорю про свої проблеми"]],
+  ["Соціальна турбота", ["Проводжу час із приємними людьми", "Підтримую контакт із близькими", "Маю змістовні розмови", "Знайомлюся з новими людьми", "Прошу допомоги, коли вона потрібна", "Роблю приємні справи разом з іншими", "Підтримую старі дружні зв'язки"]],
+  ["Духовна й ціннісна", ["Проводжу час на природі", "Медитую або молюся, якщо це мені близько", "Пам'ятаю, що надає життю сенс", "Дію відповідно до своїх цінностей", "Залишаю час на роздуми", "Долучаюся до важливої для мене справи", "Ціную мистецтво, яке мене торкає"]],
+  ["Професійна турбота", ["Розвиваю професійні навички", "Кажу «ні» надмірним обов'язкам", "Беру цікаві або важливі проєкти", "Роблю перерви під час роботи", "Зберігаю баланс роботи й особистого життя", "Підтримую комфортне робоче місце", "Захищаю потреби в оплаті, умовах і відпочинку"]],
+];
+
+function SelfCareAssessment({ value = {}, onExit, onSave }) {
+  const [answers, setAnswers] = useState(value);
+  const set = (key, patch) => { const next = { ...answers, [key]: { ...(answers[key] || {}), ...patch } }; setAnswers(next); onSave(next); };
+  const rated = Object.values(answers).filter((x) => x?.rating).length;
+  const flagged = Object.values(answers).filter((x) => x?.improve).length;
+  return <div className="mx-auto w-full max-w-3xl px-4 pb-20 pt-6"><CalmHeader title="Оцінка турботи про себе" onExit={onExit} /><p className="mb-3 text-sm leading-relaxed text-slate-500">Оціни, як часто або наскільки добре ти робиш кожну дію: 1 — рідко, 2 — іноді, 3 — часто. Прапорець означає «хочу приділяти цьому більше уваги». Тут немає правильних відповідей.</p><div className="mb-4 flex gap-2 text-xs"><span className="rounded-full bg-green-50 px-3 py-1.5 font-semibold text-green-700">Оцінено: {rated}</span><span className="rounded-full bg-amber-50 px-3 py-1.5 font-semibold text-amber-700">Хочу покращити: {flagged}</span></div><div className="space-y-5">{SELFCARE_GROUPS.map(([group, items], gi) => <section key={group} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-green-100"><h2 className="bg-green-700 px-4 py-2.5 font-bold text-white">{group}</h2>{items.map((item, ii) => { const key = `${gi}-${ii}`; const a = answers[key] || {}; return <div key={item} className="flex items-center gap-2 border-t border-green-50 px-3 py-2.5 first:border-0 odd:bg-green-50/40"><button onClick={() => set(key, { improve: !a.improve })} className={`grid h-7 w-7 shrink-0 place-items-center rounded-md border-2 ${a.improve ? "border-amber-500 bg-amber-500 text-white" : "border-green-200 text-transparent"}`} title="Хочу покращити"><FlagIcon /></button><span className="min-w-0 flex-1 text-sm text-slate-700">{item}</span><div className="flex shrink-0 gap-1">{[1,2,3].map((n) => <button key={n} onClick={() => set(key, { rating: n })} className={`h-8 w-8 rounded-lg text-xs font-bold ${a.rating === n ? "bg-green-600 text-white" : "bg-slate-50 text-slate-400"}`}>{"★".repeat(n)}</button>)}</div></div>})}</section>)}</div><p className="mt-5 text-center text-xs text-slate-400">Низька оцінка не означає, що це обов'язково треба змінити. Обирай те, що справді важливе саме для тебе.</p></div>;
+}
+function FlagIcon() { return <span className="text-sm">⚑</span>; }
+
+const GRATITUDE_PROMPTS = [
+  ["Одна хороша річ, яка сталася зі мною сьогодні…", "Щось хороше, що я побачила у вчинку іншої людини…", "Сьогодні мені було весело, коли…"],
+  ["Щось, що я сьогодні завершила або зробила…", "Щось смішне, що сталося сьогодні…", "Людина, якій я сьогодні вдячна…"],
+  ["Сьогодні я вдячна за…", "Сьогодні я усміхнулась, коли…", "Що з цього дня я хочу запам'ятати надовго…"],
+  ["Одна хороша річ, яка сталася зі мною сьогодні…", "Сьогоднішній день був особливим, тому що…", "Сьогодні я пишаюся собою, тому що…"],
+  ["Щось цікаве, що сталося сьогодні…", "Людина, якій я сьогодні вдячна…", "Сьогодні мені було весело, коли…"],
+  ["Що з цього дня я хочу завжди пам'ятати…", "Щось смішне, що сталося сьогодні…", "Моя улюблена частина сьогоднішнього дня…"],
+  ["Сьогодні мене порадувало…", "Щось хороше, що я побачила у вчинку іншої людини…", "Щось, що я сьогодні зробила добре…"],
+];
+
+function GratitudeWeek({ value = {}, onExit, onSave }) {
+  const [day, setDay] = useState(0);
+  const update = (i, text) => { const next = { ...value, [day]: { ...(value[day] || {}), [i]: text } }; onSave(next); };
+  const complete = GRATITUDE_PROMPTS.map((_, d) => Object.values(value[d] || {}).filter((x) => String(x).trim()).length);
+  return <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6"><CalmHeader title="Журнал вдячності · 7 днів" onExit={onExit} /><p className="mb-4 text-sm text-slate-500">Щодня запиши три хороші речі. Вони можуть бути зовсім маленькими — важливо лише на мить їх помітити.</p><div className="mb-5 grid grid-cols-7 gap-1.5">{GRATITUDE_PROMPTS.map((_, i) => <button key={i} onClick={() => setDay(i)} className={`rounded-xl py-2 text-xs font-bold ${day === i ? "bg-amber-500 text-white" : complete[i] === 3 ? "bg-amber-100 text-amber-700" : "bg-white text-slate-400 ring-1 ring-slate-100"}`}><span className="block">Д{i+1}</span><span className="text-[10px]">{complete[i]}/3</span></button>)}</div><div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-amber-100"><div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-extrabold text-slate-800">День {day + 1}</h2><span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">{complete[day]} із 3</span></div><div className="space-y-4">{GRATITUDE_PROMPTS[day].map((prompt, i) => <label key={prompt} className="block"><span className="text-sm font-semibold text-slate-700">{prompt}</span><textarea value={value[day]?.[i] || ""} onChange={(e) => update(i, e.target.value)} rows={4} className="mt-2 w-full resize-none rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-amber-300" /></label>)}</div><div className="mt-5 flex gap-3">{day > 0 && <button onClick={() => setDay((d) => d - 1)} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-600">Попередній</button>}{day < 6 && <button onClick={() => setDay((d) => d + 1)} className="flex-1 rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-white">Наступний день</button>}</div></div><p className="mt-4 text-center text-xs text-slate-400">Відповіді зберігаються автоматично.</p></div>;
+}
+
+const ESTEEM_PROMPTS = [
+  ["Щось, що я сьогодні зробила добре…", "Сьогодні мені було весело, коли…", "Я відчула гордість, коли…"],
+  ["Сьогодні я завершила або зробила…", "Я мала позитивний досвід із…", "Щось добре, що я зробила для когось…"],
+  ["Я почувалася добре із собою, коли…", "Я пишалася іншою людиною, коли…", "Сьогодні було цікаво, тому що…"],
+  ["Я відчула гордість, коли…", "Позитивна річ, яку я сьогодні помітила…", "Сьогодні я завершила або зробила…"],
+  ["Щось, що я сьогодні зробила добре…", "Позитивний досвід із людиною, місцем або справою…", "Я пишалася кимось, коли…"],
+  ["Сьогодні мені було весело, коли…", "Щось добре, що я зробила для когось…", "Я почувалася добре із собою, коли…"],
+  ["Позитивна річ, яку я сьогодні помітила…", "Сьогодні було цікаво, тому що…", "Я відчула гордість, коли…"],
+];
+
+function EsteemWeek({ value = {}, onExit, onSave }) {
+  const [day, setDay] = useState(0);
+  const update = (i, text) => onSave({ ...value, [day]: { ...(value[day] || {}), [i]: text } });
+  const complete = ESTEEM_PROMPTS.map((_, d) => Object.values(value[d] || {}).filter((x) => String(x).trim()).length);
+  return <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6"><CalmHeader title="Журнал самооцінки · 7 днів" onExit={onExit} /><p className="mb-4 text-sm text-slate-500">Самооцінка зміцнюється, коли ти регулярно помічаєш не лише помилки, а й власні зусилля, добрі вчинки, задоволення та маленькі перемоги.</p><div className="mb-5 grid grid-cols-7 gap-1.5">{ESTEEM_PROMPTS.map((_, i) => <button key={i} onClick={() => setDay(i)} className={`rounded-xl py-2 text-xs font-bold ${day === i ? "bg-purple-600 text-white" : complete[i] === 3 ? "bg-purple-100 text-purple-700" : "bg-white text-slate-400 ring-1 ring-slate-100"}`}><span className="block">Д{i+1}</span><span className="text-[10px]">{complete[i]}/3</span></button>)}</div><div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-purple-100"><div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-extrabold text-slate-800">День {day + 1}</h2><span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700">{complete[day]} із 3</span></div><div className="space-y-4">{ESTEEM_PROMPTS[day].map((prompt, i) => <label key={prompt} className="block"><span className="text-sm font-semibold text-slate-700">{prompt}</span><textarea value={value[day]?.[i] || ""} onChange={(e) => update(i, e.target.value)} rows={4} className="mt-2 w-full resize-none rounded-2xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-purple-300" /></label>)}</div><div className="mt-5 flex gap-3">{day > 0 && <button onClick={() => setDay((d) => d - 1)} className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-bold text-slate-600">Попередній</button>}{day < 6 && <button onClick={() => setDay((d) => d + 1)} className="flex-1 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white">Наступний день</button>}</div></div><p className="mt-4 text-center text-xs text-slate-400">Відповіді зберігаються автоматично.</p></div>;
+}
+
+const DBT_SKILLS = {
+  dbtstop: { title: "STOP", subtitle: "Пауза перед імпульсивною реакцією", color: "#dc2626", steps: [
+    ["S · Stop — зупинись", "Не рухайся і нічого не кажи кілька секунд. Не дозволяй емоції миттєво натиснути кнопку дії."],
+    ["T · Take a step back — відступи", "Відійди фізично або подумки. Зроби повільний вдих. Дай собі простір між почуттям і реакцією."],
+    ["O · Observe — спостерігай", "Що відбувається всередині й довкола? Назви думки, емоції, тілесні відчуття та факти ситуації."],
+    ["P · Proceed mindfully — дій усвідомлено", "Запитай: яка дія відповідає моїм цілям і цінностям? Обери її, навіть якщо імпульс тягне в інший бік."],
+  ]},
+  dbttipp: { title: "TIPP", subtitle: "Швидка допомога, коли емоція зашкалює", color: "#0284c7", note: "Якщо маєш проблеми із серцем, тиском, диханням або інші медичні обмеження — узгодь інтенсивні вправи та холод із лікарем.", steps: [
+    ["T · Temperature — температура", "Охолоди обличчя прохолодною водою або приклади прохолодний компрес до щік і зони навколо очей на короткий час. Не використовуй крижану воду, якщо це небезпечно для тебе."],
+    ["I · Intense exercise — інтенсивний рух", "Якщо це безпечно, 1–5 хвилин активно порухайся: швидка ходьба, присідання, біг на місці."],
+    ["P · Paced breathing — уповільнене дихання", "Дихай повільно, роблячи видих довшим за вдих: наприклад, вдих 4 секунди, видих 6."],
+    ["P · Paired muscle relaxation — розслаблення", "На вдиху м'яко напруж групу м'язів, на видиху відпусти й подумки скажи «розслабся»."],
+  ]},
+  dbtaccepts: { title: "ACCEPTS", subtitle: "Відволікання, щоб безпечно пережити кризову хвилю", color: "#7c3aed", steps: [
+    ["A · Activities — активності", "Займись короткою справою, що захоплює увагу: прогулянка, прибирання, гра, серіал."],
+    ["C · Contributing — внесок", "Зроби маленьку корисну дію для когось: повідомлення підтримки, допомога, добра справа."],
+    ["C · Comparisons — порівняння", "Згадай час, коли вже пережила щось складне, і поміть, що зараз у тебе більше досвіду чи ресурсів."],
+    ["E · Emotions — інші емоції", "Увімкни музику, фільм або активність, що викликає іншу безпечну емоцію."],
+    ["P · Pushing away — тимчасово відкласти", "Уявно поклади проблему в коробку й домовся повернутися до неї у визначений час."],
+    ["T · Thoughts — інші думки", "Перемкни мозок на рахування, головоломку, опис предметів чи читання."],
+    ["S · Sensations — відчуття", "Використай виразне, але безпечне відчуття: прохолодна вода, аромат, м'яка ковдра, кисла цукерка."],
+  ]},
+  dbtimprove: { title: "IMPROVE", subtitle: "Як зробити важкий момент стерпнішим", color: "#d97706", steps: [
+    ["I · Imagery — образ", "Уяви безпечне місце або те, як хвиля емоції проходить і ти справляєшся."], ["M · Meaning — сенс", "Знайди маленький сенс: чого це вчить, що важливе ти захищаєш?"], ["P · Prayer — звернення", "Звернися до віри, природи, мудрості або власних цінностей — у спосіб, близький саме тобі."], ["R · Relaxation — розслаблення", "Дихання, теплий душ, розслаблення м'язів або спокійна музика."], ["O · One thing — одна річ", "Поверни увагу лише до цього моменту й однієї маленької дії."], ["V · Vacation — коротка відпустка", "Дай собі 5–20 хвилин безпечної паузи від вимог."], ["E · Encouragement — підбадьорення", "Скажи собі: «Це важко, але мине», «Я можу зробити один крок»."],
+  ]},
+  dbtradical: { title: "Радикальне прийняття", subtitle: "Перестати воювати з фактом, який уже є", color: "#059669", steps: [
+    ["Назви факти", "Опиши ситуацію без оцінок, «мало бути» і самозвинувачення."], ["Поміть боротьбу", "Які думки заперечують реальність: «це нечесно», «так не повинно бути», «я не витримаю»?"], ["Прийми всім тілом", "Розтисни руки, розслаб обличчя, зроби видих і скажи: «Це сталося. Мені не подобається, але зараз це реальність»."], ["Обери відповідь", "Що буде ефективним наступним кроком у реальності, яка є?"],
+  ]},
+  dbtopposite: { title: "Протилежна дія", subtitle: "Коли емоція не відповідає фактам або її сила не допомагає", color: "#db2777", steps: [
+    ["Назви емоцію та імпульс", "Напр.: страх → уникнути; сором → сховатися; сум → ізолюватися; злість → напасти."], ["Перевір факти", "Чи виправдана ця емоція фактами? Чи відповідає її інтенсивність ситуації?"], ["Визнач протилежну дію", "Страх без реальної загрози → наблизитися; необґрунтований сором → не ховатися; сум → активізуватися; злість → м'якість."], ["Зроби повністю", "Поведінка, поза, голос і думки мають рухатися в протилежний бік. Повторюй, доки емоція не почне змінюватися."],
+  ]},
+  dbtdearman: { title: "DEAR MAN", subtitle: "Чітко попросити про потрібне або сказати «ні»", color: "#4f46e5", steps: [
+    ["D · Describe — опиши", "Коротко й без оцінок назви факти ситуації."], ["E · Express — вислови", "Скажи про свої почуття та думку через «я»-формулювання."], ["A · Assert — попроси", "Чітко попроси про потрібне або прямо відмов."], ["R · Reinforce — підкріпи", "Поясни, як виконання прохання допоможе або покращить ситуацію."], ["M · Mindful — тримай фокус", "Не відволікайся на атаки й старі теми. Спокійно повторюй свою позицію."], ["A · Appear confident — впевнена подача", "Рівний голос, контакт очима, відкрита постава. Не вибачайся за саме право просити."], ["N · Negotiate — домовляйся", "Будь готова запропонувати альтернативу, скоротити прохання або запитати: «Що ти пропонуєш?»"],
+  ]},
+};
+
+function DbtSkillView({ skill, onExit, onDone }) {
+  const startRef = useRef(Date.now());
+  const [checked, setChecked] = useState([]);
+  const toggle = (i) => setChecked((p) => p.includes(i) ? p.filter((x) => x !== i) : [...p, i]);
+  return <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6"><CalmHeader title={skill.title} onExit={onExit} /><p className="mb-4 text-sm text-slate-500">{skill.subtitle}</p>{skill.note && <div className="mb-4 rounded-2xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800 ring-1 ring-amber-100">{skill.note}</div>}<div className="space-y-3">{skill.steps.map(([title, text], i) => { const done = checked.includes(i); return <button key={title} onClick={() => toggle(i)} className={`flex w-full items-start gap-3 rounded-2xl p-4 text-left shadow-sm ring-1 transition ${done ? "bg-emerald-50 ring-emerald-200" : "bg-white ring-slate-100"}`}><span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full text-xs font-black text-white" style={{ backgroundColor: done ? "#10b981" : skill.color }}>{done ? <Check className="h-4 w-4" /> : i + 1}</span><span><b className="text-slate-800">{title}</b><span className="mt-1 block text-sm leading-relaxed text-slate-500">{text}</span></span></button>; })}</div><button onClick={() => onDone((Date.now() - startRef.current) / 1000, { completedSteps: checked.length })} className="mt-5 w-full rounded-2xl py-3 font-bold text-white shadow-lg" style={{ backgroundColor: skill.color }}>Завершити практику</button><p className="mt-4 text-center text-xs leading-relaxed text-slate-400">У кризі обирай безпеку. Якщо є ризик нашкодити собі чи комусь — звернися по невідкладну допомогу або до людини, яка може бути поруч.</p></div>;
+}
+
+function UrgeSurfingPractice({ onExit, onDone }) {
+  const startRef = useRef(Date.now());
+  const [phase, setPhase] = useState(0);
+  const [urge, setUrge] = useState(5);
+  const [trigger, setTrigger] = useState("");
+  const phases = [
+    ["Тригер", "Щось запустило потяг: людина, місце, думка, почуття, спогад або тілесне відчуття."],
+    ["Наростання", "Потяг стає інтенсивнішим — поступово або раптово. Помічай його, не намагаючись придушити."],
+    ["Пік", "Хвиля досягає найсильнішої точки. Може здаватися, що вона не мине, але пік завжди обмежений у часі."],
+    ["Спад", "Якщо не підживлювати потяг дією, його інтенсивність починає знижуватися й зрештою згасає."],
+  ];
+  const finish = () => onDone((Date.now() - startRef.current) / 1000, { trigger, urge });
+  return <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6"><CalmHeader title="Серфінг потягу" onExit={onExit} /><p className="mb-4 text-sm leading-relaxed text-slate-500">Потяг — це хвиля, а не наказ. Замість боротися з нею або діяти під її впливом, спостерігай, як вона піднімається, доходить до піку й спадає сама.</p><div className="mb-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-cyan-100"><label className="text-sm font-bold text-slate-700">Що запустило потяг?</label><textarea value={trigger} onChange={(e) => setTrigger(e.target.value)} rows={2} placeholder="Місце, людина, думка, емоція, відчуття…" className="mt-2 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none" /><label className="mt-4 flex items-center justify-between text-sm font-bold text-slate-700"><span>Сила потягу зараз</span><span className="text-cyan-700">{urge}/10</span></label><input type="range" min={0} max={10} value={urge} onChange={(e) => setUrge(Number(e.target.value))} className="mt-2 w-full accent-cyan-600" /></div><div className="mb-4 flex items-end gap-1 px-2">{phases.map((p, i) => <button key={p[0]} onClick={() => setPhase(i)} className={`flex-1 rounded-t-2xl transition ${i === phase ? "bg-cyan-600" : "bg-cyan-100"}`} style={{ height: `${48 + [0, 35, 70, 30][i]}px` }}><span className={`text-[10px] font-bold sm:text-xs ${i === phase ? "text-white" : "text-cyan-700"}`}>{p[0]}</span></button>)}</div><div className="rounded-3xl bg-gradient-to-br from-cyan-50 to-sky-50 p-5 ring-1 ring-cyan-100"><div className="text-xs font-bold uppercase tracking-widest text-cyan-600">Етап {phase + 1} із 4</div><h2 className="mt-1 text-xl font-extrabold text-slate-800">{phases[phase][0]}</h2><p className="mt-2 text-sm leading-relaxed text-slate-600">{phases[phase][1]}</p><div className="mt-4 rounded-2xl bg-white/80 p-4 text-sm leading-relaxed text-slate-600"><b>Зараз:</b> визнай «у мене є потяг». Спостерігай за думками й тілом без спроб негайно щось змінити. Нагадай собі: «Це почуття, не обов'язок діяти. Дискомфорт допустимий. Хвиля тимчасова».</div><div className="mt-4 flex gap-3">{phase > 0 && <button onClick={() => setPhase((p) => p - 1)} className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-slate-600">Назад</button>}<button onClick={() => phase < 3 ? setPhase((p) => p + 1) : finish()} className="flex-1 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-bold text-white">{phase < 3 ? "Далі по хвилі" : "Хвиля спала"}</button></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800"><b>Керуй тригерами</b><p className="mt-1 text-xs leading-relaxed">Заздалегідь знай свої тригери й підготуй для кожного безпечну відповідь.</p></div><div className="rounded-2xl bg-lime-50 p-4 text-sm text-lime-800"><b>Відклади й перемкнись</b><p className="mt-1 text-xs leading-relaxed">Прогулянка, музика, дзвінок близькій людині, книга чи хобі дають хвилі час ослабнути.</p></div></div></div>;
+}
+
 const RABBIT_SPEC = {
   title: "Реверс кролячої нори", titleKey: "negative", color: "#e11d48",
   intro: "«А що як?» уміє за хвилину довести від легкого сумніву до катастрофи — це кроляча нора негативних сценаріїв. Реверс: на кожен поганий результат, який малює тривога, придумай ДОБРИЙ результат такої ж імовірності. Мозку корисно згадати, що майбутнє відкрите в обидва боки.",
@@ -8176,6 +8554,162 @@ const SOLVEFULL_SPEC = {
     { k: "decision", label: "5 · Рішення і дія", hint: "Що саме зробиш? Чому саме це?" },
     { k: "plan", label: "6 · Покроковий план", hint: "Що? Коли? Як? З ким/чим? Що може завадити і як обійти? Чи реалістично?", rows: 3 },
     { k: "review", label: "7 · Ревізія (після виконання)", hint: "Чи досягла задуманого? Якщо ні — що інакше? Який прогрес є? Чого навчилась?", rows: 2 },
+  ],
+};
+const FOCUSPLAN_SPEC = {
+  title: "План фокусу", titleKey: "task", color: "#0f766e",
+  intro: "Коли велике завдання паралізує, не треба тримати весь шлях у голові. Визнач одну справу, розбий її на маленькі частини, признач час і заздалегідь прибери зайві перешкоди.",
+  footer: "Не прагни ідеального плану. Достатньо, щоб наступний крок був маленьким, конкретним і видимим. 🎯",
+  fields: [
+    { k: "task", label: "1 · Визнач завдання", hint: "Одна справа, яку потрібно завершити цього тижня. Напр.: «прибрати квартиру до приходу гостей».", rows: 2 },
+    { k: "parts", label: "2 · Розбий на менші частини", hint: "Запиши до 5 конкретних кроків — кожен з нового рядка.", rows: 5 },
+    { k: "times", label: "Скільки часу потребує кожен крок", hint: "Напр.: 1 — 15 хв; 2 — 25 хв; 3 — 10 хв.", rows: 3 },
+    { k: "schedule", label: "3 · Створи розклад", hint: "Коли саме зробиш кожен крок? Можна прив'язати його до щоденної дії.", rows: 3 },
+    { k: "reminders", label: "Нагадування", hint: "Як не забудеш: будильник, календар, записка, людина-нагадувач.", rows: 2 },
+    { k: "distractions", label: "4 · Прибери відволікання", hint: "Що можна вимкнути, сховати або перенести ще до початку?", rows: 2 },
+    { k: "ifthen", label: "План на неминучі відволікання", hint: "Склади «якщо–то»: «Якщо мені зателефонують, то скажу, що передзвоню через 15 хвилин».", rows: 2 },
+    { k: "materials", label: "Матеріали й усе необхідне", hint: "Що потрібно підготувати заздалегідь, щоб не шукати під час роботи?", rows: 2 },
+    { k: "physical", label: "Фізична підготовка", hint: "Одяг, їжа, вода, дорога, сон — що допоможе бути готовою вчасно?", rows: 2 },
+    { k: "outcome", label: "5 · Уяви результат", hint: "Яку користь дасть завершення справи і як ти почуватимешся після цього?", rows: 4 },
+  ],
+};
+const CONTROL_SPEC = {
+  title: "Коло контролю", titleKey: "problem", color: "#2563eb",
+  intro: "Назви проблему, а потім розділи все, що з нею пов'язано, на дві частини. Поза контролем: минуле, правила та дії, думки й почуття інших. У твоєму контролі: твої слова, дії, ставлення, цінності та наступні кроки.",
+  footer: "Спрямуй енергію всередину кола — на конкретну дію, яку можеш зробити сама. Решту можна свідомо відпустити. 💛",
+  fields: [
+    { k: "problem", label: "Проблема", hint: "Що саме зараз турбує?", rows: 2 },
+    { k: "cannot", label: "Поза моїм контролем", hint: "Дії та реакції інших, минуле, зовнішні правила й обставини.", rows: 5 },
+    { k: "can", label: "У моєму контролі", hint: "Мої слова, дії, ставлення, межі, цінності, цілі й наступний крок.", rows: 5 },
+  ],
+};
+const SOCIAL_ANX_SPEC = {
+  title: "Дослідження соціальної тривоги", titleKey: "situations", color: "#7c3aed",
+  intro: "Соціальна тривога може виникати лише в окремих ситуаціях — наприклад, під час виступу — або майже в будь-якій взаємодії. Тут можна побачити саме свій патерн: що запускає тривогу, чого ти боїшся та як уникнення впливає на життя.",
+  footer: "Твої відповіді — не вирок, а карта. З нею легше обрати один маленький крок назустріч бажаному життю. 💛",
+  fields: [
+    { k: "situations", label: "Які соціальні ситуації викликають тривогу?", hint: "Виступ, розмова телефоном, знайомство, побачення, натовп, зоровий контакт, спілкування з авторитетною людиною — або щось твоє.", rows: 4 },
+    { k: "worries", label: "Чого я боюся в цих ситуаціях?", hint: "Осоромитися, виглядати нерозумно, не знати, що сказати, бути поміченою, відкинутою чи не сподобатися.", rows: 4 },
+    { k: "impact", label: "Як соціальна тривога вплинула на моє життя?", hint: "Три конкретні приклади: стосунки, навчання, робота, відпочинок, втрачені можливості.", rows: 5 },
+    { k: "different", label: "Якби завтра соціальна тривога зникла — що було б інакше?", hint: "Три максимально конкретні приклади того, що ти робила б, відчувала або дозволила б собі.", rows: 5 },
+  ],
+};
+const DBT_CHAIN_SPEC = {
+  title: "Аналіз ланцюжка поведінки", titleKey: "behavior", color: "#312e81",
+  intro: "Коли складно контролювати небажану поведінку, важливо побачити не лише сам вчинок, а весь ланцюжок подій перед ним. Описуй конкретно: не «я розлютилась», а «я підвищила голос і грюкнула дверима».",
+  footer: "Мета — не звинуватити себе, а знайти найранішу ланку, де наступного разу можна застосувати навичку й змінити напрям. 💛",
+  fields: [
+    { k: "behavior", label: "1 · Проблемна поведінка", hint: "Що саме ти зробила, сказала або не зробила? Конкретно й без ярликів.", rows: 2 },
+    { k: "vulnerabilities", label: "2 · Вразливості до події", hint: "Втома, голод, самотність, алкоголь, біль, стрес, конфлікт, недосип — що зробило реакцію ймовірнішою?", rows: 3 },
+    { k: "link1", label: "Ланка 1", hint: "Найраніша подія, думка, емоція, тілесне відчуття або вибір.", rows: 2 },
+    { k: "link2", label: "Ланка 2", rows: 2 },
+    { k: "link3", label: "Ланка 3", rows: 2 },
+    { k: "link4", label: "Ланка 4", rows: 2 },
+    { k: "link5", label: "Ланка 5", rows: 2 },
+    { k: "link6", label: "Ланка 6", rows: 2 },
+    { k: "trigger", label: "Тригер · остання крапля", hint: "Остання подія безпосередньо перед проблемною поведінкою.", rows: 2 },
+    { k: "consequences", label: "Наслідки", hint: "Що сталося одразу й пізніше? Що дало коротке полегшення, а якою була ціна?", rows: 3 },
+    { k: "breaks", label: "Де можна перервати ланцюжок", hint: "Познач 1–3 ланки та конкретні навички: STOP, TIPP, пауза, вихід із ситуації, дзвінок, DEAR MAN тощо.", rows: 4 },
+    { k: "repair", label: "Як виправити наслідки", hint: "Вибачення, відновлення довіри, безпечний план, повернення до лікування чи інший конкретний крок.", rows: 3 },
+  ],
+};
+const HABIT_PLAN_SPEC = {
+  title: "План звички", titleKey: "newHabit", color: "#334155",
+  intro: "Нова здорова звичка легше закріплюється, коли має чіткий сигнал у вже знайомій рутині. Друга частина — маленька безпечна винагорода, яка не суперечить меті звички.",
+  footer: "Починай настільки мало, щоб було важко відмовитися: одна хвилина, один крок, одна дія. Стабільність важливіша за масштаб. 💛",
+  fields: [
+    { k: "existingHabit", label: "1 · Після якої наявної звички?", hint: "Точний сигнал: після чищення зубів, після вечері, коли сяду в автобус, після ранкової кави.", rows: 2 },
+    { k: "newHabit", label: "Я зроблю нову звичку", hint: "Конкретна й маленька дія: 10 присідань, 2 хвилини дихання, склянка води, повідомлення людині підтримки.", rows: 2 },
+    { k: "frequency", label: "Коли і як часто?", hint: "Щодня, у будні, тричі на тиждень; додай час або місце, якщо це допоможе.", rows: 2 },
+    { k: "reward", label: "2 · Після нової звички я винагороджу себе", hint: "Невелика регулярна винагорода, яка не суперечить меті: музика, відпочинок, серія, теплий душ, позначка прогресу.", rows: 2 },
+    { k: "obstacle", label: "Як спрощу початок", hint: "Що підготую заздалегідь і яку мінімальну версію зроблю у важкий день?", rows: 3 },
+  ],
+};
+const DISCREPANCY_SPEC = {
+  title: "Побудова розбіжності", titleKey: "focus", color: "#7c2d12",
+  intro: "Подивись чесно, як змінюватиметься твоє життя у двох напрямках: якщо продовжувати вживання або небажану поведінку — і якщо припинити. Тут немає «правильних» відповідей; важливо побачити різницю між теперішнім шляхом і тим життям, якого ти хочеш.",
+  footer: "Повернись до відповідей у момент сумніву: вони нагадують не лише від чого ти відмовляєшся, а й заради чого змінюєшся. 💛",
+  fields: [
+    { k: "focus", label: "Що я розглядаю — продовжити чи припинити?", hint: "Напр.: алкоголь, куріння, азартні ігри або інша небажана поведінка.", rows: 2 },
+    { k: "careerContinue", label: "Робота / навчання · якщо продовжу", rows: 3 },
+    { k: "careerQuit", label: "Робота / навчання · якщо припиню", rows: 3 },
+    { k: "familyContinue", label: "Сім'я та близькі · якщо продовжу", rows: 3 },
+    { k: "familyQuit", label: "Сім'я та близькі · якщо припиню", rows: 3 },
+    { k: "friendsContinue", label: "Друзі · якщо продовжу", rows: 3 },
+    { k: "friendsQuit", label: "Друзі · якщо припиню", rows: 3 },
+    { k: "goalsContinue", label: "Довгострокові цілі · якщо продовжу", rows: 3 },
+    { k: "goalsQuit", label: "Довгострокові цілі · якщо припиню", rows: 3 },
+    { k: "moneyContinue", label: "Фінанси · якщо продовжу", rows: 3 },
+    { k: "moneyQuit", label: "Фінанси · якщо припиню", rows: 3 },
+    { k: "healthContinue", label: "Здоров'я · якщо продовжу", rows: 3 },
+    { k: "healthQuit", label: "Здоров'я · якщо припиню", rows: 3 },
+  ],
+};
+const GROWTH_SPEC = {
+  title: "Мислення зростання", titleKey: "situation", color: "#15803d",
+  intro: "Фіксоване мислення каже, що здібності й ситуації не змінюються. Мислення зростання визнає складність і водночас залишає місце для навчання, практики та змін. Це не примусовий позитив — це реалістичне «ще не виходить» замість остаточного «ніколи». ",
+  footer: "Труднощі не доводять, що з тобою щось не так. Вони показують, де потрібні час, підтримка, інша стратегія або ще одна спроба. 🌱",
+  fields: [
+    { k: "situation", label: "Ситуація", hint: "Що сталося? Напр.: помилка, відмова, низька оцінка, конфлікт або втрата.", rows: 2 },
+    { k: "fixed", label: "Моя фіксована думка", hint: "Напр.: «Я невдаха», «У мене ніколи не вийде», «Я просто не здатна». Запиши дослівно.", rows: 3 },
+    { k: "feeling", label: "Що я відчуваю через цю думку?", hint: "Емоції, тілесні відчуття та бажання здатися або уникнути.", rows: 2 },
+    { k: "growth", label: "Думка зростання", hint: "Чесна альтернатива: почуття тимчасові; навички розвиваються; з досвіду можна щось винести; одна невдача не визначає майбутнє.", rows: 4 },
+    { k: "lesson", label: "Чого ця ситуація може мене навчити?", rows: 3 },
+    { k: "action", label: "Один маленький наступний крок", hint: "Що конкретно зроблю, попрактикую або в кого попрошу підтримки?", rows: 2 },
+  ],
+};
+const GRATITUDE_SPEC = {
+  title: "Практики вдячності", titleKey: "good1", color: "#ca8a04",
+  intro: "Вдячність — це помічати хороше, не заперечуючи важкого. Регулярна практика допомагає увазі бачити не лише загрози й втрати, а й підтримку, тепло, маленькі радості та власні зусилля.",
+  footer: "Не треба відчувати сильну вдячність. Достатньо чесно помітити одну маленьку річ, яка сьогодні була трохи доброю. 💛",
+  fields: [
+    { k: "good1", label: "1 · За що я вдячна сьогодні?", hint: "Навіть дуже мала річ: їжа, розмова, сонце, зроблений крок.", rows: 2 },
+    { k: "good2", label: "2 · Ще одна хороша річ", rows: 2 },
+    { k: "good3", label: "3 · І ще одна", rows: 2 },
+    { k: "thanks", label: "Кому я хочу подякувати?", hint: "Що саме ця людина зробила і як я можу щиро сказати «дякую»?", rows: 3 },
+    { k: "senses", label: "Що я помітила органами чуття?", hint: "Під час прогулянки або дня: приємний колір, звук, запах, смак чи відчуття на шкірі.", rows: 3 },
+    { k: "letter", label: "Лист вдячності (за бажанням)", hint: "Комусь, хто вплинув на твоє життя. Опиши конкретні приклади; надсилати лист не обов'язково.", rows: 5 },
+    { k: "reflection", label: "5–10 хвилин споглядання", hint: "Які хороші речі дня хочеться затримати в увазі трохи довше?", rows: 3 },
+  ],
+};
+const INNER_COACH_SPEC = {
+  title: "Мій внутрішній тренер", titleKey: "situation", color: "#65a30d",
+  intro: "Внутрішній критик говорить жорстко, звинувачує й змушує здатися. Внутрішній тренер не заперечує помилок, але допомагає підвестися, навчитися й рухатися далі з повагою до себе.",
+  footer: "Добра відповідь не має бути солодкою чи неправдивою. Нехай вона буде такою, яку ти сказала б близькій людині в цій самій ситуації. 🌱",
+  fields: [
+    { k: "situation", label: "Коли я була надто суворою до себе?", hint: "Опиши конкретну ситуацію: що сталося і що ти зробила або не зробила.", rows: 3 },
+    { k: "critic", label: "Що каже мій внутрішній критик?", hint: "Запиши дослівно: звинувачення, «ніколи», «завжди», образи, вимоги бути ідеальною.", rows: 5 },
+    { k: "facts", label: "Які факти критик ігнорує?", hint: "Твої зусилля, обставини, попередні успіхи, людські обмеження та все, що робить картину чеснішою.", rows: 3 },
+    { k: "coach", label: "Що каже мій внутрішній тренер?", hint: "Напр.: «Підведись і спробуй ще раз», «Помилка — це інформація», «Ти зробила найкраще з доступним ресурсом». ", rows: 5 },
+    { k: "next", label: "Який наступний крок радить тренер?", hint: "Одна реалістична дія без покарання й самоприниження.", rows: 2 },
+  ],
+};
+const HABIT_BREAK_SPEC = {
+  title: "Розкладання звички", titleKey: "habit", color: "#16a34a",
+  intro: "Найскладніша частина нової звички — почати. Розклади її на п'ять рівнів: перший має бути настільки легким, щоб займати не більше двох хвилин, а п'ятий — повною версією звички.",
+  footer: "Спочатку щодня виконуй лише крок 1. Коли він стане автоматичним, додай крок 2 — і так поступово рухайся до повної звички. 🌱",
+  fields: [
+    { k: "habit", label: "Нова звичка", hint: "Яку повну звичку ти хочеш сформувати?", rows: 2 },
+    { k: "step1", label: "Крок 1 · до 2 хвилин", hint: "Дуже легкий старт, який реально виконати навіть у складний день.", rows: 2 },
+    { k: "step2", label: "Крок 2", hint: "Трохи більша дія, що спирається на перший крок.", rows: 2 },
+    { k: "step3", label: "Крок 3", rows: 2 },
+    { k: "step4", label: "Крок 4", rows: 2 },
+    { k: "step5", label: "Крок 5 · повна звичка", hint: "Фінальна версія, яку хочеш практикувати регулярно.", rows: 2 },
+    { k: "cue", label: "Коли виконуватиму крок 1?", hint: "Прив'яжи до часу, місця або наявної звички.", rows: 2 },
+  ],
+};
+const GOAL_BREAK_SPEC = {
+  title: "Розкладання цілі", titleKey: "goal", color: "#0f766e",
+  intro: "Велика ціль легко викликає стрес і прокрастинацію. Перетвори її на короткі конкретні завдання — бажано до однієї години — та захисти для кожного місце в розкладі.",
+  footer: "Якщо завдання важко почати — воно все ще завелике. Розділи його ще раз або постав часовий ліміт. План можна змінювати за досвідом. 🎯",
+  fields: [
+    { k: "goal", label: "Моя велика ціль", hint: "Що саме ти хочеш завершити або змінити?", rows: 2 },
+    { k: "task1", label: "Завдання 1", hint: "Конкретна дія · скільки часу · коли саме.", rows: 3 },
+    { k: "task2", label: "Завдання 2", hint: "Конкретна дія · скільки часу · коли саме.", rows: 3 },
+    { k: "task3", label: "Завдання 3", hint: "Конкретна дія · скільки часу · коли саме.", rows: 3 },
+    { k: "task4", label: "Завдання 4", hint: "За бажанням.", rows: 3 },
+    { k: "task5", label: "Завдання 5", hint: "За бажанням.", rows: 3 },
+    { k: "protect", label: "Як я захищу запланований час?", hint: "Вимкну телефон, знайду тихе місце, поставлю таймер, попереджу інших.", rows: 3 },
   ],
 };
 const COPING_SPEC = {
