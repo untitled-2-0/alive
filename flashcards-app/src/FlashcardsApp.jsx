@@ -1594,10 +1594,219 @@ async function collectBooksExport() {
   return { list, settings };
 }
 async function clearBooksData() { for (const key of Object.values(BOKEYS)) await store.remove(key); }
+
+/* ================================================================== */
+/* FITNESS — animated home workouts                                    */
+/* ================================================================== */
+const FTKEYS = {
+  log: "fitness:log",           // [{id, date, ts, name, sec, count}]
+  custom: "fitness:custom",     // [{id, name, items:[{ex, sec}]}]
+  settings: "fitness:settings", // {name, restSec}
+};
+async function collectFitnessExport() {
+  const log = await store.get(FTKEYS.log, []);
+  const custom = await store.get(FTKEYS.custom, []);
+  const settings = await store.get(FTKEYS.settings, { name: "Fitness", restSec: 15 });
+  return { log, custom, settings };
+}
+async function clearFitnessData() { for (const k of Object.values(FTKEYS)) await store.remove(k); }
+
+// Exercises are poses for a rigged figure: every joint has an angle, and SVG
+// animates between two keyframes. Angles: 0 = limb points down, +90 = left,
+// -90 = right, 180 = up. Arms are relative to the torso, legs are absolute.
+// Poses: base joint angles per body position. 0 = limb points down, +90 = left,
+// -90 = right, 180 = up. Arms rotate relative to the torso, legs are absolute.
+const FT_POSES = {
+  standing: { oy: 0, rot: 0, base: { hL: -3, hR: 3, sL: 12, sR: -12 } },
+  // lying: the whole figure is tipped 90° (head to the left), so joint angles
+  // are written as if the person were standing — much easier to reason about.
+  supine:   { oy: 36, rot: -90, base: { torso: 0, sL: 10, sR: -10, hL: 0, hR: 2 } },
+  side:     { oy: 36, rot: -90, base: { torso: 0, sL: 150, eL: 60, sR: -8, hL: 0, hR: 0 } },
+  seated:   { oy: 32, rot: 0, base: { torso: 0, sL: -72, sR: -108, hL: -88, hR: -92 } },
+  quad:     { oy: 20, rot: 0, base: { torso: -74, sL: 74, sR: 74, hL: 0, kL: -88, hR: -2, kR: -88 } },
+  prone:    { oy: 20, rot: 0, base: { torso: -76, sL: 76, sR: 76, hL: -58, hR: -62 } },
+};
+const EXERCISES = {
+  /* ——— КАЛЛАНЕТИКА · стоячи ——— */
+  reachUp: { name: "Витягування вгору", emoji: "🌱", group: "Калланетика", dur: 4.2, pose: "standing",
+    tip: "Тягнись маківкою і пальцями вгору, ребра донизу, живіт підтягнутий. Тримай і дихай.",
+    a: { sL: 168, sR: -168 }, b: { dy: -1.5, sL: 176, sR: -176 } },
+  armPulse: { name: "Пульси руками", emoji: "🙆‍♀️", group: "Калланетика", dur: 1.5, pose: "standing",
+    tip: "Руки в сторони на рівні плечей, пульсуй угору маленькою амплітудою. Плечі опущені.",
+    a: { sL: 84, eL: -6, sR: -84, eR: 6 }, b: { dy: -0.6, sL: 102, sR: -102 } },
+  armCircles: { name: "Кола плечима", emoji: "🔄", group: "Калланетика", dur: 2.8, pose: "standing",
+    tip: "Малі кола плечима назад, руки розслаблені. Розкриває грудний відділ.",
+    a: { sL: 26, eL: -56, sR: -26, eR: 56 }, b: { sL: -4, eL: -22, sR: 4, eR: 22 } },
+  sideStretch: { name: "Нахил убік", emoji: "🌿", group: "Калланетика", dur: 4.2, pose: "standing",
+    tip: "Тягнись убік і вгору, таз на місці, обидві стопи притиснуті. Статичне утримання.",
+    a: { torso: 15, sL: 164, sR: -10, hL: -5, hR: 5 }, b: { torso: 18, sL: 160, sR: -8, hL: -5, hR: 5 } },
+  rollDown: { name: "Скручування вниз", emoji: "🍃", group: "Калланетика", dur: 4.6, pose: "standing",
+    tip: "Опускайся хребець за хребцем, шия розслаблена, коліна м'які. Дуже повільно.",
+    a: { torso: -22, sL: -20, sR: 20 }, b: { torso: -64, sL: -6, sR: 6 } },
+  wallChair: { name: "«Стілець» біля стіни", emoji: "🪑", group: "Калланетика", dur: 4.2, pose: "standing",
+    tip: "Спина притиснута до стіни, стегна паралельно підлозі. Тримай і дихай рівно.",
+    a: { dy: 11, sL: 86, sR: -86, hL: -12, kL: 12, hR: 12, kR: -12 },
+    b: { dy: 12, sL: 87, sR: -87, hL: -13, kL: 13, hR: 13, kR: -13 } },
+  chairPulse: { name: "«Стілець» — пульси", emoji: "🔥", group: "Калланетика", dur: 1.7, pose: "standing",
+    tip: "З положення напівприсіду пульсуй униз на 2–3 см. Спина рівна, вага на п'ятах.",
+    a: { dy: 6, torso: 7, sL: 74, eL: 8, sR: -74, eR: -8, hL: -9, kL: 9, hR: 9, kR: -9 },
+    b: { dy: 12, torso: 11, sL: 76, eL: 6, sR: -76, eR: -6, hL: -14, kL: 14, hR: 14, kR: -14 } },
+  calfRaise: { name: "Підйом на носки", emoji: "🩰", group: "Калланетика", dur: 2.2, pose: "standing",
+    tip: "Піднімайся високо на півпальці, коліна прямі, утримуй рівновагу.",
+    a: { sL: 76, sR: -76 }, b: { dy: -4, sL: 80, sR: -80 } },
+  balance: { name: "Рівновага на нозі", emoji: "🦩", group: "Калланетика", dur: 4.4, pose: "standing",
+    tip: "Стій на одній нозі, друга зігнута. Дивись в одну точку, таз рівно.",
+    a: { sL: 158, sR: -158, hL: -2, hR: -22, kR: 78 }, b: { sL: 162, sR: -162, hL: -2, hR: -24, kR: 80 } },
+  backLegLift: { name: "Підйом ноги назад", emoji: "🕊️", group: "Калланетика", dur: 2.4, pose: "standing",
+    tip: "Нога пряма, підіймай сідницею, не прогинай поперек. Пульсуй угору.",
+    a: { torso: 12, sL: 58, eL: 22, sR: -58, eR: -22, hL: -2, hR: -16 },
+    b: { dy: -1, torso: 16, sL: 60, eL: 20, sR: -60, eR: -20, hL: -2, hR: -36 } },
+  sideLegStand: { name: "Нога вбік стоячи", emoji: "📐", group: "Калланетика", dur: 2.6, pose: "standing",
+    tip: "Підіймай пряму ногу вбік без нахилу корпусу. Носок тягни на себе.",
+    a: { sL: 94, sR: -94, hR: 22 }, b: { sL: 98, sR: -98, hR: 42 } },
+  quadStretch: { name: "Розтяжка стегна", emoji: "🧵", group: "Калланетика", dur: 4.4, pose: "standing",
+    tip: "П'ятку до сідниці, коліно вниз, таз підкручений. Утримуй без ривків.",
+    a: { sL: 150, sR: -46, eR: -70, hR: -14, kR: 150 }, b: { sL: 154, sR: -48, eR: -72, hR: -16, kR: 154 } },
+  /* ——— КАЛЛАНЕТИКА · живіт ——— */
+  curlUp: { name: "Скручування", emoji: "🔺", group: "Калланетика", dur: 2.4, pose: "supine",
+    tip: "Підіймай лопатки повільно, підборіддя не тисни до грудей. Пульсуй угору.",
+    a: { torso: -6, sL: 148, eL: 62, sR: -148, eR: -62, hL: -45, kL: 132, hR: -48, kR: 136 },
+    b: { torso: -28, sL: 140, eL: 62, sR: -140, eR: -62, hL: -45, kL: 132, hR: -48, kR: 136 } },
+  curlHold: { name: "Утримання скручування", emoji: "⏳", group: "Калланетика", dur: 4.2, pose: "supine",
+    tip: "Лопатки над підлогою, руки витягнуті вперед. Тримай і рівно дихай.",
+    a: { torso: -26, sL: 26, sR: -26, hL: -45, kL: 132, hR: -48, kR: 136 },
+    b: { torso: -28, sL: 28, sR: -28, hL: -45, kL: 132, hR: -48, kR: 136 } },
+  obliqueCurl: { name: "Косі скручування", emoji: "🌀", group: "Калланетика", dur: 2.6, pose: "supine",
+    tip: "Тягнись плечем до протилежного коліна, поперек притиснутий.",
+    a: { torso: -10, sL: 146, eL: 60, sR: -40, hL: -45, kL: 130, hR: -55, kR: 120 },
+    b: { torso: -30, sL: 140, eL: 60, sR: -70, hL: -40, kL: 126, hR: -70, kR: 110 } },
+  legRaise: { name: "Підйом прямих ніг", emoji: "📏", group: "Калланетика", dur: 2.8, pose: "supine",
+    tip: "Поперек притиснутий до підлоги, ноги прямі, опускай повільно.",
+    a: { hL: -14, hR: -12 }, b: { hL: -84, hR: -82 } },
+  hold45: { name: "Утримання ніг 45°", emoji: "⛰️", group: "Калланетика", dur: 4.2, pose: "supine",
+    tip: "Ноги під кутом 45°, поперек притиснутий. Тисне на спину — підніми ноги вище.",
+    a: { hL: -44, hR: -42 }, b: { hL: -46, hR: -44 } },
+  scissorsLift: { name: "Ножиці", emoji: "✂️", group: "Калланетика", dur: 2.0, pose: "supine",
+    tip: "Ноги прямі, рухи повільні й контрольовані. Поперек не відривай.",
+    a: { hL: -68, hR: -22 }, b: { hL: -22, hR: -68 } },
+  bicycle: { name: "Велосипед", emoji: "🚲", group: "Калланетика", dur: 2.2, pose: "supine",
+    tip: "Повільно, ніби педалюєш у сповільненій зйомці. Живіт підтягнутий.",
+    a: { torso: -8, sL: 148, eL: 60, sR: -148, eR: -60, hL: -70, kL: 76, hR: -24, kR: 18 },
+    b: { torso: -8, sL: 148, eL: 60, sR: -148, eR: -60, hL: -24, kL: 18, hR: -70, kR: 76 } },
+  forearmPlank: { name: "Планка на передпліччях", emoji: "🧱", group: "Калланетика", dur: 4.2, pose: "prone",
+    tip: "Лікті під плечима, таз не провисає, живіт підтягнутий. Тримай.",
+    a: { sL: 82, eL: -74, sR: 82, eR: 74 }, b: { dy: -0.8, sL: 83, eL: -74, sR: 83, eR: 74 } },
+  /* ——— КАЛЛАНЕТИКА · сідниці й ноги ——— */
+  bridgeHold: { name: "Місток — утримання", emoji: "🌉", group: "Калланетика", dur: 4.4, pose: "supine",
+    tip: "Таз угору, сідниці стиснуті, коліна над п'ятами. Утримуй лінію.",
+    a: { dy: -8, torso: 22, hL: -48, kL: 138, hR: -50, kR: 140 },
+    b: { dy: -9, torso: 23, hL: -50, kL: 140, hR: -52, kR: 142 } },
+  bridgePulse: { name: "Місток-пульси", emoji: "⚡", group: "Калланетика", dur: 1.9, pose: "supine",
+    tip: "З верхньої точки пульсуй тазом угору на 2–3 см. Поперек не прогинай.",
+    a: { dy: -3, torso: 12, hL: -40, kL: 128, hR: -42, kR: 130 },
+    b: { dy: -10, torso: 26, hL: -54, kL: 144, hR: -56, kR: 146 } },
+  bridgeOneLeg: { name: "Місток на одній нозі", emoji: "🦵", group: "Калланетика", dur: 4.2, pose: "supine",
+    tip: "Одна нога витягнута, таз не завалюється. Найважча версія містка.",
+    a: { dy: -8, torso: 22, hL: -48, kL: 138, hR: -62, kR: 0 },
+    b: { dy: -9, torso: 23, hL: -50, kL: 140, hR: -66, kR: 0 } },
+  sideLegLift: { name: "Підйом ноги на боці", emoji: "🧜‍♀️", group: "Калланетика", dur: 2.6, pose: "side",
+    tip: "Корпус нерухомий, нога пряма. Підіймай без ривка, опускай повільно.",
+    a: { hR: -4 }, b: { hR: -34 } },
+  sideLegHold: { name: "Утримання ноги на боці", emoji: "⏱️", group: "Калланетика", dur: 4.2, pose: "side",
+    tip: "Підніми ногу і тримай. Носок вперед, таз не завалюється назад.",
+    a: { hR: -28 }, b: { hR: -30 } },
+  clam: { name: "«Мушля»", emoji: "🐚", group: "Калланетика", dur: 2.4, pose: "side",
+    tip: "Стопи разом, коліно відкривається вгору. Таз нерухомий — працює сідниця.",
+    a: { hL: -22, kL: 66, hR: -22, kR: 66 }, b: { hL: -22, kL: 66, hR: -48, kR: 88 } },
+  donkeyKick: { name: "Мах ногою в упорі", emoji: "🐴", group: "Калланетика", dur: 2.2, pose: "quad",
+    tip: "Стоячи на колінах і долонях, підіймай зігнуту ногу вгору. Спина рівна.",
+    a: { hR: -44, kR: -52 }, b: { hR: -76, kR: -34 } },
+  legBackHold: { name: "Нога назад в упорі", emoji: "➡️", group: "Калланетика", dur: 4.2, pose: "quad",
+    tip: "Витягни ногу назад на рівень таза і тримай. Таз не розвертай.",
+    a: { hR: -92, kR: 0 }, b: { hR: -94, kR: 0 } },
+  gluteStretch: { name: "Розтяжка сідниці", emoji: "🪷", group: "Калланетика", dur: 4.6, pose: "supine",
+    tip: "Щиколотку на коліно, підтягуй стегно до себе. Плечі на підлозі.",
+    a: { sL: 60, eL: 40, sR: -60, eR: -40, hL: -62, kL: 108, hR: -80, kR: 58 },
+    b: { sL: 66, eL: 44, sR: -66, eR: -44, hL: -70, kL: 112, hR: -86, kR: 60 } },
+  seatedStretch: { name: "Нахил сидячи", emoji: "🧘‍♀️", group: "Калланетика", dur: 4.6, pose: "seated",
+    tip: "Тягнись грудьми до ніг, спина довга, коліна м'які. Без ривків.",
+    a: { torso: -26, sL: -82, sR: -98 }, b: { torso: -46, sL: -96, sR: -84 } },
+  catStretch: { name: "Кішка-корова", emoji: "🐈", group: "Калланетика", dur: 3.8, pose: "quad",
+    tip: "Вдих — прогин, видих — округли спину. Дуже повільно, за диханням.",
+    a: { torso: -70, sL: 70 }, b: { dy: -3, torso: -94, sL: 94, sR: 94 } },
+  childPose: { name: "Поза дитини", emoji: "🍂", group: "Калланетика", dur: 4.8, pose: "quad",
+    tip: "Сідай на п'ятки, лоб до підлоги, руки вперед. Дихай у спину.",
+    a: { dy: 8, torso: -86, sL: 86, sR: 86, kL: -150, kR: -150 },
+    b: { dy: 9, torso: -87, sL: 87, sR: 87, kL: -152, kR: -152 } },
+  /* ——— загальні ——— */
+  squat: { name: "Присідання", emoji: "🦿", group: "Ноги", dur: 2.2, pose: "standing",
+    tip: "Коліна за напрямком стоп, спина рівна, таз назад.",
+    a: { dy: 2, torso: 6, sL: 72, eL: 10, sR: -72, eR: -10, hL: -6, kL: 6, hR: 6, kR: -6 },
+    b: { dy: 14, torso: 14, sL: 76, eL: 6, sR: -76, eR: -6, hL: -16, kL: 16, hR: 16, kR: -16 } },
+  lunge: { name: "Випади", emoji: "🚶‍♀️", group: "Ноги", dur: 2.6, pose: "standing",
+    tip: "Обидва коліна ~90°, корпус вертикальний.",
+    a: { torso: 5, sL: 60, eL: 20, sR: -60, eR: -20, hL: -20, kL: 24, hR: 22, kR: -6 },
+    b: { dy: 8, torso: 7, sL: 62, eL: 18, sR: -62, eR: -18, hL: -26, kL: 34, hR: 28, kR: -10 } },
+  pushup: { name: "Віджимання", emoji: "💪", group: "Верх", dur: 2.4, pose: "prone",
+    tip: "Тіло — пряма лінія, лікті ближче до корпусу.",
+    a: {}, b: { dy: 6, sL: 58, eL: 42, sR: 58, eR: -42 } },
+  plank: { name: "Планка", emoji: "🧗‍♀️", group: "Кор", dur: 3.4, pose: "prone",
+    tip: "Таз не провисає, живіт підтягнутий, дихай рівно.",
+    a: {}, b: { dy: -1 } },
+  climber: { name: "Скелелаз", emoji: "⛰️", group: "Кардіо", dur: 1.1, pose: "prone",
+    tip: "Таз низько, коліно тягни до грудей, темп швидкий.",
+    a: { hL: -34, kL: 44 }, b: { hL: -58, kL: 0, hR: -34, kR: 44 } },
+  jack: { name: "Стрибки «зірочка»", emoji: "⭐", group: "Кардіо", dur: 1.1, pose: "standing",
+    tip: "М'яко приземляйся на носок, коліна трохи зігнуті.",
+    a: { sL: 88, sR: -88, hL: -6, hR: 6 }, b: { dy: -2.5, sL: 166, sR: -166, hL: -20, hR: 20 } },
+  highknees: { name: "Високі коліна", emoji: "🏃‍♀️", group: "Кардіо", dur: 0.95, pose: "standing",
+    tip: "Коліно вище стегна, працюй руками, спина рівна.",
+    a: { torso: 2, sL: 50, eL: 58, sR: -118, eR: -38, hL: -4, hR: 36, kR: -62 },
+    b: { torso: 2, sL: 118, eL: 38, sR: -50, eR: -58, hL: 38, kL: -62, hR: -4 } },
+  hamstring: { name: "Нахил до ніг", emoji: "🌸", group: "Розтяжка", dur: 4.2, pose: "standing",
+    tip: "Коліна м'які, тягнись грудьми до стегон, без ривків.",
+    a: { torso: -52, sL: -18, sR: 18 }, b: { torso: -64, sL: -6, sR: 6 } },
+  shoulder: { name: "Розтяжка плечей", emoji: "💫", group: "Розтяжка", dur: 3.8, pose: "standing",
+    tip: "Тягни лікоть до грудей, плече опущене вниз.",
+    a: { sL: 94, eL: 80, sR: -18 }, b: { sL: 18, sR: -94, eR: -80 } },
+};
+const FT_WORKOUTS = [
+  { id: "callanetics", name: "Калланетика", emoji: "🩰", desc: "30 вправ · повільні утримання і мікропульси на глибокі м'язи",
+    items: ["reachUp", "armCircles", "armPulse", "sideStretch", "rollDown", "wallChair", "chairPulse", "calfRaise", "balance",
+            "backLegLift", "sideLegStand", "quadStretch", "curlUp", "curlHold", "obliqueCurl", "legRaise", "hold45",
+            "scissorsLift", "bicycle", "forearmPlank", "bridgeHold", "bridgePulse", "bridgeOneLeg", "sideLegLift",
+            "sideLegHold", "clam", "donkeyKick", "legBackHold", "gluteStretch", "seatedStretch"] },
+  { id: "warmup", name: "Розминка", emoji: "🔥", desc: "Прокинутись і розігріти тіло",
+    items: ["jack", "highknees", "catStretch", "squat", "shoulder"] },
+  { id: "strength", name: "Сила вдома", emoji: "💪", desc: "Все тіло, без обладнання",
+    items: ["squat", "pushup", "lunge", "bridgePulse", "plank", "squat", "pushup", "plank"] },
+  { id: "core", name: "Прес і кор", emoji: "🧱", desc: "Живіт, спина, стабільність",
+    items: ["curlUp", "plank", "climber", "bridgePulse", "scissorsLift", "plank"] },
+  { id: "cardio", name: "Кардіо-заряд", emoji: "⚡", desc: "Розігнати кров і підняти пульс",
+    items: ["jack", "highknees", "climber", "squat", "jack", "highknees"] },
+  { id: "stretch", name: "Вечірня розтяжка", emoji: "🌙", desc: "Спокійний розтяг перед сном",
+    items: ["catStretch", "hamstring", "shoulder", "seatedStretch", "gluteStretch", "childPose"] },
+];
+const FT_DURATIONS = [20, 30, 45, 60, 90];
+const FT_REST = 10, FT_LONG_REST = 20, FT_LONG_EVERY = 4;
+// total seconds for a workout at a given per-exercise duration
+function ftTotal(items, sec) {
+  let t = items.length * sec;
+  for (let i = 0; i < items.length - 1; i++) t += (i + 1) % FT_LONG_EVERY === 0 ? FT_LONG_REST : FT_REST;
+  return t;
+}
+function ftStreak(log, today = dateKey(Date.now())) {
+  const days = new Set(log.map((s) => s.date));
+  let n = 0; const d = new Date(today + "T00:00:00");
+  if (!days.has(today)) d.setDate(d.getDate() - 1);
+  for (let i = 0; i < 500; i++) { if (days.has(dateKey(d.getTime()))) { n += 1; d.setDate(d.getDate() - 1); } else break; }
+  return n;
+}
 // Book roadmap courses: JSON in /public, progress under its own store key
 const BOOK_COURSES = [
   { id: "ct", emoji: "🧠", label: "Мистецтво мислити", file: "/ct-path.json", progressKey: "books:ctPath", heading: "Книга: «Мистецтво мислити» — Стелла Коттрелл" },
   { id: "fear", emoji: "💊", label: "Таблетка від страху", file: "/fear-path.json", progressKey: "books:fearPath", heading: "Книга: «Таблетка від страху» — Андрій Курпатов" },
+  { id: "agile", emoji: "🌳", label: "Agile Management (EN)", file: "/agile-path.json", progressKey: "books:agilePath", heading: "Book: «Agile Management» — Jurgen Appelo (English)" },
 ];
 // effective difficulty score for member on chore (score if using 1-10, else attitude weight)
 function choreScore(ratings, choreId, memberId, useScores) {
@@ -1653,6 +1862,7 @@ export default function FlashcardsApp() {
   const [inventoryName, setInventoryName] = useState("Inventory");
   const [financeName, setFinanceName] = useState("Finance");
   const [booksName, setBooksName] = useState("Книги");
+  const [fitnessName, setFitnessName] = useState("Fitness");
   const [cloudState, setCloudState] = useState({ signedIn: false, email: null, syncing: false });
   const [toast, setToast] = useState(null);
   const [deckEditor, setDeckEditor] = useState(null); // null | { deck } (deck=null → create)
@@ -1695,12 +1905,13 @@ export default function FlashcardsApp() {
       const inventorySettings = await store.get(IKEYS.settings, { name: "Inventory" });
       const financeSettings = await store.get(FNKEYS.settings, { name: "Finance" });
       const booksSettings = await store.get(BOKEYS.settings, { name: "Книги" });
+      const fitnessSettings = await store.get(FTKEYS.settings, { name: "Fitness" });
       const st = await store.get("stats", {
         history: {},
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["review", "studying", "languages", "routine", "calm", "fasting", "management", "inventory", "money", "analyses", "books"].includes(ui.section) ? ui.section : "studying");
+      setSection(["review", "studying", "languages", "routine", "calm", "fasting", "management", "inventory", "money", "analyses", "books", "fitness"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
       setFastingName(fastingSettings?.name || "Fasting");
@@ -1710,6 +1921,7 @@ export default function FlashcardsApp() {
       setInventoryName(inventorySettings?.name || "Inventory");
       setFinanceName(financeSettings?.name || "Finance");
       setBooksName(booksSettings?.name || "Книги");
+      setFitnessName(fitnessSettings?.name || "Fitness");
       setStats(st);
       setGroups(gi.groups || []);
       setDecks(idx.decks || []);
@@ -1814,6 +2026,13 @@ export default function FlashcardsApp() {
     setFinanceName(clean);
     const prev = await store.get(FNKEYS.settings, { name: "Finance" });
     await store.set(FNKEYS.settings, { ...prev, name: clean });
+  }, []);
+
+  const renameFitness = useCallback(async (name) => {
+    const clean = (name || "").trim() || "Fitness";
+    setFitnessName(clean);
+    const prev = await store.get(FTKEYS.settings, { name: "Fitness", restSec: 15 });
+    await store.set(FTKEYS.settings, { ...prev, name: clean });
   }, []);
 
   const renameBooks = useCallback(async (name) => {
@@ -2266,6 +2485,7 @@ export default function FlashcardsApp() {
     await clearLanguagesData();
     await clearAnalysesData();
     await clearBooksData();
+    await clearFitnessData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
@@ -2279,6 +2499,7 @@ export default function FlashcardsApp() {
     setInventoryName("Inventory");
     setFinanceName("Finance");
     setBooksName("Книги");
+    setFitnessName("Fitness");
     flash("All data reset");
     window.dispatchEvent(new CustomEvent("routine-reset"));
     window.dispatchEvent(new CustomEvent("calm-reset"));
@@ -2291,6 +2512,7 @@ export default function FlashcardsApp() {
     window.dispatchEvent(new CustomEvent("languages-reset"));
     window.dispatchEvent(new CustomEvent("analyses-reset"));
     window.dispatchEvent(new CustomEvent("books-reset"));
+    window.dispatchEvent(new CustomEvent("fitness-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
@@ -2307,6 +2529,7 @@ export default function FlashcardsApp() {
     const languages = await collectLanguagesExport();
     const analyses = await collectAnalysesExport();
     const books = await collectBooksExport();
+    const fitness = await collectFitnessExport();
     const payload = {
       exportedAt: new Date().toISOString(),
       version: 13,
@@ -2327,6 +2550,7 @@ export default function FlashcardsApp() {
       languages,
       analyses,
       books,
+      fitness,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -2555,6 +2779,7 @@ export default function FlashcardsApp() {
         inventoryName={inventoryName}
         financeName={financeName}
         booksName={booksName}
+        fitnessName={fitnessName}
         cloud={cloudState}
         onSyncNow={doSyncNow}
       />
@@ -2582,6 +2807,8 @@ export default function FlashcardsApp() {
           <InventorySection name={inventoryName} onRename={renameInventory} />
         ) : section === "analyses" ? (
           <AnalysesSection />
+        ) : section === "fitness" ? (
+          <FitnessSection name={fitnessName} onRename={renameFitness} />
         ) : section === "books" ? (
           <BooksSection name={booksName} onRename={renameBooks} />
         ) : (
@@ -2711,6 +2938,7 @@ export default function FlashcardsApp() {
         inventoryName={inventoryName}
         financeName={financeName}
         booksName={booksName}
+        fitnessName={fitnessName}
         cloud={cloudState}
         onSyncNow={doSyncNow}
       />
@@ -2766,7 +2994,7 @@ export default function FlashcardsApp() {
 /* Nav button                                                          */
 /* ------------------------------------------------------------------ */
 /* Mobile bottom tab bar — shown below lg, replaces the left rail on phones */
-function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, financeName, booksName, cloud, onSyncNow }) {
+function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, financeName, booksName, fitnessName, cloud, onSyncNow }) {
   const items = [
     { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
     { id: "studying", label: "Навчання", icon: GraduationCap, badge: studyingDue },
@@ -2779,6 +3007,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
     { id: "analyses", label: "Аналізи", icon: Stethoscope, badge: 0 },
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
     { id: "books", label: booksName || "Книги", icon: BookMarked, badge: 0 },
+    { id: "fitness", label: fitnessName || "Fitness", icon: HeartPulse, badge: 0 },
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -2825,7 +3054,7 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 /* ------------------------------------------------------------------ */
 /* Sidebar — top-level section navigation                              */
 /* ------------------------------------------------------------------ */
-function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, financeName, booksName, cloud, onSyncNow }) {
+function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, financeName, booksName, fitnessName, cloud, onSyncNow }) {
   const items = [
     { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
     { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
@@ -2838,6 +3067,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
     { id: "analyses", label: "Аналізи", icon: Stethoscope, badge: 0 },
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
     { id: "books", label: booksName || "Книги", icon: BookMarked, badge: 0 },
+    { id: "fitness", label: fitnessName || "Fitness", icon: HeartPulse, badge: 0 },
   ];
   const wide = !collapsed;
   return (
@@ -8812,6 +9042,450 @@ const WHATIF_SPEC = {
 
 function CalmHeaderPlaceholder() {}
 
+/* ================================================================== */
+/* FITNESS — section UI                                                */
+/* ================================================================== */
+const FT_INK = "#2f2a28", FT_SKIN = "#f7d3b0", FT_SKIN_D = "#eec19a", FT_HAIR = "#f0c05a", FT_HAIR_D = "#d9a63f",
+      FT_TOP = "#5fb17c", FT_TOP_D = "#4e9a69", FT_PANTS = "#333a45", FT_PANTS_D = "#282e38", FT_SHOE = "#ffffff";
+// tapered rounded limb from (0,0) to (0,len)
+function ftLimb(len, w1, w2) {
+  const a = w1 / 2, b = w2 / 2;
+  return `M ${-a} 0 Q ${-a - 0.4} ${len * 0.55} ${-b} ${len} Q ${-b} ${len + b * 1.15} 0 ${len + b * 1.15} Q ${b} ${len + b * 1.15} ${b} ${len} Q ${a + 0.4} ${len * 0.55} ${a} 0 Q 0 ${-a * 0.75} ${-a} 0 Z`;
+}
+function GirlFigure({ id, size = 200, playing = true }) {
+  const ex = EXERCISES[id];
+  if (!ex) return null;
+  const pose = FT_POSES[ex.pose] || FT_POSES.standing;
+  const A = { ...pose.base, ...(ex.a || {}) };
+  const B = { ...pose.base, ...(ex.a || {}), ...(ex.b || {}) };
+  const dur = `${ex.dur}s`;
+  const g = (k) => [A[k] || 0, B[k] || 0];
+  const ease = { calcMode: "spline", keyTimes: "0;0.5;1", keySplines: "0.45 0 0.55 1;0.45 0 0.55 1" };
+  const Joint = ({ x = 0, y = 0, k, children }) => {
+    const [a, b] = g(k);
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <g transform={`rotate(${a})`}>
+          {playing && a !== b && (
+            <animateTransform attributeName="transform" type="rotate" dur={dur} repeatCount="indefinite"
+              values={`${a};${b};${a}`} {...ease} />
+          )}
+          {children}
+        </g>
+      </g>
+    );
+  };
+  const [dyA, dyB] = g("dy");
+  const S = { stroke: FT_INK, strokeWidth: 1.5, strokeLinejoin: "round", strokeLinecap: "round" };
+  const legPart = (side) => {
+    const near = side < 0;
+    return (
+      <Joint x={near ? -4 : 4} y={-1} k={near ? "hL" : "hR"}>
+        <path d={ftLimb(20, 11, 7.4)} fill={near ? FT_PANTS : FT_PANTS_D} {...S} />
+        <Joint y={20} k={near ? "kL" : "kR"}>
+          <path d={ftLimb(20, 7.6, 4.6)} fill={near ? FT_PANTS : FT_PANTS_D} {...S} />
+          <path d="M -2.6 19.6 q 0.2 -1.8 2.2 -1.8 q 4.8 0.4 5.8 2.8 q 0.6 2 -1.6 2.4 l -4.6 0 q -1.8 -0.4 -1.8 -3.4 Z" fill={FT_SHOE} {...S} />
+        </Joint>
+      </Joint>
+    );
+  };
+  const armPart = (side) => {
+    const near = side < 0;
+    const skin = near ? FT_SKIN : FT_SKIN_D;
+    return (
+      <Joint x={near ? -6.4 : 6.4} y={-21.5} k={near ? "sL" : "sR"}>
+        <path d={ftLimb(13, 6.2, 4.6)} fill={skin} {...S} />
+        <Joint y={13} k={near ? "eL" : "eR"}>
+          <path d={ftLimb(12, 4.6, 3.4)} fill={skin} {...S} />
+          <ellipse cx="0" cy="13" rx="2.4" ry="2.9" fill={skin} {...S} />
+        </Joint>
+      </Joint>
+    );
+  };
+  return (
+    <svg viewBox="0 0 100 100" width={size} height={size} style={{ overflow: "visible" }}>
+      <ellipse cx="50" cy="96.5" rx="26" ry="2.6" fill="#0f766e" opacity="0.09" />
+      <g transform={`translate(0,${pose.oy})`}>
+        <g transform={`translate(0,${dyA})`}>
+          {playing && dyA !== dyB && (
+            <animateTransform attributeName="transform" type="translate" dur={dur} repeatCount="indefinite"
+              values={`0 ${dyA};0 ${dyB};0 ${dyA}`} {...ease} />
+          )}
+          <g transform={`rotate(${pose.rot || 0} 50 52)`}>
+          <g transform="translate(50,52)">
+            {legPart(1)}
+            {armPart(1)}
+            {legPart(-1)}
+            <Joint k="torso">
+              {/* torso: hips 0 → shoulders -22 */}
+              <path d="M -8.2 1.6 C -9.4 -2.6 -6.8 -5.6 -5.4 -9 C -4.4 -11.6 -5.8 -13.6 -6.7 -16.2 C -7.7 -19 -7.5 -21.2 -7 -22.2 Q 0 -25.6 7 -22.2 C 7.5 -21.2 7.7 -19 6.7 -16.2 C 5.8 -13.6 4.4 -11.6 5.4 -9 C 6.8 -5.6 9.4 -2.6 8.2 1.6 Q 0 4 -8.2 1.6 Z" fill={FT_SKIN} {...S} />
+              {/* crop top */}
+              <path d="M -7.1 -22.4 Q 0 -25.8 7.1 -22.4 C 7.6 -21.2 7.8 -19 6.8 -16 Q 0 -12.8 -6.8 -16 C -7.8 -19 -7.6 -21.2 -7.1 -22.4 Z" fill={FT_TOP} {...S} />
+              <path d="M -6.8 -16 Q 0 -12.8 6.8 -16 L 6.5 -14.4 Q 0 -11.3 -6.5 -14.4 Z" fill={FT_TOP_D} stroke="none" />
+              <path d="M -6 -23.2 L -3.2 -26.2 M 6 -23.2 L 3.2 -26.2" stroke={FT_TOP} strokeWidth="2.2" strokeLinecap="round" fill="none" />
+              {/* leggings yoke */}
+              <path d="M -8.6 -2.6 Q 0 -0.2 8.6 -2.6 C 9.2 1.4 8.8 3.8 8.2 5.6 Q 0 8 -8.2 5.6 C -8.8 3.8 -9.2 1.4 -8.6 -2.6 Z" fill={FT_PANTS} {...S} />
+              {/* neck */}
+              <path d="M -2 -23.4 h 4 v 3.2 h -4 Z" fill={FT_SKIN_D} stroke="none" />
+              {/* head */}
+              <g transform="translate(0,-31.5)">
+                <g>
+                  {playing && <animateTransform attributeName="transform" type="rotate" dur={`${ex.dur * 1.35}s`} repeatCount="indefinite" values="-4;5;-4" calcMode="spline" keyTimes="0;0.5;1" keySplines="0.45 0 0.55 1;0.45 0 0.55 1" />}
+                  <path d="M -5.4 1.6 q -6.4 2.6 -6.2 9.2 q 0.2 4.6 3.4 6.4 q -3.4 -6.6 2.4 -13.2 Z" fill={FT_HAIR} {...S} />
+                </g>
+                <path d="M -6.6 0.4 C -8.4 -6.6 -4.6 -10.6 0 -10.6 C 4.6 -10.6 8.4 -6.6 6.6 0.4 C 6.1 2.2 5.2 3.2 4 3.6 L -4 3.6 C -5.2 3.2 -6.1 2.2 -6.6 0.4 Z" fill={FT_HAIR} {...S} />
+                <ellipse cx="0" cy="-0.6" rx="5.4" ry="6.2" fill={FT_SKIN} {...S} />
+                <path d="M -5.6 -3.4 C -4.6 -8.8 4.6 -8.8 5.6 -3.4 C 3.2 -6.4 -3 -6.6 -5.6 -3.4 Z" fill={FT_HAIR} {...S} />
+                <path d="M -3.1 -0.8 q 1.1 1.3 2.2 0 M 0.9 -0.8 q 1.1 1.3 2.2 0" stroke={FT_INK} strokeWidth="0.95" fill="none" strokeLinecap="round" />
+                <path d="M -1.2 2.5 q 1.2 1.2 2.4 0" stroke={FT_INK} strokeWidth="0.9" fill="none" strokeLinecap="round" />
+                <circle cx="-3.9" cy="1.2" r="1.05" fill="#f6a7a0" opacity="0.65" />
+                <circle cx="3.9" cy="1.2" r="1.05" fill="#f6a7a0" opacity="0.65" />
+              </g>
+              {armPart(-1)}
+            </Joint>
+          </g>
+          </g>
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+function FitnessSection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [fview, setFview] = useState("hub"); // hub | player | history | builder
+  const [log, setLog] = useState([]);
+  const [custom, setCustom] = useState([]);
+  const [settings, setSettings] = useState({ name: "Fitness", restSec: 15 });
+  const [session, setSession] = useState(null); // { name, items:[exId], sec }
+  const [setupW, setSetupW] = useState(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(name);
+  const [toast, setToast] = useState(null);
+
+  const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2400); }, []);
+
+  useEffect(() => {
+    (async () => {
+      const d = await collectFitnessExport();
+      setLog(d.log); setCustom(d.custom); setSettings({ restSec: 15, ...d.settings }); setLoading(false);
+    })();
+    const onReset = () => { setLog([]); setCustom([]); setFview("hub"); };
+    window.addEventListener("fitness-reset", onReset);
+    return () => window.removeEventListener("fitness-reset", onReset);
+  }, []);
+
+  const saveLog = useCallback(async (next) => { setLog(next); await store.set(FTKEYS.log, next); }, []);
+  const saveCustom = useCallback(async (next) => { setCustom(next); await store.set(FTKEYS.custom, next); }, []);
+  const saveSettings = useCallback(async (patch) => { const n = { ...settings, ...patch }; setSettings(n); await store.set(FTKEYS.settings, n); }, [settings]);
+
+  const today = dateKey(Date.now());
+  const streak = useMemo(() => ftStreak(log, today), [log, today]);
+  const totalMin = useMemo(() => Math.round(log.reduce((s, x) => s + (x.sec || 0), 0) / 60), [log]);
+  const doneToday = useMemo(() => log.filter((x) => x.date === today).length, [log, today]);
+
+  const finishSession = useCallback(async (sess, sec) => {
+    const entry = { id: ruid("ft"), date: dateKey(Date.now()), ts: Date.now(), name: sess.name, sec: Math.round(sec), count: sess.items.length };
+    await saveLog([entry, ...log]);
+    setSession(null); setFview("hub");
+    flash(`Готово! ${Math.round(sec / 60)} хв записано 💪`);
+  }, [log, saveLog, flash]);
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-emerald-400"><div className="flex flex-col items-center gap-3"><HeartPulse className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  const allWorkouts = [...FT_WORKOUTS, ...custom.map((c) => ({ ...c, emoji: "⭐", desc: `Мій комплекс · ${c.items.length} вправ`, isCustom: true }))];
+
+  return (
+    <div className="min-h-screen flex-1 bg-gradient-to-b from-emerald-50 via-teal-50/40 to-white">
+      {fview === "player" && session ? (
+        <FitnessPlayer session={session} onExit={() => { setSession(null); setFview("hub"); }} onFinish={finishSession} />
+      ) : (
+        <div className="mx-auto w-full max-w-3xl px-4 pb-24 pt-6">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              {renaming ? (
+                <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)}
+                  onBlur={() => { onRename(nameDraft); setRenaming(false); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }}
+                  className="rounded-lg border border-emerald-200 px-2 py-1 text-2xl font-extrabold focus:outline-none" />
+              ) : (
+                <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="text-left">
+                  <h1 className="text-2xl font-extrabold text-slate-900">{name} <Pencil className="ml-1 inline h-4 w-4 text-slate-300" /></h1>
+                </button>
+              )}
+              <p className="text-sm text-slate-500">{doneToday > 0 ? "Сьогодні вже позаймалась — красуня ✨" : "Обери комплекс і почнімо 💚"}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-emerald-100"><Flame className="h-4 w-4 text-orange-500" /><span className="text-sm font-bold tabular-nums text-emerald-600">{streak}</span></div>
+              <button onClick={() => setFview(fview === "history" ? "hub" : "history")} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-emerald-100 hover:text-slate-700"><BarChart3 className="h-4 w-4" /></button>
+            </div>
+          </div>
+
+          <div className="mb-5 grid grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-emerald-100"><div className="text-2xl font-extrabold tabular-nums text-emerald-600">{log.length}</div><div className="text-[11px] text-slate-400">тренувань</div></div>
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-emerald-100"><div className="text-2xl font-extrabold tabular-nums text-teal-600">{totalMin}</div><div className="text-[11px] text-slate-400">хвилин</div></div>
+            <div className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-emerald-100"><div className="text-2xl font-extrabold tabular-nums text-orange-500">{streak}</div><div className="text-[11px] text-slate-400">днів поспіль</div></div>
+          </div>
+
+          {fview === "setup" && setupW ? (
+            <FitnessSetup workout={setupW} onBack={() => { setSetupW(null); setFview("hub"); }}
+              onStart={(sec) => { setSession({ name: setupW.name, items: setupW.items, sec }); setSetupW(null); setFview("player"); }} />
+          ) : fview === "history" ? (
+            <FitnessHistory log={log} onBack={() => setFview("hub")} onDelete={async (id) => { await saveLog(log.filter((x) => x.id !== id)); }} />
+          ) : fview === "builder" ? (
+            <FitnessBuilder onBack={() => setFview("hub")} onSave={async (w) => { await saveCustom([...custom, w]); setFview("hub"); flash("Комплекс збережено ⭐"); }} />
+          ) : (
+            <>
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Комплекси</span>
+                <button onClick={() => setFview("builder")} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"><Plus className="h-3.5 w-3.5" /> Свій комплекс</button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {allWorkouts.map((w) => {
+                  const total = ftTotal(w.items, 30);
+                  return (
+                    <div key={w.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-emerald-50 transition hover:shadow-md hover:ring-emerald-200">
+                      <div className="shrink-0 rounded-xl bg-emerald-50 p-1"><GirlFigure id={w.items[0]} size={58} /></div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-slate-800">{w.emoji} {w.name}</div>
+                        <div className="truncate text-xs text-slate-400">{w.desc}</div>
+                        <div className="mt-0.5 text-[11px] font-semibold text-emerald-600">{w.items.length} вправ · ~{Math.round(total / 60)} хв при 30 с</div>
+                      </div>
+                      <div className="flex shrink-0 flex-col gap-1">
+                        <button onClick={() => { setSetupW(w); setFview("setup"); }} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"><Play className="inline h-3.5 w-3.5" /></button>
+                        {w.isCustom && <button onClick={async () => { await saveCustom(custom.filter((c) => c.id !== w.id)); }} className="rounded-lg p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6">
+                <div className="mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-500">Вправи · як робити</div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {Object.entries(EXERCISES).map(([id, ex]) => (
+                    <div key={id} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-emerald-50">
+                      <GirlFigure id={id} size={104} />
+                      <div className="mt-1 text-sm font-bold text-slate-700">{ex.emoji} {ex.name}</div>
+                      <div className="text-[11px] text-slate-400">{ex.group}</div>
+                      <div className="mt-1 text-[11px] leading-snug text-slate-500">{ex.tip}</div>
+                      <button onClick={() => { setSession({ name: ex.name, items: [id], sec: 45 }); setFview("player"); }} className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100">45 сек</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <p className="mt-6 text-center text-xs text-slate-400">Пауза між вправами — 10 с, а після кожної 4-ї — 20 с.</p>
+              <p className="mt-4 text-center text-xs leading-relaxed text-slate-400">Слухай тіло: біль — це стоп-сигнал, а не «терпи». Якщо є проблеми зі спиною, суглобами, серцем чи ти вагітна — спершу порадься з лікарем. 💚</p>
+            </>
+          )}
+        </div>
+      )}
+      {toast && <div className="fixed bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
+    </div>
+  );
+}
+
+function FitnessSetup({ workout, onBack, onStart }) {
+  const [sec, setSec] = useState(30);
+  const total = ftTotal(workout.items, sec);
+  return (
+    <div>
+      <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-slate-700"><ArrowLeft className="h-4 w-4" /> Назад</button>
+      <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-emerald-100">
+        <div className="mb-1 text-center text-xl font-extrabold text-slate-800">{workout.emoji} {workout.name}</div>
+        <div className="mb-4 text-center text-sm text-slate-400">{workout.desc}</div>
+
+        <div className="mb-2 text-center text-sm font-semibold text-slate-600">Скільки тримати одну вправу?</div>
+        <div className="mb-3 flex flex-wrap justify-center gap-2">
+          {FT_DURATIONS.map((d) => (
+            <button key={d} onClick={() => setSec(d)}
+              className={`rounded-2xl px-4 py-2 text-sm font-bold transition ${sec === d ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/25" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+              {d} с
+            </button>
+          ))}
+        </div>
+        <div className="mb-4 flex items-center justify-center gap-2 text-xs text-slate-400">
+          <span>або своє:</span>
+          <input type="number" min={10} max={300} value={sec} onChange={(e) => setSec(Math.max(10, Math.min(300, parseInt(e.target.value || "10", 10))))}
+            className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-center text-sm tabular-nums focus:outline-none" />
+          <span>сек</span>
+        </div>
+
+        <div className="mb-4 rounded-2xl bg-emerald-50 px-4 py-3 text-center">
+          <div className="text-2xl font-extrabold tabular-nums text-emerald-700">~{Math.round(total / 60)} хв</div>
+          <div className="text-xs text-emerald-600">{workout.items.length} вправ · пауза 10 с, після кожної 4-ї — 20 с</div>
+        </div>
+
+        <div className="mb-4 max-h-52 space-y-1.5 overflow-y-auto">
+          {workout.items.map((id, i) => (
+            <div key={i} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5">
+              <span className="w-5 text-xs font-bold text-slate-300">{i + 1}</span>
+              <span className="flex-1 text-sm font-semibold text-slate-700">{EXERCISES[id].emoji} {EXERCISES[id].name}</span>
+              <span className="text-xs tabular-nums text-slate-400">{sec} с</span>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={() => onStart(sec)} className="w-full rounded-2xl bg-emerald-600 py-3.5 text-lg font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:bg-emerald-700">
+          <Play className="mr-1 inline h-5 w-5" /> Почати
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FitnessPlayer({ session, onExit, onFinish }) {
+  const [idx, setIdx] = useState(0);
+  const [resting, setResting] = useState(false);
+  const [left, setLeft] = useState(session.sec);
+  const [paused, setPaused] = useState(false);
+  const startedRef = useRef(Date.now());
+
+  const items = session.items;
+  const total = items.length;
+  const exId = items[idx];
+  const ex = EXERCISES[exId];
+  const restFor = (i) => ((i + 1) % FT_LONG_EVERY === 0 ? FT_LONG_REST : FT_REST);
+
+  useEffect(() => {
+    if (paused) return;
+    const t = setInterval(() => setLeft((v) => v - 1), 1000);
+    return () => clearInterval(t);
+  }, [paused, idx, resting]);
+
+  useEffect(() => {
+    if (left > 0) return;
+    if (!resting && idx < total - 1) { setResting(true); setLeft(restFor(idx)); return; }
+    if (idx < total - 1) { setResting(false); setIdx(idx + 1); setLeft(session.sec); return; }
+    onFinish(session, (Date.now() - startedRef.current) / 1000);
+  }, [left]);
+
+  const skip = () => {
+    if (resting) { setResting(false); setIdx(idx + 1); setLeft(session.sec); return; }
+    if (idx < total - 1) { setResting(true); setLeft(restFor(idx)); }
+    else onFinish(session, (Date.now() - startedRef.current) / 1000);
+  };
+  const pct = resting ? 1 - left / Math.max(1, restFor(idx)) : 1 - left / Math.max(1, session.sec);
+  const isLongRest = resting && restFor(idx) === FT_LONG_REST;
+
+  return (
+    <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col items-center px-4 pb-24 pt-6">
+      <div className="mb-3 flex w-full items-center gap-3">
+        <button onClick={onExit} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-emerald-100"><ArrowLeft className="h-4 w-4" /></button>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-bold text-slate-800">{session.name}</div>
+          <div className="text-xs text-slate-400">Вправа {idx + 1} з {total} · {session.sec} с</div>
+        </div>
+      </div>
+
+      <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-emerald-100">
+        <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${((idx + (resting ? 1 : pct)) / total) * 100}%` }} />
+      </div>
+
+      <div className={`w-full rounded-3xl p-4 text-center shadow-sm ring-1 ${resting ? "bg-sky-50 ring-sky-100" : "bg-white ring-emerald-100"}`}>
+        {resting ? (
+          <div className="py-6">
+            <div className="text-sm font-bold uppercase tracking-wide text-sky-500">{isLongRest ? "Довша пауза" : "Пауза"}</div>
+            <div className="my-2 text-6xl font-extrabold tabular-nums text-sky-600">{Math.max(0, left)}</div>
+            <div className="mb-3 text-sm text-slate-500">Далі: {EXERCISES[items[Math.min(idx + 1, total - 1)]].name}</div>
+            <div className="opacity-70"><GirlFigure id={items[Math.min(idx + 1, total - 1)]} size={150} playing={false} /></div>
+          </div>
+        ) : (
+          <>
+            <GirlFigure id={exId} size={230} playing={!paused} />
+            <div className="text-lg font-extrabold text-slate-800">{ex.emoji} {ex.name}</div>
+            <div className="mb-2 text-xs leading-snug text-slate-500">{ex.tip}</div>
+            <div className={`text-5xl font-extrabold tabular-nums ${left <= 5 ? "text-orange-500" : "text-emerald-600"}`}>{Math.max(0, left)}</div>
+          </>
+        )}
+      </div>
+
+      <div className="mt-4 flex w-full gap-2">
+        <button onClick={() => setPaused((p) => !p)} className="flex-1 rounded-2xl bg-white py-3 font-bold text-slate-700 shadow-sm ring-1 ring-emerald-100">
+          {paused ? <><Play className="mr-1 inline h-4 w-4" /> Далі</> : <><Pause className="mr-1 inline h-4 w-4" /> Пауза</>}
+        </button>
+        <button onClick={skip} className="flex-1 rounded-2xl bg-emerald-600 py-3 font-bold text-white shadow-lg shadow-emerald-500/25 hover:bg-emerald-700">
+          <SkipForward className="mr-1 inline h-4 w-4" /> {resting ? "Далі" : "Пропустити"}
+        </button>
+      </div>
+
+      <div className="mt-4 w-full rounded-2xl bg-white/70 p-3 ring-1 ring-emerald-50">
+        <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">Програма</div>
+        <div className="flex flex-wrap gap-1.5">
+          {items.map((id, i) => (
+            <span key={i} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${i === idx ? "bg-emerald-600 text-white" : i < idx ? "bg-emerald-50 text-emerald-500 line-through" : "bg-slate-100 text-slate-400"}`}>
+              {EXERCISES[id].emoji} {EXERCISES[id].name}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FitnessHistory({ log, onBack, onDelete }) {
+  return (
+    <div>
+      <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-slate-700"><ArrowLeft className="h-4 w-4" /> Назад</button>
+      {log.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-emerald-200 bg-white/60 px-6 py-12 text-center text-sm text-slate-400">Тут з'являться твої тренування 💚</div>
+      ) : (
+        <div className="space-y-2">
+          {log.map((s) => (
+            <div key={s.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><HeartPulse className="h-5 w-5" /></span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-semibold text-slate-700">{s.name}</div>
+                <div className="text-xs text-slate-400">{s.date} · {Math.round(s.sec / 60)} хв · {s.count} вправ</div>
+              </div>
+              <button onClick={() => onDelete(s.id)} className="rounded-lg p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FitnessBuilder({ onBack, onSave }) {
+  const [name, setName] = useState("");
+  const [items, setItems] = useState([]);
+  return (
+    <div>
+      <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-slate-700"><ArrowLeft className="h-4 w-4" /> Назад</button>
+      <div className="space-y-4 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Назва комплексу (напр. «Ранок 10 хв»)"
+          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+        <div>
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Додати вправу</div>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(EXERCISES).map(([id, ex]) => (
+              <button key={id} onClick={() => setItems((p) => [...p, id])} className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">{ex.emoji} {ex.name}</button>
+            ))}
+          </div>
+        </div>
+        {items.length > 0 && (
+          <div className="space-y-2">
+            {items.map((id, i) => (
+              <div key={i} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+                <span className="w-5 text-xs font-bold text-slate-300">{i + 1}</span>
+                <span className="flex-1 text-sm font-semibold text-slate-700">{EXERCISES[id].emoji} {EXERCISES[id].name}</span>
+                <button onClick={() => setItems((p) => p.filter((_, j) => j !== i))} className="text-slate-300 hover:text-rose-500"><X className="h-4 w-4" /></button>
+              </div>
+            ))}
+            <div className="text-center text-xs text-slate-400">Тривалість однієї вправи обереш перед стартом.</div>
+          </div>
+        )}
+        <button onClick={() => onSave({ id: ruid("w"), name: name.trim() || "Мій комплекс", items })} disabled={items.length === 0}
+          className="w-full rounded-2xl bg-emerald-600 py-3 font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:bg-emerald-700 disabled:opacity-40">
+          Зберегти комплекс
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function CalmHeader({ title, onExit, right }) {
   return (
     <div className="mb-5 flex items-center gap-3">
@@ -14159,6 +14833,13 @@ function BooksSection({ name, onRename }) {
           await store.set(BOKEYS.list, list);
         }
         await store.set("books:ctSeeded", true);
+      }
+      if (!(await store.get("books:agileSeeded", false))) {
+        if (!list.some((b) => (b.title || "").toLowerCase().includes("agile management"))) {
+          list = [...list, { id: ruid("b"), title: "Agile Management", author: "Jurgen Appelo", status: "reading", totalPages: 52, currentPage: 0, rating: 0, notes: "Roadmap in English — see the «Роадмапа» tab 🌳", added: Date.now(), finished: null }];
+          await store.set(BOKEYS.list, list);
+        }
+        await store.set("books:agileSeeded", true);
       }
       if (!(await store.get("books:fearSeeded", false))) {
         if (!list.some((b) => (b.title || "").toLowerCase().includes("таблетка від страху"))) {
