@@ -198,5 +198,69 @@
   "author": "/suhayrasarwar",
   "source": "https://assets-v2.lottiefiles.com/a/fae82e24-1182-11ee-8f9c-dfcf3885aa39/svDKQ16o23.json",
   "kb": 26
+ },
+ {
+  "exercise": "reachUpArms",
+  "file": "reachUpArms.json",
+  "title": "Bend",
+  "author": "/kyletole",
+  "source": "https://assets-v2.lottiefiles.com/a/cebded28-1166-11ee-b6ee-87e5ec92ee9c/WcFwu9JWQ1.json",
+  "kb": 32
+ },
+ {
+  "exercise": "handsSide",
+  "file": "handsSide.json",
+  "title": "Exercise Hands",
+  "author": "/indrum",
+  "source": "https://assets-v2.lottiefiles.com/a/5da7c07c-116c-11ee-b2da-337c48992ec2/Gsz339fOqd.json",
+  "kb": 41
+ },
+ {
+  "exercise": "namaste",
+  "file": "namaste.json",
+  "title": "Namaste",
+  "author": "/c1zzumsghl",
+  "source": "https://assets-v2.lottiefiles.com/a/a7c2e836-1175-11ee-b044-f3ed8677e5ae/AWeHM2NP74.json",
+  "kb": 16
+ },
+ {
+  "exercise": "pilatesLeg",
+  "file": "pilatesLeg.json",
+  "title": "Pilates Exercise",
+  "author": "/nimbbble",
+  "source": "https://assets-v2.lottiefiles.com/a/d6e83ae0-1151-11ee-b345-6bb87b5ab432/dp9kyH5mEz.json",
+  "kb": 7
+ },
+ {
+  "exercise": "dancerPose",
+  "file": "dancerPose.json",
+  "title": "dancer",
+  "author": "/dz7iro91p0",
+  "source": "https://assets-v2.lottiefiles.com/a/fe632f4e-1183-11ee-a7c7-6f9a98682e62/YKZdDDmP0i.json",
+  "kb": 45
+ },
+ {
+  "exercise": "seatedYoga",
+  "file": "seatedYoga.json",
+  "title": "new yoga",
+  "author": "/sudsmyi0iq",
+  "source": "https://assets-v2.lottiefiles.com/a/fa8447f0-1179-11ee-9c64-8b38b9e09c99/J2d3ogIKsa.json",
+  "kb": 64
+ },
+ {
+  "exercise": "hipOpener",
+  "file": "hipOpener.json",
+  "title": "walking_hip_opener_standard",
+  "author": "/buixuandinh",
+  "source": "https://assets-v2.lottiefiles.com/a/e3bb3a29-dd13-4ddd-b090-9c432fe14266/yJtiYrJwk0.json",
+  "kb": 192
+ },
+ {
+  "exercise": "tPlank",
+  "file": "tPlank.json",
+  "title": "T Plank Exercise",
+  "author": "/buixuandinh",
+  "source": "https://assets-v2.lottiefiles.com/a/dc68e41e-1189-11ee-a704-a3ee683b17ee/k7MgKMWvYN.json",
+  "kb": 183
  }
 ]
