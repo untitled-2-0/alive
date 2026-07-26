@@ -1907,6 +1907,9 @@ function NuAdd({ catalogue, custom, recent, cache, onAdd, onGenerated, onSaveCus
           <div>
             <div className="font-bold text-slate-800">{picked.name}</div>
             <div className="text-[11px] text-slate-400">{picked.group}{picked.ai ? " · згенеровано" : ""} · {Math.round(picked.kcal)} ккал / 100 г</div>
+            {picked.estNote && (
+              <div className="mt-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[10px] leading-relaxed text-amber-800">{picked.estNote}</div>
+            )}
           </div>
           <button onClick={() => setPicked(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
         </div>
@@ -1956,7 +1959,10 @@ function NuAdd({ catalogue, custom, recent, cache, onAdd, onGenerated, onSaveCus
         <div className="mt-3 space-y-1">
           {results.map((f) => (
             <button key={f.id} onClick={() => choose(f)} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50">
-              <span className="text-sm text-slate-700">{f.name}{f.ai && <span className="ml-1.5 text-[10px] text-violet-500">AI</span>}</span>
+              <span className="text-sm text-slate-700">{f.name}
+                {f.ai && <span className="ml-1.5 text-[10px] text-violet-500">AI</span>}
+                {f.est && <span className="ml-1.5 rounded bg-amber-50 px-1 text-[10px] text-amber-600">≈</span>}
+              </span>
               <span className="shrink-0 text-[11px] text-slate-400">{Math.round(f.kcal)} ккал</span>
             </button>
           ))}
@@ -2151,7 +2157,10 @@ function NuFoods({ catalogue, custom, onSaveCustom, onDeleteCustom }) {
         {shown.map((f, i) => (
           <div key={f.id} className={`flex items-center justify-between gap-2 px-4 py-2.5 ${i ? "border-t border-slate-50" : ""}`}>
             <div className="min-w-0">
-              <div className="truncate text-sm text-slate-700">{f.name}{f.ai && <span className="ml-1.5 text-[10px] text-violet-500">AI</span>}</div>
+              <div className="truncate text-sm text-slate-700">{f.name}
+                {f.ai && <span className="ml-1.5 text-[10px] text-violet-500">AI</span>}
+                {f.est && <span className="ml-1.5 rounded bg-amber-50 px-1 text-[10px] text-amber-600">≈ оцінка</span>}
+              </div>
               <div className="text-[10px] text-slate-400">{f.group} · Б {nuFmt(f.protein, "г")} · Ж {nuFmt(f.fat, "г")} · В {nuFmt(f.carbs, "г")}</div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
