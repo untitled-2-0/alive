@@ -10496,6 +10496,31 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
   const macro = (g, kcalPer) => (kcalTarget ? Math.round((g * kcalPer / kcalTarget) * 100) : 0);
   const ACTS = [[1.2, "Сидячий"], [1.375, "Легкий (1–3 трен.)"], [1.55, "Помірний (3–5)"], [1.725, "Активний (6+)"]];
 
+  // ---- Скільки кроків на день, щоб при обраній калорійності вийти на дефіцит ----
+  // Ходьбу рахуємо «чисто» — понад спокій, щоб не порахувати двічі те, що вже сидить у BMR.
+  const BASE_STEPS = 2500;                                   // побутовий рух, уже закладений у BMR × 1.2
+  const strideM = h != null ? (h * (sex === "m" ? 0.415 : 0.413)) / 100 : null;
+  const stepsPerKm = strideM ? 1000 / strideM : null;
+  const kcalPerStep = (w != null && stepsPerKm) ? (0.4 * w) / stepsPerKm : null; // ≈0.4 ккал на кг на км понад спокій
+  const sedentaryBurn = bmr != null ? Math.round(bmr * 1.2) : null;              // витрата майже без ходьби
+  const intakeKcal = goals.intakeKcal ?? kcalTarget;
+  // при калорійності kcal: скільки ще треба «доходити» ногами
+  const stepsFor = (kcal) => {
+    if (!canKcal || !ready || !kcalPerStep || sedentaryBurn == null || kcal == null) return null;
+    const fromWalking = dailyDeficit - (sedentaryBurn - kcal);
+    if (fromWalking <= 0) return { steps: 8000, burn: 0, covered: true };
+    const steps = BASE_STEPS + fromWalking / kcalPerStep;
+    return { steps: Math.round(steps / 100) * 100, burn: Math.round(fromWalking), covered: false };
+  };
+  const stepPlan = stepsFor(intakeKcal);
+  const stepKm = stepPlan && stepsPerKm ? Math.round((stepPlan.steps / stepsPerKm) * 10) / 10 : null;
+  const stepsTooMany = stepPlan != null && !stepPlan.covered && stepPlan.steps > 13000;
+  const actLabel = (ACTS.find(([v]) => Math.abs(activity - v) < 0.01) || [, "—"])[1];
+  // компроміс: менше їси — менше ходиш, і навпаки
+  const stepRows = (canKcal && ready && kcalTarget != null)
+    ? [-300, -150, 0, 150, 300].map((d) => ({ kcal: kcalTarget + d, ...(stepsFor(kcalTarget + d) || {}) })).filter((r) => r.kcal >= floorKcal && r.steps != null)
+    : [];
+
   const TIPS = [
     { emoji: "⚖️", title: "Темп", body: "≈0.5–0.7 кг/тиждень — стало й безпечно. Швидше = більше втрати м'язів і гірше підтягується шкіра. Повільніше — краще для тіла й шкіри." },
     { emoji: "🔥", title: "Голодування", body: "Піднімайся драбиною протоколів поступово (16:8 → 18:6 …), без форсування. Щоденне 16:8 уже добре працює — сталість важливіша за екстрим." },
@@ -10556,12 +10581,57 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
         <div className="mt-3 rounded-2xl bg-orange-50/70 p-4 text-center text-sm text-orange-700 ring-1 ring-orange-100">Впиши зріст, вік і стать вище — і я порахую твої калорії та БЖУ на день. 🍽️</div>
       ) : null}
 
-      {/* activity targets */}
-      {ready && (
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50 text-center"><div className="text-2xl">🚶‍♀️</div><div className="mt-1 text-xl font-extrabold text-slate-800">8–10 тис</div><div className="text-[11px] text-slate-400">кроків на день</div></div>
-          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50 text-center"><div className="text-2xl">💪</div><div className="mt-1 text-xl font-extrabold text-slate-800">2–3</div><div className="text-[11px] text-slate-400">силові / тиждень (+ ходьба)</div></div>
+      {/* steps target — computed from the goal and the chosen calorie intake */}
+      {ready && canKcal && stepPlan ? (
+        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+          <div className="flex items-end justify-between">
+            <div>
+              <div className="text-sm font-bold text-slate-700">Скільки кроків на день</div>
+              <div className="text-[11px] text-slate-400">{stepPlan.covered ? "дефіцит уже покривають калорії" : `щоб при ${intakeKcal} ккал добрати −${dailyDeficit} ккал`}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-extrabold tabular-nums text-emerald-600">{stepPlan.steps.toLocaleString("uk-UA")}</div>
+              <div className="text-[11px] text-slate-400">{stepPlan.covered ? "просто для здоров'я" : `≈ ${stepKm} км · ${stepPlan.burn} ккал`}</div>
+            </div>
+          </div>
+
+          <label className="mt-3 block">
+            <span className="mb-1 block text-[11px] text-slate-400">Скільки планую їсти, ккал <span className="text-slate-300">— посунь, і ціль кроків перерахується</span></span>
+            <div className="flex items-center gap-2">
+              <input type="range" min={floorKcal} max={Math.max(floorKcal + 200, (tdee ?? 2000) + 300)} step={25}
+                value={intakeKcal ?? kcalTarget ?? floorKcal}
+                onChange={(e) => onSaveGoals({ intakeKcal: +e.target.value })}
+                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-emerald-100 accent-emerald-600" />
+              <span className="w-14 shrink-0 text-right text-sm font-bold tabular-nums text-slate-700">{intakeKcal}</span>
+            </div>
+          </label>
+          {goals.intakeKcal != null && goals.intakeKcal !== kcalTarget && (
+            <button onClick={() => onSaveGoals({ intakeKcal: null })} className="mt-1 text-[11px] font-semibold text-emerald-600">↺ повернути рекомендовані {kcalTarget} ккал</button>
+          )}
+
+          {stepRows.length > 0 && (
+            <div className="mt-3 overflow-hidden rounded-xl ring-1 ring-slate-100">
+              <div className="grid grid-cols-2 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400"><span>Їси, ккал</span><span className="text-right">Треба кроків</span></div>
+              {stepRows.map((r) => (
+                <div key={r.kcal} className={`grid grid-cols-2 px-3 py-1.5 text-sm tabular-nums ${r.kcal === intakeKcal ? "bg-emerald-50 font-bold text-emerald-700" : "text-slate-600"}`}>
+                  <span>{r.kcal}</span>
+                  <span className="text-right">{r.covered ? "8 000 ✓" : r.steps.toLocaleString("uk-UA")}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {stepsTooMany && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">⚠️ Стільки ходити щодня надовго нереально. Краще один із трьох варіантів: трохи зменшити калорійність, розтягнути план на більше місяців, або додати силові — м'язи піднімають витрату щодня, а не лише під час тренування.</p>}
+          {stepPlan.covered && <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-[11px] leading-relaxed text-emerald-800">✓ При такій калорійності дефіцит набирається і без довгих прогулянок. 8 000 кроків лишаю як норму для здоров'я, серця й голови — не заради мінусу на вагах.</p>}
+          <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">Твої {kcalTarget} ккал порахувалися з рівнем активності «{actLabel}» — і ці кроки якраз і є той рівень у цифрах. Постав «Сидячий» вище — калорій стане менше, зате й ходити треба буде менше. Це одна й та сама ціль, просто ділиться між тарілкою і ногами по-різному.</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-400">Рахунок наближений: ходьба ≈ 0.4 ккал на кг ваги на км понад спокій, довжина кроку — від твого зросту. Побутові {BASE_STEPS.toLocaleString("uk-UA")} кроків уже враховані в базовій витраті. Реальність відрізнятиметься на 10–15% — орієнтуйся на вагу в часі, а не на формулу.</p>
         </div>
+      ) : ready ? (
+        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50 text-center"><div className="text-2xl">🚶‍♀️</div><div className="mt-1 text-xl font-extrabold text-slate-800">8–10 тис</div><div className="text-[11px] text-slate-400">кроків на день · впиши зріст, вік і стать, щоб порахувати точно</div></div>
+      ) : null}
+
+      {ready && (
+        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50 text-center"><div className="text-2xl">💪</div><div className="mt-1 text-xl font-extrabold text-slate-800">2–3</div><div className="text-[11px] text-slate-400">силові / тиждень — саме вони тримають м'язи в дефіциті</div></div>
       )}
 
       {/* fasting integration */}
