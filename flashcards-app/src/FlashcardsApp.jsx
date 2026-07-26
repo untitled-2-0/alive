@@ -11346,10 +11346,10 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
             const barColor = now <= 20 ? "bg-green-500" : now <= 45 ? "bg-amber-400" : "bg-orange-500";
             return (
               <div key={f.id} className={`rounded-2xl bg-white p-4 shadow-sm ring-1 transition ${mastered ? "ring-green-100" : isCurrent ? "ring-2 ring-amber-300" : "ring-amber-50"}`}>
-                <div className="flex items-center gap-2">
+                <div className="flex items-start gap-2">
                   <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm font-bold ${mastered ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>{mastered ? <Check className="h-4 w-4" /> : step}</span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5"><span className="truncate font-bold text-slate-800">{f.title}</span>
+                    <div className="flex flex-wrap items-center gap-1.5"><span className="min-w-0 break-words font-bold text-slate-800">{f.title}</span>
                       {mastered ? <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-bold text-green-700">приборкано</span>
                         : isCurrent ? <span className="shrink-0 rounded-full bg-amber-400 px-1.5 py-0.5 text-[10px] font-bold text-white">твоя сходинка</span>
                         : atts.length ? <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600">в роботі</span>
@@ -11357,9 +11357,10 @@ function FearLadder({ fears, onExit, onSave, onLog, flash }) {
                     </div>
                     <div className="text-xs text-slate-400">{atts.length ? `${atts.length} ${atts.length === 1 ? "спроба" : atts.length < 5 ? "спроби" : "спроб"}` : "ще не пробувала"}{drop > 0 ? ` · впала на ${drop}` : ""}</div>
                   </div>
-                  <button onClick={() => { setLogId(f.id); setBefore(now); }} className="shrink-0 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600">Записати спробу</button>
-                  <button onClick={() => { if (confirm("Прибрати цей страх?")) removeFear(f.id); }} className="shrink-0 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                  <button onClick={() => { if (confirm("Прибрати цей страх?")) removeFear(f.id); }} className="shrink-0 self-start pt-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
+                <button onClick={() => { setLogId(f.id); setBefore(now); }}
+                  className="mt-2 w-full rounded-full bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 sm:ml-10 sm:mt-1.5 sm:w-auto">Записати спробу</button>
                 {/* vector: anxiety from start → now, aiming for 0 */}
                 <div className="mt-2.5">
                   <div className="relative h-2 rounded-full bg-slate-100">
