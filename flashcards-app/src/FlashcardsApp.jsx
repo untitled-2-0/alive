@@ -1151,6 +1151,7 @@ function seededRoutine() {
 /* ================================================================== */
 const CKEYS = {
   fears: "calm:fears",
+  distance: "calm:langDistance", // «опиши іншою мовою» — записи дистанціювання
   thoughts: "calm:thoughtRecords",
   decat: "calm:decatJournal", // decatastrophizing worksheet entries
   rules: "calm:innerRules",   // inner-rules journal entries
@@ -7769,6 +7770,7 @@ function CalmSection({ name, onRename }) {
     return () => window.removeEventListener("calm-open", onOpen);
   }, []);
   const [fears, setFears] = useState([]);
+  const [distance, setDistance] = useState([]);
   const [thoughts, setThoughts] = useState([]);
   const [decat, setDecat] = useState([]);
   const [rules, setRules] = useState([]);
@@ -7823,7 +7825,8 @@ function CalmSection({ name, onRename }) {
 
   const reload = useCallback(async () => {
     const d = await loadCalmData();
-    setFears(d.fears); setThoughts(d.thoughts); setDecat(d.decat || []); setRules(d.rules || []); setWdep(d.wdep || []); setDibs(d.dibs || []); setDtr(d.dtr || []); setDarrow(d.darrow || []); setActivity(d.activity || {}); setRumination(d.rumination || []); setAbcde(d.abcde || []); setIfthen(d.ifthen || []); setProbsolve(d.probsolve || []); setFacts(d.facts || []); setImagexp(d.imagexp || []); setIntero(d.intero || []); setEventvis(d.eventvis || []); setPleasant(d.pleasant || {}); setEval9(d.eval9 || []); setTrigrec(d.trigrec || []); setBehexp(d.behexp || []); setReframe(d.reframe || []); setSocratic(d.socratic || []); setAbc(d.abc || []); setWhatif(d.whatif || []); setCoping(d.coping || []); setRabbit(d.rabbit || []); setSolvefull(d.solvefull || []); setFocusplan(d.focusplan || []); setAdhdtips(d.adhdtips || []); setProductive(d.productive || []); setControl(d.control || []); setSocialanx(d.socialanx || []); setDbtchain(d.dbtchain || []); setHabitplan(d.habitplan || []); setDiscrepancy(d.discrepancy || []); setGrowth(d.growth || []); setGratitude(d.gratitude || []); setSelfcare(d.selfcare || {}); setGratitudeweek(d.gratitudeweek || {}); setEsteemweek(d.esteemweek || {}); setInnercoach(d.innercoach || []); setHabitbreak(d.habitbreak || []); setGoalbreak(d.goalbreak || []); setSessions(d.sessions);
+    setFears(d.fears);
+    setDistance(await store.get(CKEYS.distance, [])); setThoughts(d.thoughts); setDecat(d.decat || []); setRules(d.rules || []); setWdep(d.wdep || []); setDibs(d.dibs || []); setDtr(d.dtr || []); setDarrow(d.darrow || []); setActivity(d.activity || {}); setRumination(d.rumination || []); setAbcde(d.abcde || []); setIfthen(d.ifthen || []); setProbsolve(d.probsolve || []); setFacts(d.facts || []); setImagexp(d.imagexp || []); setIntero(d.intero || []); setEventvis(d.eventvis || []); setPleasant(d.pleasant || {}); setEval9(d.eval9 || []); setTrigrec(d.trigrec || []); setBehexp(d.behexp || []); setReframe(d.reframe || []); setSocratic(d.socratic || []); setAbc(d.abc || []); setWhatif(d.whatif || []); setCoping(d.coping || []); setRabbit(d.rabbit || []); setSolvefull(d.solvefull || []); setFocusplan(d.focusplan || []); setAdhdtips(d.adhdtips || []); setProductive(d.productive || []); setControl(d.control || []); setSocialanx(d.socialanx || []); setDbtchain(d.dbtchain || []); setHabitplan(d.habitplan || []); setDiscrepancy(d.discrepancy || []); setGrowth(d.growth || []); setGratitude(d.gratitude || []); setSelfcare(d.selfcare || {}); setGratitudeweek(d.gratitudeweek || {}); setEsteemweek(d.esteemweek || {}); setInnercoach(d.innercoach || []); setHabitbreak(d.habitbreak || []); setGoalbreak(d.goalbreak || []); setSessions(d.sessions);
     setSettings({ tick: true, pattern: "box", ...d.settings });
     setLoading(false);
   }, []);
@@ -7847,6 +7850,7 @@ function CalmSection({ name, onRename }) {
 
   const saveFears = useCallback(async (next) => { setFears(next); await store.set(CKEYS.fears, next); }, []);
   const saveThoughts = useCallback(async (next) => { setThoughts(next); await store.set(CKEYS.thoughts, next); }, []);
+  const saveDistance = useCallback(async (next) => { setDistance(next); await store.set(CKEYS.distance, next); }, []);
   const saveDecat = useCallback(async (next) => { setDecat(next); await store.set(CKEYS.decat, next); }, []);
   const saveRules = useCallback(async (next) => { setRules(next); await store.set(CKEYS.rules, next); }, []);
   const saveWdep = useCallback(async (next) => { setWdep(next); await store.set(CKEYS.wdep, next); }, []);
@@ -7922,6 +7926,7 @@ function CalmSection({ name, onRename }) {
       { id: "eval9", label: "Оцінка думок", desc: "Докази за і проти — і чесна альтернатива", icon: Layers3, color: "#475569" },
       { id: "trigrec", label: "Запис тригера", desc: "Пауза → тригер → думки → альтернатива", icon: Zap, color: "#b45309" },
       { id: "reframe", label: "Рефреймінг події", desc: "Подія сталася — переписати думки про неї", icon: Shuffle, color: "#9333ea" },
+      { id: "langdist", label: "Опиши іншою мовою", desc: "Переклад створює дистанцію: думка чіпляє слабше", icon: Waves, color: "#0d9488" },
       { id: "socratic", label: "Сократівські питання", desc: "Допит думки: факти, перспективи, ймовірність", icon: HelpCircle, color: "#0369a1" },
       { id: "whatif", label: "Заміна «а що як»", desc: "З тривожних питань — у факти і план", icon: Repeat, color: "#15803d" },
       { id: "rabbit", label: "Реверс кролячої нори", desc: "На кожен поганий сценарій — рівно ймовірний добрий", icon: ArrowLeftRight, color: "#e11d48" },
@@ -8100,6 +8105,9 @@ function CalmSection({ name, onRename }) {
       {cview === "avoidance" && <AvoidanceCycleView onExit={back} onGo={() => setCview("fear")} />}
       {cview === "socialanx" && <SimpleJournal spec={SOCIAL_ANX_SPEC} entries={socialanx} onExit={back} onSave={async (entry, sec) => { await saveSocialanx([entry, ...socialanx]); log("socialanx", sec); flash("Соціальну тривогу досліджено 🌿"); }} onDelete={async (id) => saveSocialanx(socialanx.filter((t) => t.id !== id))} />}
       {cview === "rain" && <RainPractice onExit={back} onDone={done("rain")} />}
+      {cview === "langdist" && <LangDistancePractice entries={distance} onExit={back}
+        onSave={async (entry, sec) => { await saveDistance([entry, ...distance]); log("langdist", sec); flash("Записано 🌿"); }}
+        onDelete={async (id) => saveDistance(distance.filter((x) => x.id !== id))} />}
       {cview === "movement" && <MovementPractice onExit={back} onDone={done("movement")} />}
       {cview === "mindful" && <MindfulPractice onExit={back} onDone={done("mindful")} />}
       {cview === "selfcare" && <SelfCareAssessment value={selfcare} onExit={back} onSave={saveSelfcare} />}
@@ -9830,6 +9838,212 @@ function AvoidanceCycleView({ onExit, onGo }) {
 
 /* TODO: мінімальні практики, створені під ранкову послідовність у «Рутині».
    Робочі, але коротші за решту — за потреби розширити до рівня RainPractice. */
+
+/* ---------- Опиши проблему іншою мовою ----------
+   Ефект іноземної мови: та сама думка нерідною мовою відчувається слабше —
+   мозок обробляє її аналітичніше й менш емоційно. Практика: описати проблему,
+   перекласти, послухати обома мовами й порівняти, наскільки важко відчувається.
+   Переклад — Google Translate (публічний ендпоінт, без ключа), озвучення —
+   вбудований у браузер синтез мовлення. Жодних нових залежностей. */
+const LD_LANGS = [
+  { code: "en", label: "English",  voice: "en-GB" },
+  { code: "de", label: "Deutsch",  voice: "de-DE" },
+  { code: "fr", label: "Français", voice: "fr-FR" },
+  { code: "es", label: "Español",  voice: "es-ES" },
+  { code: "pl", label: "Polski",   voice: "pl-PL" },
+  { code: "it", label: "Italiano", voice: "it-IT" },
+  { code: "tr", label: "Türkçe",   voice: "tr-TR" },
+];
+
+async function ldTranslate(text, to) {
+  const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=uk&tl=" +
+    encodeURIComponent(to) + "&dt=t&q=" + encodeURIComponent(text);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("перекладач не відповів (" + res.status + ")");
+  const data = await res.json();
+  const out = (data && data[0] ? data[0] : []).map((chunk) => chunk[0]).join("");
+  if (!out.trim()) throw new Error("порожня відповідь перекладача");
+  return out;
+}
+
+function ldSpeak(text, lang) {
+  if (!("speechSynthesis" in window) || !text) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = lang;
+  const match = window.speechSynthesis.getVoices().find((v) => v.lang === lang)
+    || window.speechSynthesis.getVoices().find((v) => v.lang.startsWith(lang.slice(0, 2)));
+  if (match) u.voice = match;
+  u.rate = 0.95;
+  window.speechSynthesis.speak(u);
+}
+
+function LangDistancePractice({ entries, onExit, onSave, onDelete }) {
+  const [step, setStep] = useState(0);
+  const [text, setText] = useState("");
+  const [lang, setLang] = useState(LD_LANGS[0]);
+  const [before, setBefore] = useState(60);
+  const [after, setAfter] = useState(60);
+  const [translated, setTranslated] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const startRef = useRef(Date.now());
+
+  // Голоси в браузері підвантажуються асинхронно — без цього перший «Прослухати» німий.
+  useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+    const warm = () => window.speechSynthesis.getVoices();
+    warm();
+    window.speechSynthesis.addEventListener("voiceschanged", warm);
+    return () => { window.speechSynthesis.removeEventListener("voiceschanged", warm); window.speechSynthesis.cancel(); };
+  }, []);
+
+  const doTranslate = async () => {
+    if (!text.trim()) return;
+    setBusy(true); setErr("");
+    try {
+      setTranslated(await ldTranslate(text.trim(), lang.code));
+      setStep(2);
+    } catch (e) {
+      setErr(e.message || "не вдалось перекласти");
+    }
+    setBusy(false);
+  };
+
+  const save = () => {
+    onSave({
+      id: ruid("ld"), ts: Date.now(), date: dateKey(Date.now()),
+      text: text.trim(), lang: lang.label, translated, before, after,
+    }, (Date.now() - startRef.current) / 1000);
+  };
+
+  const gtLink = "https://translate.google.com/?sl=uk&tl=" + lang.code + "&op=translate&text=" + encodeURIComponent(text);
+  const delta = before - after;
+
+  return (
+    <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6">
+      <CalmHeader title="Опиши іншою мовою" onExit={onExit} />
+
+      <div className="mb-5 rounded-2xl bg-slate-800 p-4 text-sm leading-relaxed text-white">
+        Та сама думка нерідною мовою чіпляє слабше: мозок обробляє її аналітичніше, ніж рідну, і емоційний
+        заряд падає. Опиши проблему українською, переклади, послухай обома мовами — і поміть різницю.
+      </div>
+
+      {step === 0 && (
+        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-green-100">
+          <div className="text-xs font-bold uppercase tracking-widest text-green-500">Крок 1 із 3</div>
+          <h2 className="mt-1 text-xl font-extrabold text-slate-800">Опиши проблему</h2>
+          <p className="mt-1 text-sm text-slate-500">Кількома реченнями, своїми словами. Так, як воно звучить у голові.</p>
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={5} autoFocus
+            placeholder="Напр.: я боюся, що з моїм здоровʼям щось серйозне і я цього не помічаю"
+            className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm leading-relaxed focus:border-green-400 focus:outline-none" />
+          <div className="mt-4">
+            <div className="mb-1 flex justify-between text-xs text-slate-500"><span>Наскільки важко це відчувається зараз</span><b className="tabular-nums text-slate-700">{before}</b></div>
+            <input type="range" min={0} max={100} value={before} onChange={(e) => setBefore(+e.target.value)}
+              className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-green-100 accent-green-600" />
+          </div>
+          <button onClick={() => setStep(1)} disabled={!text.trim()}
+            className="mt-4 w-full rounded-2xl bg-green-600 py-3 font-bold text-white disabled:opacity-40">Далі — обрати мову</button>
+        </div>
+      )}
+
+      {step === 1 && (
+        <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-green-100">
+          <div className="text-xs font-bold uppercase tracking-widest text-green-500">Крок 2 із 3</div>
+          <h2 className="mt-1 text-xl font-extrabold text-slate-800">Якою мовою?</h2>
+          <p className="mt-1 text-sm text-slate-500">Найкраще працює мова, яку ти трохи знаєш, але не думаєш нею.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {LD_LANGS.map((l) => (
+              <button key={l.code} onClick={() => setLang(l)}
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${lang.code === l.code ? "bg-green-600 text-white" : "bg-slate-100 text-slate-600"}`}>{l.label}</button>
+            ))}
+          </div>
+          {err && (
+            <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-800">
+              {err}. Можна перекласти вручну:{" "}
+              <a href={gtLink} target="_blank" rel="noreferrer" className="font-bold underline">відкрити в Google Перекладачі</a>,
+              а потім вставити результат нижче.
+              <textarea value={translated} onChange={(e) => setTranslated(e.target.value)} rows={3}
+                className="mt-2 w-full rounded-lg border border-amber-200 px-2 py-1.5 text-sm" placeholder="Встав переклад сюди" />
+              {translated.trim() && <button onClick={() => setStep(2)} className="mt-2 w-full rounded-xl bg-amber-500 py-2 text-sm font-bold text-white">Далі</button>}
+            </div>
+          )}
+          <div className="mt-4 flex gap-2">
+            <button onClick={() => setStep(0)} className="rounded-2xl bg-slate-100 px-5 py-3 font-bold text-slate-600">Назад</button>
+            <button onClick={doTranslate} disabled={busy}
+              className="flex-1 rounded-2xl bg-green-600 py-3 font-bold text-white disabled:opacity-50">
+              {busy ? "Перекладаю…" : "Перекласти"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="space-y-3">
+          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Українською</div>
+              <button onClick={() => ldSpeak(text, "uk-UA")} className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">🔊 Прослухати</button>
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-slate-700">{text}</p>
+          </div>
+
+          <div className="rounded-3xl bg-green-50 p-5 ring-1 ring-green-200">
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-green-600">{lang.label}</div>
+              <button onClick={() => ldSpeak(translated, lang.voice)} className="shrink-0 rounded-full bg-green-600 px-3 py-1 text-xs font-semibold text-white">🔊 Прослухати</button>
+            </div>
+            <p className="mt-2 text-sm leading-relaxed text-green-900">{translated}</p>
+            <a href={gtLink} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[11px] font-semibold text-green-700 underline">відкрити в Google Перекладачі</a>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-green-100">
+            <div className="text-xs font-bold uppercase tracking-widest text-green-500">Крок 3 із 3</div>
+            <h2 className="mt-1 text-lg font-extrabold text-slate-800">А тепер — наскільки важко?</h2>
+            <p className="mt-1 text-sm text-slate-500">Перечитай і послухай іншою мовою. Оціни ще раз, без «правильної» відповіді.</p>
+            <div className="mt-3">
+              <div className="mb-1 flex justify-between text-xs text-slate-500"><span>Зараз відчувається на</span><b className="tabular-nums text-slate-700">{after}</b></div>
+              <input type="range" min={0} max={100} value={after} onChange={(e) => setAfter(+e.target.value)}
+                className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-green-100 accent-green-600" />
+            </div>
+            {delta > 0 && <p className="mt-3 rounded-xl bg-green-50 px-3 py-2 text-[12px] leading-relaxed text-green-800">Було {before}, стало {after} — на {delta} менше. Це і є дистанція: проблема та сама, а хватка слабша.</p>}
+            {delta <= 0 && <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[12px] leading-relaxed text-slate-500">Не змінилось — і це нормально. Техніка працює не завжди й не з усім; спробуй іншу мову або іншу практику.</p>}
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => { setStep(0); setTranslated(""); }} className="rounded-2xl bg-slate-100 px-5 py-3 font-bold text-slate-600">Ще раз</button>
+              <button onClick={save} className="flex-1 rounded-2xl bg-green-600 py-3 font-bold text-white">Зберегти</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {entries.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-400">Попередні записи</div>
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm text-slate-700">{e.text}</div>
+                    <div className="mt-1 text-xs italic text-slate-500">{e.translated}</div>
+                    <div className="mt-1 text-[11px] text-slate-400">{e.date} · {e.lang} · {e.before} → {e.after}</div>
+                  </div>
+                  <button onClick={() => onDelete(e.id)} className="shrink-0 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="mt-6 text-center text-xs leading-relaxed text-slate-400">
+        Переклад робить Google Перекладач, озвучення — твій браузер. Текст проблеми йде на переклад у Google;
+        якщо не хочеш цього — перекладай уручну за посиланням або пропусти цю практику.
+      </p>
+    </div>
+  );
+}
+
 function MovementPractice({ onExit, onDone }) {
   const startRef = useRef(Date.now());
   const [step, setStep] = useState(0);
