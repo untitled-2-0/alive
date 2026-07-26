@@ -21,7 +21,7 @@ import {
   Briefcase, Lightbulb, Compass, BookMarked, ChevronLeft, RefreshCw,
   Wrench, Star, Users, Sparkles as SparklesIcon, Scale as ScaleIcon, ArrowLeftRight, Home,
   HandHeart, ShoppingCart, Wallet, ShoppingBasket, Search,
-  Package, Lock, HelpCircle, Stethoscope, TestTube2, Minus,
+  Package, Lock, HelpCircle, Stethoscope, TestTube2, Minus, ChevronUp,
 } from "lucide-react";
 import lottie from "lottie-web";
 import {
@@ -1719,6 +1719,17 @@ function nuBackfillDishes(dishes, catalogue, custom) {
   return changed ? next : null;
 }
 
+
+// Скільки приблизно спалило домашнє тренування.
+// MET 4 — це рівень калланетики й вправ із власною вагою: не біг, але й не сидіння.
+// Формула стандартна: ккал = MET × вага(кг) × години.
+const FT_MET = 4;
+function ftBurnedKcal(fitLog, day, weightKg) {
+  if (!weightKg || !Array.isArray(fitLog)) return 0;
+  const sec = fitLog.filter((x) => x && x.date === day).reduce((a, x) => a + (Number(x.sec) || 0), 0);
+  return Math.round(FT_MET * weightKg * (sec / 3600));
+}
+
 // Дописує в старі записи ті нутрієнти, яких на момент запису ще не було в базі.
 // Повертає новий лог, якщо щось змінилось, інакше null.
 function nuBackfill(log, catalogue, custom, dishes) {
@@ -2382,12 +2393,13 @@ function NutritionSection({ name, onRename }) {
   const [dishes, setDishes] = useState([]);
   const [catalogue, setCatalogue] = useState([]);
   const [plan, setPlan] = useState({ ok: false });
+  const [fitLog, setFitLog] = useState([]);
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [d, foods, fast] = await Promise.all([loadNutritionData(), nuLoadFoods(), loadFastingData()]);
+      const [d, foods, fast, fit] = await Promise.all([loadNutritionData(), nuLoadFoods(), loadFastingData(), store.get(FTKEYS.log, [])]);
       if (!alive) return;
       // Записи зберігають склад продукту на момент додавання. Коли в базі зʼявляється
       // нова речовина, старі дні показували б по ній нуль — тому дописуємо її
@@ -2400,6 +2412,7 @@ function NutritionSection({ name, onRename }) {
       setLog(backfilled || d.log);
       setCustom(d.custom); setCache(d.cache); setTargets(d.targets); setRecent(d.recent); setDishes(dishList);
       setPlan(fastingPlanTargets(fast.goals, fast.diary));
+      setFitLog(fit || []);
       setCatalogue(foods); setLoading(false);
     })();
     const onReset = async () => { const d = await loadNutritionData(); setLog(d.log); setCustom(d.custom); setCache(d.cache); setTargets(d.targets); setRecent(d.recent); setDishes(d.dishes || []); };
@@ -2414,13 +2427,19 @@ function NutritionSection({ name, onRename }) {
   const totals = useMemo(() => nuSum(entries), [entries]);
   // Норми: за замовчуванням із плану у Fasting, вручну — лише якщо сама перемкнула
   const linked = targets.mode !== "manual" && plan.ok;
+  const weightKg = linked ? plan.weightKg : targets.weightKg;
+  const burned = useMemo(() => ftBurnedKcal(fitLog, date, weightKg), [fitLog, date, weightKg]);
   const refs = useMemo(() => {
     const base = nuRefs(linked
       ? { sex: plan.sex, age: plan.age, weightKg: plan.weightKg, kcal: plan.kcal }
       : targets);
     if (linked) { base.protein = plan.protein; base.fat = plan.fat; base.carbs = plan.carbs; }
+    // Тренування збільшує денну норму: витрата була, отже стільки можна доїсти,
+    // не з'їдаючи власний дефіцит.
+    if (burned > 0) base.kcal = base.kcal + burned;
     return base;
-  }, [targets, plan, linked]);
+  }, [targets, plan, linked, burned]);
+  const trainedToday = useMemo(() => (fitLog || []).filter((x) => x && x.date === date), [fitLog, date]);
 
   const addFood = useCallback(async (food, grams) => {
     const entry = { id: ruid("n"), name: food.name, grams, food: Object.fromEntries([["kcal", food.kcal], ...NU_NUTRIENTS.map((n) => [n.k, Number(food[n.k]) || 0])]) };
@@ -2516,7 +2535,29 @@ function NutritionSection({ name, onRename }) {
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/25">
                 <div className="h-full rounded-full bg-white transition-all" style={{ width: `${Math.min(100, kcalStatus.p || 0)}%` }} />
               </div>
+              {burned > 0 && (
+                <div className="mt-2 flex items-center gap-1.5 text-[12px] text-white/90">
+                  <HeartPulse className="h-3.5 w-3.5 shrink-0" />
+                  <span>Тренування сьогодні: {trainedToday.map((t) => t.name).join(", ")} — норму піднято на <b>+{burned} ккал</b></span>
+                </div>
+              )}
             </div>
+
+            {burned > 0 && (
+              <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+                <div className="flex items-center gap-2 text-sm font-bold text-slate-700"><HeartPulse className="h-4 w-4 text-emerald-500" /> Можна з'їсти більше</div>
+                <p className="mt-1 text-[12px] leading-relaxed text-slate-500">
+                  {trainedToday.reduce((a, t) => a + Math.round((t.sec || 0) / 60), 0)} хв тренування ≈ <b>{burned} ккал</b> витрати
+                  (рахую як {FT_MET} MET на твої {weightKg} кг — це рівень калланетики, приблизно).
+                  Тому денна ціль сьогодні на стільки ж вища.
+                </p>
+                <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+                  Чесно: якщо доїсти всі ці калорії, дефіцит за день лишиться тим самим, що й без тренування —
+                  тренування тоді працює на м'язи й самопочуття, а не на мінус на вагах. Хочеш швидший результат — з'їж
+                  частину, не всі. Найкраще добрати їх білком.
+                </p>
+              </div>
+            )}
 
             <NuAdd catalogue={catalogue} custom={[...dishes, ...custom]} recent={recent} cache={cache} onAdd={addFood} onGenerated={rememberGenerated} onSaveCustom={saveCustom} />
 
@@ -2563,7 +2604,37 @@ const FTKEYS = {
   custom: "fitness:custom",     // [{id, name, items:[{ex, sec}]}]
   settings: "fitness:settings", // {name, restSec}
   photos: "fitness:photos",     // { exerciseId: dataURL } — власні фото вправ
+  exercises: "fitness:exercises", // { id: {name, emoji, group, tip} } — свої вправи
 };
+
+/* ---------- own exercises ----------
+   Живуть поруч із вбудованим каталогом: getEx() дивиться в обидва, тож своя вправа
+   працює скрізь однаково — у комплексах, плеєрі, каталозі й на фото. */
+let FT_CUSTOM_EX = {};
+const ftExSubs = new Set();
+const FT_EX_FALLBACK = { name: "Вправа", emoji: "💪", group: "Мої вправи", tip: "" };
+
+function getEx(id) { return EXERCISES[id] || FT_CUSTOM_EX[id] || FT_EX_FALLBACK; }
+function allEx() { return { ...EXERCISES, ...FT_CUSTOM_EX }; }
+
+async function ftLoadExercises() { FT_CUSTOM_EX = await store.get(FTKEYS.exercises, {}); ftExSubs.forEach((f) => f()); return FT_CUSTOM_EX; }
+async function ftSaveExercise(ex) {
+  FT_CUSTOM_EX = { ...FT_CUSTOM_EX, [ex.id]: ex };
+  await store.set(FTKEYS.exercises, FT_CUSTOM_EX);
+  ftExSubs.forEach((f) => f());
+}
+async function ftDeleteExercise(id) {
+  const next = { ...FT_CUSTOM_EX }; delete next[id];
+  FT_CUSTOM_EX = next;
+  await store.set(FTKEYS.exercises, next);
+  await ftClearPhoto(id);
+  ftExSubs.forEach((f) => f());
+}
+function useCustomExercises() {
+  const [, bump] = useState(0);
+  useEffect(() => { const fn = () => bump((n) => n + 1); ftExSubs.add(fn); return () => { ftExSubs.delete(fn); }; }, []);
+  return FT_CUSTOM_EX;
+}
 
 /* ---------- own exercise photos ----------
    Живуть у сховищі апки (і синхронізуються твоїм Supabase), а не в репозиторії:
@@ -2619,7 +2690,8 @@ async function collectFitnessExport() {
   const custom = await store.get(FTKEYS.custom, []);
   const settings = await store.get(FTKEYS.settings, { name: "Fitness", restSec: 15 });
   const photos = await store.get(FTKEYS.photos, {});
-  return { log, custom, settings, photos };
+  const exercises = await store.get(FTKEYS.exercises, {});
+  return { log, custom, settings, photos, exercises };
 }
 async function clearFitnessData() { for (const k of Object.values(FTKEYS)) await store.remove(k); }
 
@@ -10037,7 +10109,7 @@ function ftLimb(len, w1, w2) {
   return `M ${-a} 0 Q ${-a - 0.4} ${len * 0.55} ${-b} ${len} Q ${-b} ${len + b * 1.15} 0 ${len + b * 1.15} Q ${b} ${len + b * 1.15} ${b} ${len} Q ${a + 0.4} ${len * 0.55} ${a} 0 Q 0 ${-a * 0.75} ${-a} 0 Z`;
 }
 function StaticFigure({ id, size = 200, playing = true }) {
-  const ex = EXERCISES[id];
+  const ex = getEx(id);
   if (!ex) return null;
   const pose = FT_POSES[ex.pose] || FT_POSES.standing;
   const A = { ...pose.base, ...(ex.a || {}) };
@@ -10136,6 +10208,40 @@ function StaticFigure({ id, size = 200, playing = true }) {
 }
 
 
+
+/* Своя вправа: назва, група, підказка. Фото додається тією ж кнопкою, що й у решти. */
+function ExerciseForm({ initial, onSave, onCancel }) {
+  const [f, setF] = useState(initial || { id: "myex_" + ruid("e"), name: "", emoji: "💪", group: "Мої вправи", tip: "" });
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const EMOJI = ["💪", "🧘‍♀️", "🩰", "🌿", "🔥", "🦵", "🫀", "✨"];
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-bold text-slate-700">{initial ? "Редагувати вправу" : "Своя вправа"}</div>
+        <button onClick={onCancel} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+      </div>
+      <input value={f.name} onChange={(e) => set("name", e.target.value)} placeholder="Назва, напр. «Планка з підйомом ноги»"
+        className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {EMOJI.map((e) => (
+          <button key={e} onClick={() => set("emoji", e)}
+            className={`rounded-lg px-2 py-1 text-lg transition ${f.emoji === e ? "bg-emerald-100 ring-1 ring-emerald-300" : "bg-slate-50"}`}>{e}</button>
+        ))}
+      </div>
+      <input value={f.group} onChange={(e) => set("group", e.target.value)} placeholder="Група, напр. Прес"
+        className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+      <textarea value={f.tip} onChange={(e) => set("tip", e.target.value)} rows={2} placeholder="Як робити — коротка підказка для себе"
+        className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+      <button onClick={() => f.name.trim() && onSave({ ...f, name: f.name.trim(), group: f.group.trim() || "Мої вправи" })}
+        disabled={!f.name.trim()}
+        className="mt-3 w-full rounded-xl bg-emerald-600 py-2 text-sm font-bold text-white disabled:opacity-40">Зберегти вправу</button>
+      <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+        Після збереження на картці вправи буде кнопка 📷 — додаси своє фото, і воно показуватиметься замість заглушки.
+      </p>
+    </div>
+  );
+}
+
 /* Кнопка «своє фото» на картці вправи: стискає, зберігає, дає прибрати. */
 function ExercisePhotoButton({ id, onFlash }) {
   const fileRef = useRef(null);
@@ -10172,7 +10278,7 @@ function ExercisePhotoButton({ id, onFlash }) {
 }
 
 function GirlFigure({ id, size = 200, playing = true }) {
-  const ex = EXERCISES[id];
+  const ex = getEx(id);
   const host = useRef(null);
   const animRef = useRef(null);
   const file = ex && ex.lottie;
@@ -10230,12 +10336,15 @@ function FitnessSection({ name, onRename }) {
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(name);
   const [toast, setToast] = useState(null);
+  const [exForm, setExForm] = useState(null);
+  useCustomExercises();   // перемальовує каталог, коли зʼявляється/зникає своя вправа
 
   const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2400); }, []);
 
   useEffect(() => {
     (async () => {
       await ftLoadPhotos();
+      await ftLoadExercises();
       const d = await collectFitnessExport();
       setLog(d.log); setCustom(d.custom); setSettings({ restSec: 15, ...d.settings }); setLoading(false);
     })();
@@ -10298,7 +10407,8 @@ function FitnessSection({ name, onRename }) {
 
           {fview === "setup" && setupW ? (
             <FitnessSetup workout={setupW} onBack={() => { setSetupW(null); setFview("hub"); }}
-              onStart={(sec) => { setSession({ name: setupW.name, items: setupW.items, sec }); setSetupW(null); setFview("player"); }} />
+              onStart={(sec, items) => { setSession({ name: setupW.name, items: items || setupW.items, sec }); setSetupW(null); setFview("player"); }}
+              onSaveOwn={async (w) => { const next = [...custom, w]; setCustom(next); await store.set(FTKEYS.custom, next); flash("Комплекс збережено 💚"); }} />
           ) : fview === "history" ? (
             <FitnessHistory log={log} onBack={() => setFview("hub")} onDelete={async (id) => { await saveLog(log.filter((x) => x.id !== id)); }} />
           ) : fview === "builder" ? (
@@ -10330,9 +10440,19 @@ function FitnessSection({ name, onRename }) {
               </div>
 
               <div className="mt-6">
-                <div className="mb-2 text-xs font-extrabold uppercase tracking-wider text-slate-500">Вправи · як робити</div>
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Вправи · як робити</span>
+                  <button onClick={() => setExForm({})} className="rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white">+ Своя вправа</button>
+                </div>
+                {exForm && (
+                  <div className="mb-3">
+                    <ExerciseForm initial={exForm.id ? exForm : null}
+                      onSave={async (ex) => { await ftSaveExercise(ex); setExForm(null); flash("Вправу збережено 💪"); }}
+                      onCancel={() => setExForm(null)} />
+                  </div>
+                )}
                 <div className="grid gap-3 sm:grid-cols-3">
-                  {Object.entries(EXERCISES).map(([id, ex]) => (
+                  {Object.entries(allEx()).map(([id, ex]) => (
                     <div key={id} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-emerald-50">
                       <div className="relative inline-block">
                         <GirlFigure id={id} size={104} />
@@ -10341,7 +10461,15 @@ function FitnessSection({ name, onRename }) {
                       <div className="mt-1 text-sm font-bold text-slate-700">{ex.emoji} {ex.name}</div>
                       <div className="text-[11px] text-slate-400">{ex.group}</div>
                       <div className="mt-1 text-[11px] leading-snug text-slate-500">{ex.tip}</div>
-                      <button onClick={() => { setSession({ name: ex.name, items: [id], sec: 45 }); setFview("player"); }} className="mt-2 rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100">45 сек</button>
+                      <div className="mt-2 flex items-center justify-center gap-1.5">
+                        <button onClick={() => { setSession({ name: ex.name, items: [id], sec: 45 }); setFview("player"); }} className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100">45 сек</button>
+                        {String(id).startsWith("myex_") && (
+                          <>
+                            <button onClick={() => setExForm({ id, ...ex })} className="rounded-lg p-1 text-slate-300 hover:text-slate-600"><Pencil className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => ftDeleteExercise(id)} className="rounded-lg p-1 text-slate-300 hover:text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -10359,9 +10487,19 @@ function FitnessSection({ name, onRename }) {
   );
 }
 
-function FitnessSetup({ workout, onBack, onStart }) {
+function FitnessSetup({ workout, onBack, onStart, onSaveOwn }) {
   const [sec, setSec] = useState(30);
-  const total = ftTotal(workout.items, sec);
+  const [items, setItems] = useState(workout.items);
+  const [edit, setEdit] = useState(false);
+  useEffect(() => { setItems(workout.items); }, [workout]);
+  const total = ftTotal(items, sec);
+  const move = (i, d) => setItems((p) => {
+    const j = i + d;
+    if (j < 0 || j >= p.length) return p;
+    const n = [...p]; [n[i], n[j]] = [n[j], n[i]]; return n;
+  });
+  const drop = (i) => setItems((p) => p.filter((_, j) => j !== i));
+  const changed = items.length !== workout.items.length || items.some((id, i) => id !== workout.items[i]);
   return (
     <div>
       <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-slate-700"><ArrowLeft className="h-4 w-4" /> Назад</button>
@@ -10387,20 +10525,40 @@ function FitnessSetup({ workout, onBack, onStart }) {
 
         <div className="mb-4 rounded-2xl bg-emerald-50 px-4 py-3 text-center">
           <div className="text-2xl font-extrabold tabular-nums text-emerald-700">~{Math.round(total / 60)} хв</div>
-          <div className="text-xs text-emerald-600">{workout.items.length} вправ · пауза 10 с, після кожної 4-ї — 20 с</div>
+          <div className="text-xs text-emerald-600">{items.length} вправ · пауза 10 с, після кожної 4-ї — 20 с</div>
         </div>
 
-        <div className="mb-4 max-h-52 space-y-1.5 overflow-y-auto">
-          {workout.items.map((id, i) => (
-            <div key={i} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Порядок вправ</span>
+          <button onClick={() => setEdit((v) => !v)} className="text-xs font-semibold text-emerald-600">
+            {edit ? "Готово" : "Змінити порядок"}
+          </button>
+        </div>
+        <div className="mb-3 max-h-64 space-y-1.5 overflow-y-auto">
+          {items.map((id, i) => (
+            <div key={`${id}-${i}`} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5">
               <span className="w-5 text-xs font-bold text-slate-300">{i + 1}</span>
-              <span className="flex-1 text-sm font-semibold text-slate-700">{EXERCISES[id].emoji} {EXERCISES[id].name}</span>
-              <span className="text-xs tabular-nums text-slate-400">{sec} с</span>
+              <span className="flex-1 truncate text-sm font-semibold text-slate-700">{getEx(id).emoji} {getEx(id).name}</span>
+              {edit ? (
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <button onClick={() => move(i, -1)} disabled={i === 0} className="rounded-lg p-1 text-slate-400 hover:bg-white disabled:opacity-25"><ChevronUp className="h-4 w-4" /></button>
+                  <button onClick={() => move(i, 1)} disabled={i === items.length - 1} className="rounded-lg p-1 text-slate-400 hover:bg-white disabled:opacity-25"><ChevronDown className="h-4 w-4" /></button>
+                  <button onClick={() => drop(i)} className="rounded-lg p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500"><X className="h-4 w-4" /></button>
+                </div>
+              ) : (
+                <span className="text-xs tabular-nums text-slate-400">{sec} с</span>
+              )}
             </div>
           ))}
         </div>
+        {changed && (
+          <button onClick={() => onSaveOwn({ id: ruid("w"), name: `${workout.name} (мій порядок)`, items })}
+            className="mb-3 w-full rounded-xl bg-slate-100 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200">
+            Зберегти цей порядок як свій комплекс
+          </button>
+        )}
 
-        <button onClick={() => onStart(sec)} className="w-full rounded-2xl bg-emerald-600 py-3.5 text-lg font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:bg-emerald-700">
+        <button onClick={() => onStart(sec, items)} className="w-full rounded-2xl bg-emerald-600 py-3.5 text-lg font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:bg-emerald-700">
           <Play className="mr-1 inline h-5 w-5" /> Почати
         </button>
       </div>
@@ -10418,7 +10576,7 @@ function FitnessPlayer({ session, onExit, onFinish }) {
   const items = session.items;
   const total = items.length;
   const exId = items[idx];
-  const ex = EXERCISES[exId];
+  const ex = getEx(exId);
   const restFor = (i) => ((i + 1) % FT_LONG_EVERY === 0 ? FT_LONG_REST : FT_REST);
 
   useEffect(() => {
@@ -10461,7 +10619,7 @@ function FitnessPlayer({ session, onExit, onFinish }) {
           <div className="py-6">
             <div className="text-sm font-bold uppercase tracking-wide text-sky-500">{isLongRest ? "Довша пауза" : "Пауза"}</div>
             <div className="my-2 text-6xl font-extrabold tabular-nums text-sky-600">{Math.max(0, left)}</div>
-            <div className="mb-3 text-sm text-slate-500">Далі: {EXERCISES[items[Math.min(idx + 1, total - 1)]].name}</div>
+            <div className="mb-3 text-sm text-slate-500">Далі: {getEx(items[Math.min(idx + 1, total - 1)]).name}</div>
             <div className="opacity-70"><GirlFigure id={items[Math.min(idx + 1, total - 1)]} size={150} playing={false} /></div>
           </div>
         ) : (
@@ -10488,7 +10646,7 @@ function FitnessPlayer({ session, onExit, onFinish }) {
         <div className="flex flex-wrap gap-1.5">
           {items.map((id, i) => (
             <span key={i} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${i === idx ? "bg-emerald-600 text-white" : i < idx ? "bg-emerald-50 text-emerald-500 line-through" : "bg-slate-100 text-slate-400"}`}>
-              {EXERCISES[id].emoji} {EXERCISES[id].name}
+              {getEx(id).emoji} {getEx(id).name}
             </span>
           ))}
         </div>
@@ -10533,7 +10691,7 @@ function FitnessBuilder({ onBack, onSave }) {
         <div>
           <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Додати вправу</div>
           <div className="flex flex-wrap gap-1.5">
-            {Object.entries(EXERCISES).map(([id, ex]) => (
+            {Object.entries(allEx()).map(([id, ex]) => (
               <button key={id} onClick={() => setItems((p) => [...p, id])} className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">{ex.emoji} {ex.name}</button>
             ))}
           </div>
@@ -10541,9 +10699,13 @@ function FitnessBuilder({ onBack, onSave }) {
         {items.length > 0 && (
           <div className="space-y-2">
             {items.map((id, i) => (
-              <div key={i} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+              <div key={`${id}-${i}`} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
                 <span className="w-5 text-xs font-bold text-slate-300">{i + 1}</span>
-                <span className="flex-1 text-sm font-semibold text-slate-700">{EXERCISES[id].emoji} {EXERCISES[id].name}</span>
+                <span className="flex-1 truncate text-sm font-semibold text-slate-700">{getEx(id).emoji} {getEx(id).name}</span>
+                <button onClick={() => setItems((p) => { const j = i - 1; if (j < 0) return p; const n = [...p]; [n[i], n[j]] = [n[j], n[i]]; return n; })}
+                  disabled={i === 0} className="rounded-lg p-1 text-slate-400 hover:bg-white disabled:opacity-25"><ChevronUp className="h-4 w-4" /></button>
+                <button onClick={() => setItems((p) => { const j = i + 1; if (j >= p.length) return p; const n = [...p]; [n[i], n[j]] = [n[j], n[i]]; return n; })}
+                  disabled={i === items.length - 1} className="rounded-lg p-1 text-slate-400 hover:bg-white disabled:opacity-25"><ChevronDown className="h-4 w-4" /></button>
                 <button onClick={() => setItems((p) => p.filter((_, j) => j !== i))} className="text-slate-300 hover:text-rose-500"><X className="h-4 w-4" /></button>
               </div>
             ))}
