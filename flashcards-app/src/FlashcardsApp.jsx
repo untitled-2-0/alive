@@ -1638,6 +1638,7 @@ const NU_LEVEL = {
   high:  { bar: "bg-amber-500",   text: "text-amber-600",   chip: "bg-amber-50 text-amber-700" },
   over:  { bar: "bg-rose-500",    text: "text-rose-600",    chip: "bg-rose-50 text-rose-700" },
   none:  { bar: "bg-slate-200",   text: "text-slate-400",   chip: "bg-slate-100 text-slate-500" },
+  info:  { bar: "bg-sky-300",     text: "text-sky-700",     chip: "bg-sky-50 text-sky-700" },
 };
 const nuFmt = (v, unit) => {
   if (!isFinite(v)) return "—";
@@ -1685,6 +1686,68 @@ function NumInput({ value, onCommit, min, max, decimal, className = "", placehol
   );
 }
 
+
+
+// Те саме для страв: інгредієнти в них теж збережені знімком, тому спершу
+// дописуємо нутрієнти кожному інгредієнту з каталогу, а потім перераховуємо страву.
+function nuBackfillDishes(dishes, catalogue, custom) {
+  const byName = new Map();
+  for (const f of [...(catalogue || []), ...(custom || [])]) if (f && f.name) byName.set(f.name, f);
+  let changed = false;
+  const next = (dishes || []).map((d) => {
+    if (!d || !Array.isArray(d.items)) return d;
+    let touched = false;
+    const items = d.items.map((it) => {
+      const src = byName.get(it.name);
+      if (!src || !it.food) return it;
+      let patch = null;
+      for (const n of NU_NUTRIENTS) {
+        if (typeof it.food[n.k] !== "number" && typeof src[n.k] === "number") {
+          patch = patch || { ...it.food };
+          patch[n.k] = src[n.k];
+        }
+      }
+      if (!patch) return it;
+      touched = true;
+      return { ...it, food: patch };
+    });
+    if (!touched) return d;
+    changed = true;
+    return nuCompose({ id: d.id, name: d.name, cookedGrams: d.portion,
+      items: items.map((it) => ({ food: { ...it.food, name: it.name }, grams: it.grams })) });
+  });
+  return changed ? next : null;
+}
+
+// Дописує в старі записи ті нутрієнти, яких на момент запису ще не було в базі.
+// Повертає новий лог, якщо щось змінилось, інакше null.
+function nuBackfill(log, catalogue, custom, dishes) {
+  const byName = new Map();
+  for (const f of [...(catalogue || []), ...(custom || []), ...(dishes || [])]) {
+    if (f && f.name) byName.set(f.name, f);
+  }
+  let changed = false;
+  const next = {};
+  for (const [date, entries] of Object.entries(log || {})) {
+    next[date] = (entries || []).map((e) => {
+      if (!e || !e.food) return e;
+      const src = byName.get(e.name);
+      if (!src) return e;
+      let patch = null;
+      for (const n of NU_NUTRIENTS) {
+        if (typeof e.food[n.k] !== "number" && typeof src[n.k] === "number") {
+          patch = patch || { ...e.food };
+          patch[n.k] = src[n.k];
+        }
+      }
+      if (!patch) return e;
+      changed = true;
+      return { ...e, food: patch };
+    });
+  }
+  return changed ? next : null;
+}
+
 /* ---------- always-visible safety note ---------- */
 function NuSafety() {
   return (
@@ -1726,17 +1789,29 @@ function NuBar({ spec, value, target, status, entries }) {
           </span>
           <span className="shrink-0 text-[12px] tabular-nums text-slate-500">
             <span className={`font-bold ${c.text}`}>{nuFmt(value, spec.unit)}</span>
-            <span className="text-slate-300"> / {nuFmt(target, spec.unit)} {spec.unit}</span>
-            {status.p != null && <span className={`ml-1.5 font-semibold ${c.text}`}>{status.p}%</span>}
+            {spec.kind === "info"
+              ? <span className="text-slate-300"> {spec.unit}</span>
+              : <><span className="text-slate-300"> / {nuFmt(target, spec.unit)} {spec.unit}</span>
+                  {status.p != null && <span className={`ml-1.5 font-semibold ${c.text}`}>{status.p}%</span>}</>}
           </span>
         </div>
-        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
-          <div className={`h-full rounded-full transition-all ${c.bar}`} style={{ width: `${width}%` }} />
-        </div>
+        {spec.kind === "info" ? (
+          <div className="mt-1 text-[10px] text-slate-300">офіційної добової норми не встановлено</div>
+        ) : (
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className={`h-full rounded-full transition-all ${c.bar}`} style={{ width: `${width}%` }} />
+          </div>
+        )}
       </button>
       {open && (
         <div className="mt-1.5 space-y-1.5">
-          {spec.info && <p className="rounded-xl bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">{spec.info}</p>}
+          {spec.info && (
+            <div className="space-y-1.5 rounded-xl bg-slate-50 px-3 py-2">
+              {spec.info.split("\n\n").map((par, i) => (
+                <p key={i} className={`text-[11px] leading-relaxed ${i ? "text-slate-500" : "text-slate-600"}`}>{par}</p>
+              ))}
+            </div>
+          )}
           {sources.length > 0 ? (
             <div className="overflow-hidden rounded-xl ring-1 ring-slate-100">
               <div className="flex justify-between bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
@@ -2314,7 +2389,16 @@ function NutritionSection({ name, onRename }) {
     (async () => {
       const [d, foods, fast] = await Promise.all([loadNutritionData(), nuLoadFoods(), loadFastingData()]);
       if (!alive) return;
-      setLog(d.log); setCustom(d.custom); setCache(d.cache); setTargets(d.targets); setRecent(d.recent); setDishes(d.dishes || []);
+      // Записи зберігають склад продукту на момент додавання. Коли в базі зʼявляється
+      // нова речовина, старі дні показували б по ній нуль — тому дописуємо її
+      // заднім числом із каталогу за назвою, не чіпаючи вже наявних значень.
+      const fixedDishes = nuBackfillDishes(d.dishes || [], foods, d.custom);
+      if (fixedDishes) await store.set(NUKEYS.dishes, fixedDishes);
+      const dishList = fixedDishes || d.dishes || [];
+      const backfilled = nuBackfill(d.log, foods, d.custom, dishList);
+      if (backfilled) await store.set(NUKEYS.log, backfilled);
+      setLog(backfilled || d.log);
+      setCustom(d.custom); setCache(d.cache); setTargets(d.targets); setRecent(d.recent); setDishes(dishList);
       setPlan(fastingPlanTargets(fast.goals, fast.diary));
       setCatalogue(foods); setLoading(false);
     })();
