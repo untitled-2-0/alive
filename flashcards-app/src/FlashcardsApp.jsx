@@ -1689,22 +1689,33 @@ function NuSafety() {
 }
 
 /* ---------- one nutrient row ---------- */
+// Натискається — під рядком розкривається пояснення, що ця речовина робить у тілі.
 function NuBar({ spec, value, target, status }) {
+  const [open, setOpen] = useState(false);
   const c = NU_LEVEL[status.level] || NU_LEVEL.none;
   const width = status.p == null ? 0 : Math.max(2, Math.min(100, status.p));
   return (
     <div className={spec.sub ? "pl-4" : ""}>
-      <div className="flex items-baseline justify-between gap-2">
-        <span className={`text-[12px] ${spec.sub ? "text-slate-400" : "font-medium text-slate-600"}`}>{spec.label}</span>
-        <span className="shrink-0 text-[12px] tabular-nums text-slate-500">
-          <span className={`font-bold ${c.text}`}>{nuFmt(value, spec.unit)}</span>
-          <span className="text-slate-300"> / {nuFmt(target, spec.unit)} {spec.unit}</span>
-          {status.p != null && <span className={`ml-1.5 font-semibold ${c.text}`}>{status.p}%</span>}
-        </span>
-      </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
-        <div className={`h-full rounded-full transition-all ${c.bar}`} style={{ width: `${width}%` }} />
-      </div>
+      <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
+        className="w-full rounded-lg text-left transition hover:bg-slate-50/80">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className={`flex items-center gap-1 text-[12px] ${spec.sub ? "text-slate-400" : "font-medium text-slate-600"}`}>
+            {spec.label}
+            <HelpCircle className={`h-3 w-3 shrink-0 transition ${open ? "text-emerald-500" : "text-slate-300"}`} />
+          </span>
+          <span className="shrink-0 text-[12px] tabular-nums text-slate-500">
+            <span className={`font-bold ${c.text}`}>{nuFmt(value, spec.unit)}</span>
+            <span className="text-slate-300"> / {nuFmt(target, spec.unit)} {spec.unit}</span>
+            {status.p != null && <span className={`ml-1.5 font-semibold ${c.text}`}>{status.p}%</span>}
+          </span>
+        </div>
+        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+          <div className={`h-full rounded-full transition-all ${c.bar}`} style={{ width: `${width}%` }} />
+        </div>
+      </button>
+      {open && spec.info && (
+        <p className="mt-1.5 rounded-xl bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">{spec.info}</p>
+      )}
     </div>
   );
 }
