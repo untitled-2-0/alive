@@ -925,6 +925,7 @@ const RKEYS = {
   pomo: "routine:pomo",      // { work, break } Pomodoro settings
   movement: "routine:movement",      // { [date]: count }
   movementCfg: "routine:movement:cfg", // { remindersOn, snoozeUntil }
+  morningSeq: "routine:morningSeq", // { [date]: { [itemId]: true } } — галочки ранкової послідовності
   meds: "routine:meds",              // [{ id, name, dose, perDay, supply, refillAt, taper:[{date,dose,note}] }]
   medsLog: "routine:meds:wellbeing", // { [date]: { taken:{medId:bool}, wellbeing, sideEffects, note } }
   gratitude: "mood:gratitude",       // { [date]: [items] }
@@ -3864,7 +3865,7 @@ export default function FlashcardsApp() {
             onStepComplete={recordLanguageCompletion}
           />
         ) : section === "routine" ? (
-          <RoutineSection />
+          <RoutineSection onGo={changeSection} />
         ) : section === "calm" ? (
           <CalmSection name={calmName} onRename={renameCalm} />
         ) : section === "fasting" ? (
@@ -6612,7 +6613,81 @@ function LevelUp({ level, onClose }) {
   );
 }
 
-function RoutineSection() {
+
+/* ---------- ранкова послідовність практик ----------
+   Окрема секція поруч зі списком задач: нічого з наявної рутини не заміняє.
+   Галочки зберігаються під датою, тому щоранку список знову чистий — без стріків
+   і без «ти пропустила». Кожен пункт відкриває повну практику у «Спокої». */
+const MORNING_SEQUENCE = [
+  { id: "move",    emoji: "🚶‍♀️", title: "Рух",              dur: "5–10 хв", calm: "movement",
+    desc: "Легка активність, щоб зрушити стан тіла — не тренування." },
+  { id: "mindful", emoji: "🌊", title: "Майндфулнес",         dur: "3–5 хв",  calm: "mindful",
+    desc: "Спостерігати дихання й звуки, не оцінюючи їх." },
+  { id: "intent",  emoji: "🎯", title: "Намір дня",           dur: "2 хв",    calm: "pleasant",
+    desc: "Обрати одну приємну або значущу дію на сьогодні." },
+  { id: "selfkind",emoji: "🤍", title: "Самоспівчуття",       dur: "2 хв",    calm: "rain",
+    desc: "Фраза підтримки собі — і подяка тілу за те, що воно робить." },
+  { id: "thought", emoji: "📝", title: "Щоденник думок",      dur: "5 хв",    calm: "thought", optional: true,
+    desc: "Виписати думку й перевірити: це факт чи інтерпретація?" },
+  { id: "exposure",emoji: "🪜", title: "Крок експозиції",     dur: "3 хв",    calm: "fear", optional: true,
+    desc: "Запланувати ОДИН маленький крок назустріч тому, чого уникаєш.",
+    rule: "Постійне правило: не гуглити симптоми й не шукати заспокоєння по колу.",
+    note: "Вранці — тільки план. Сам крок робиться колись протягом дня." },
+];
+
+function MorningSequence({ date, checked, onToggle, onOpen }) {
+  const [open, setOpen] = useState(true);
+  const doneCount = MORNING_SEQUENCE.filter((it) => checked[it.id]).length;
+  return (
+    <section className="mb-5 overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-100">
+      <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+        <span className="text-xl">🌅</span>
+        <span className="flex-1">
+          <span className="block font-extrabold text-slate-800">Ранкова послідовність</span>
+          <span className="block text-[11px] text-slate-400">
+            {doneCount ? `зроблено ${doneCount} із ${MORNING_SEQUENCE.length}` : "нічого не обов'язково — бери що йдеться"}
+          </span>
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="border-t border-slate-50">
+          {MORNING_SEQUENCE.map((it, i) => {
+            const done = !!checked[it.id];
+            return (
+              <div key={it.id} className={`flex gap-3 px-4 py-3 ${i ? "border-t border-slate-50" : ""}`}>
+                <button onClick={() => onToggle(it.id)} aria-label={done ? "Знято" : "Виконано"}
+                  className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 transition ${done ? "border-green-500 bg-green-500 text-white" : "border-slate-200 text-transparent hover:border-green-300"}`}>
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={() => onOpen(it.calm)} className="min-w-0 flex-1 text-left">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="shrink-0">{it.emoji}</span>
+                    <span className={`font-bold ${done ? "text-slate-400 line-through" : "text-slate-800"}`}>{it.title}</span>
+                    <span className="shrink-0 text-[11px] text-slate-400">{it.dur}</span>
+                    {it.optional && <span className="shrink-0 rounded-full bg-slate-100 px-1.5 text-[10px] font-semibold text-slate-500">опційно</span>}
+                  </div>
+                  <div className="mt-0.5 text-[12px] leading-relaxed text-slate-500">{it.desc}</div>
+                  {it.note && <div className="mt-1 text-[11px] italic leading-relaxed text-slate-400">{it.note}</div>}
+                  {it.rule && (
+                    <div className="mt-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[11px] leading-relaxed text-amber-800">{it.rule}</div>
+                  )}
+                </button>
+                <ChevronRight className="mt-1 h-4 w-4 shrink-0 self-start text-slate-200" />
+              </div>
+            );
+          })}
+          <p className="px-4 py-3 text-[11px] leading-relaxed text-slate-400">
+            Пункти 5 і 6 — не щоденні. Пропустити всю послідовність теж нормально: вона тут як опора, а не як борг.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RoutineSection({ onGo }) {
   const [loading, setLoading] = useState(true);
   const [rview, setRview] = useState("today"); // today | stats
   const [tasks, setTasks] = useState([]);
@@ -6642,6 +6717,7 @@ function RoutineSection() {
   const [energyFilter, setEnergyFilter] = useState(null); // null | "quick" | "low"
   const [pomo, setPomo] = useState(null); // { task, mode: "2min" | "pomodoro" }
   const [pomoSettings, setPomoSettings] = useState({ work: 25, break: 5 });
+  const [morningSeq, setMorningSeq] = useState({});
   const timerRef = useRef(null);
 
   const today = dateKey(Date.now());
@@ -6668,6 +6744,7 @@ function RoutineSection() {
     setCindex(d.cindex); setStreakMeta(d.streak || { best: 0, lastCelebrated: "" }); setMoods(d.moods || {});
     setXp((d.xp && d.xp.xp) || 0); setRewards(d.rewards || []);
     setPomoSettings(d.pomo || { work: 25, break: 5 });
+    setMorningSeq(await store.get(RKEYS.morningSeq, {}));
     setLoading(false);
   }, []);
 
@@ -6871,6 +6948,20 @@ function RoutineSection() {
     <div className="min-h-screen flex-1 bg-gradient-to-b from-red-50 to-pink-50/40" style={{ fontFamily: "inherit" }}>
       {rview === "today" && (
         <div className="mx-auto w-full max-w-2xl px-4 pb-28 pt-5">
+          {isToday && (
+            <MorningSequence
+              date={selDate}
+              checked={morningSeq[selDate] || {}}
+              onToggle={async (itemId) => {
+                const day = { ...(morningSeq[selDate] || {}) };
+                if (day[itemId]) delete day[itemId]; else day[itemId] = true;
+                const next = { ...morningSeq, [selDate]: day };
+                setMorningSeq(next);
+                await store.set(RKEYS.morningSeq, next);
+              }}
+              onOpen={(practiceId) => openCalmPractice(practiceId, onGo)}
+            />
+          )}
           {/* header */}
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -7651,10 +7742,32 @@ function CalmPlan({ onExit, onGo }) {
 /* ================================================================== */
 /* CALM — section UI                                                  */
 /* ================================================================== */
+
+/* Перехід із іншої секції одразу в конкретну практику «Спокою».
+   Ціль лишається в модулі, бо секція може бути ще не змонтована; коли вона вже
+   на екрані — її піднімає подія, як це зроблено для *-reset у Fitness/Харчуванні. */
+let CALM_TARGET = null;
+function openCalmPractice(id, goToSection) {
+  CALM_TARGET = id;
+  if (goToSection) goToSection("calm");
+  window.dispatchEvent(new CustomEvent("calm-open", { detail: id }));
+}
+function takeCalmTarget() { const t = CALM_TARGET; CALM_TARGET = null; return t; }
+
 function CalmSection({ name, onRename }) {
   const [loading, setLoading] = useState(true);
   const [cview, setCview] = useState("hub");
   const [anxOpen, setAnxOpen] = useState(false);
+  useEffect(() => {
+    // Ціль, поставлену з іншої секції, забираємо тут, а не в useState:
+    // в режимі розробки React викликає ініціалізатор двічі, і другий виклик
+    // отримував уже порожню ціль — практика не відкривалась.
+    const target = takeCalmTarget();
+    if (target) setCview(target);
+    const onOpen = (e) => { if (e.detail) setCview(e.detail); };
+    window.addEventListener("calm-open", onOpen);
+    return () => window.removeEventListener("calm-open", onOpen);
+  }, []);
   const [fears, setFears] = useState([]);
   const [thoughts, setThoughts] = useState([]);
   const [decat, setDecat] = useState([]);
@@ -7796,6 +7909,7 @@ function CalmSection({ name, onRename }) {
       { id: "avoidance", label: "Цикл уникнення", desc: "Тривога → уникнення → полегшення → посилення", icon: RefreshCw, color: "#4f46e5" },
       { id: "socialanx", label: "Соціальна тривога", desc: "Ситуації, страхи, вплив на життя й бажані зміни", icon: Users, color: "#7c3aed" },
       { id: "focus", label: "Таймер фокусу", desc: "Спокійний вдих, потім зосереджена робота", icon: Timer, color: "#10b981" },
+      { id: "mindful", label: "Спостереження без оцінки", desc: "3–5 хв за диханням і звуками, без оцінок", icon: Waves, color: "#0284c7" },
     ]},
     { title: "Думки під контроль (КПТ)", items: [
       { id: "thought", label: "Журнал думок", desc: "Розплутати тривожну думку", icon: NotebookPen, color: "#8b5cf6" },
@@ -7818,6 +7932,7 @@ function CalmSection({ name, onRename }) {
       { id: "gratitudeweek", label: "7 днів вдячності", desc: "Щодня три нові запитання про хороше", icon: BookOpen, color: "#a16207" },
       { id: "activity", label: "Розклад активності", desc: "Тижнева сітка справ — запланувала і зробила", icon: CalendarDays, color: "#0891b2" },
       { id: "rumination", label: "Румінації", desc: "Впіймати думки, що крутяться по колу", icon: RefreshCw, color: "#db2777" },
+      { id: "movement", label: "Рух як регуляція", desc: "5–10 хв легкого руху, щоб зрушити стан", icon: HeartPulse, color: "#16a34a" },
       { id: "pleasant", label: "Приємні активності", desc: "Щодня — одна радість або одне досягнення", icon: Smile, color: "#16a34a" },
     ]},
     { title: "Страхи та уникнення", items: [
@@ -7985,6 +8100,8 @@ function CalmSection({ name, onRename }) {
       {cview === "avoidance" && <AvoidanceCycleView onExit={back} onGo={() => setCview("fear")} />}
       {cview === "socialanx" && <SimpleJournal spec={SOCIAL_ANX_SPEC} entries={socialanx} onExit={back} onSave={async (entry, sec) => { await saveSocialanx([entry, ...socialanx]); log("socialanx", sec); flash("Соціальну тривогу досліджено 🌿"); }} onDelete={async (id) => saveSocialanx(socialanx.filter((t) => t.id !== id))} />}
       {cview === "rain" && <RainPractice onExit={back} onDone={done("rain")} />}
+      {cview === "movement" && <MovementPractice onExit={back} onDone={done("movement")} />}
+      {cview === "mindful" && <MindfulPractice onExit={back} onDone={done("mindful")} />}
       {cview === "selfcare" && <SelfCareAssessment value={selfcare} onExit={back} onSave={saveSelfcare} />}
       {cview === "esteemweek" && <EsteemWeek value={esteemweek} onExit={back} onSave={saveEsteemweek} />}
       {cview === "innercoach" && <SimpleJournal spec={INNER_COACH_SPEC} entries={innercoach} onExit={back} onSave={async (entry, sec) => { await saveInnercoach([entry, ...innercoach]); log("innercoach", sec); flash("Тренер відповів критикові 🌱"); }} onDelete={async (id) => saveInnercoach(innercoach.filter((t) => t.id !== id))} />}
@@ -9708,6 +9825,83 @@ function AvoidanceCycleView({ onExit, onGo }) {
     { n: "4", title: "Посилення", color: "bg-indigo-800", text: "Уникнення починає здаватися єдиним способом почуватися краще. Наступного разу схожа ситуація викликає ще сильнішу тривогу — і бажання втекти зростає." },
   ];
   return <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6"><CalmHeader title="Цикл уникнення" onExit={onExit} /><p className="mb-5 text-sm leading-relaxed text-slate-500">Уникнення допомагає на хвилину, але підживлює тривогу надовго. Ось як працює ця пастка:</p><div className="relative space-y-3">{steps.map((s, i) => <div key={s.n} className="relative flex gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-indigo-100"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${s.color} font-extrabold text-white`}>{s.n}</span><div><h2 className="font-extrabold text-slate-800">{s.title}</h2><p className="mt-1 text-sm leading-relaxed text-slate-500">{s.text}</p></div>{i < steps.length - 1 && <ArrowRight className="absolute -bottom-3 left-7 z-10 h-5 w-5 rotate-90 rounded-full bg-white text-indigo-400" />}</div>)}</div><div className="mt-5 rounded-3xl bg-gradient-to-br from-teal-50 to-sky-50 p-5 ring-1 ring-teal-100"><h2 className="font-extrabold text-teal-800">Як розірвати цикл</h2><p className="mt-1 text-sm leading-relaxed text-teal-700">Не потрібно одразу перемагати весь страх. Обери найменший безпечний крок назустріч ситуації, залишайся в ній достатньо довго, щоб тривога почала спадати сама, і повторюй. Так мозок вчиться: «я можу це витримати».</p><button onClick={onGo} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white">Перейти до сходинок страху <ArrowRight className="h-4 w-4" /></button></div></div>;
+}
+
+
+/* TODO: мінімальні практики, створені під ранкову послідовність у «Рутині».
+   Робочі, але коротші за решту — за потреби розширити до рівня RainPractice. */
+function MovementPractice({ onExit, onDone }) {
+  const startRef = useRef(Date.now());
+  const [step, setStep] = useState(0);
+  const stages = [
+    { title: "Просто встань", text: "Підведись і постій кілька секунд. Не треба одразу «тренуватися» — достатньо змінити положення тіла. Часто найважче саме це." },
+    { title: "Розкрийся", text: "Потягнись угору за руками, потім нахилися вбік у кожен бік. Покрути плечима назад. Дай тілу зайняти більше місця, ніж уві сні." },
+    { title: "Розжени кров", text: "5–10 хвилин легкого руху: пройдись по кімнаті чи надворі, потанцюй під одну пісню, зроби кілька присідань. Темп такий, щоб можна було говорити." },
+    { title: "Поміть різницю", text: "Зупинись і поміть: тепліше? дихання глибше? голова ясніша? Це не «нагорода за силу волі» — це просто те, що робить рух. Навіть якщо зміна маленька." },
+  ];
+  const current = stages[step];
+  return (
+    <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-4 pb-20 pt-6">
+      <CalmHeader title="Рух — 5–10 хвилин" onExit={onExit} />
+      <div className="mb-5 rounded-2xl bg-slate-800 p-4 text-sm leading-relaxed text-white">
+        Рух — найшвидший спосіб змінити стан тіла, а через нього й настрій. Тут не про спорт і не про результат: мета — зрушити з місця, а не «добре потренуватися».
+      </div>
+      <div className="mb-4 flex gap-2">
+        {stages.map((st, i) => (
+          <button key={st.title} onClick={() => setStep(i)}
+            className={`h-2 flex-1 rounded-full transition ${i === step ? "bg-green-600" : i < step ? "bg-green-200" : "bg-slate-200"}`} aria-label={st.title} />
+        ))}
+      </div>
+      <div className="flex flex-1 flex-col justify-center rounded-3xl bg-white p-6 shadow-sm ring-1 ring-green-100">
+        <div className="text-xs font-bold uppercase tracking-widest text-green-500">Крок {step + 1} із {stages.length}</div>
+        <h2 className="mt-1 text-2xl font-extrabold text-slate-800">{current.title}</h2>
+        <p className="mt-3 text-base leading-relaxed text-slate-600">{current.text}</p>
+        <div className="mt-8 flex gap-3">
+          {step > 0 && <button onClick={() => setStep((x) => x - 1)} className="rounded-2xl bg-slate-100 px-5 py-3 font-bold text-slate-600">Назад</button>}
+          <button onClick={() => (step < stages.length - 1 ? setStep((x) => x + 1) : onDone((Date.now() - startRef.current) / 1000))}
+            className="flex-1 rounded-2xl bg-green-600 py-3 font-bold text-white shadow-lg">{step < stages.length - 1 ? "Далі" : "Завершити"}</button>
+        </div>
+      </div>
+      <p className="mt-5 text-center text-sm text-slate-400">Дві хвилини теж рахуються. Немає «замало».</p>
+    </div>
+  );
+}
+
+function MindfulPractice({ onExit, onDone }) {
+  const startRef = useRef(Date.now());
+  const [step, setStep] = useState(0);
+  const stages = [
+    { title: "Сядь і нічого не роби", text: "Сядь зручно, спину тримай вільно. Очі можна заплющити або м'яко опустити погляд. Наступні кілька хвилин нікуди не треба поспішати." },
+    { title: "Знайди дихання", text: "Не міняй його — просто помічай. Де воно найпомітніше: у ніздрях, у грудях, у животі? Спостерігай вдих і видих, ніби дивишся на хвилі." },
+    { title: "Впусти звуки", text: "Розшир увагу на звуки довкола. Не називай їх «приємними» чи «дратівливими» — просто поміть, що вони є, і що вони з'являються й зникають самі." },
+    { title: "Думки — теж погода", text: "Увага піде в думки. Це не помилка, це те, що робить розум. Помічай: «думка» — і м'яко повертайся до дихання. Скільки б разів це не сталося." },
+  ];
+  const current = stages[step];
+  return (
+    <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-4 pb-20 pt-6">
+      <CalmHeader title="Спостереження без оцінки" onExit={onExit} />
+      <div className="mb-5 rounded-2xl bg-slate-800 p-4 text-sm leading-relaxed text-white">
+        3–5 хвилин. Мета не «очистити голову» й не «розслабитися» — а потренувати помічати те, що є, не додаючи оцінки. Якщо було нудно чи неспокійно — практика все одно відбулася.
+      </div>
+      <div className="mb-4 flex gap-2">
+        {stages.map((st, i) => (
+          <button key={st.title} onClick={() => setStep(i)}
+            className={`h-2 flex-1 rounded-full transition ${i === step ? "bg-sky-600" : i < step ? "bg-sky-200" : "bg-slate-200"}`} aria-label={st.title} />
+        ))}
+      </div>
+      <div className="flex flex-1 flex-col justify-center rounded-3xl bg-white p-6 shadow-sm ring-1 ring-sky-100">
+        <div className="text-xs font-bold uppercase tracking-widest text-sky-500">Крок {step + 1} із {stages.length}</div>
+        <h2 className="mt-1 text-2xl font-extrabold text-slate-800">{current.title}</h2>
+        <p className="mt-3 text-base leading-relaxed text-slate-600">{current.text}</p>
+        <div className="mt-8 flex gap-3">
+          {step > 0 && <button onClick={() => setStep((x) => x - 1)} className="rounded-2xl bg-slate-100 px-5 py-3 font-bold text-slate-600">Назад</button>}
+          <button onClick={() => (step < stages.length - 1 ? setStep((x) => x + 1) : onDone((Date.now() - startRef.current) / 1000))}
+            className="flex-1 rounded-2xl bg-sky-600 py-3 font-bold text-white shadow-lg">{step < stages.length - 1 ? "Далі" : "Завершити"}</button>
+        </div>
+      </div>
+      <p className="mt-5 text-center text-sm text-slate-400">Увага, що відволіклася і повернулась, — це і є вправа.</p>
+    </div>
+  );
 }
 
 function RainPractice({ onExit, onDone }) {
