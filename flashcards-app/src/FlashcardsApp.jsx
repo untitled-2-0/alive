@@ -1690,10 +1690,19 @@ function NuSafety() {
 
 /* ---------- one nutrient row ---------- */
 // Натискається — під рядком розкривається пояснення, що ця речовина робить у тілі.
-function NuBar({ spec, value, target, status }) {
+function NuBar({ spec, value, target, status, entries }) {
   const [open, setOpen] = useState(false);
   const c = NU_LEVEL[status.level] || NU_LEVEL.none;
   const width = status.p == null ? 0 : Math.max(2, Math.min(100, status.p));
+  // з якої страви скільки цієї речовини набралось сьогодні
+  const sources = useMemo(() => {
+    if (!open) return [];
+    return (entries || [])
+      .map((e) => ({ id: e.id, name: e.name, grams: e.grams, amount: ((Number(e.food?.[spec.k]) || 0) * e.grams) / 100 }))
+      .filter((r) => r.amount > 0.0005)
+      .sort((a, b) => b.amount - a.amount)
+      .map((r) => ({ ...r, share: value > 0 ? Math.round((r.amount / value) * 100) : 0 }));
+  }, [open, entries, spec.k, value]);
   return (
     <div className={spec.sub ? "pl-4" : ""}>
       <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
@@ -1713,15 +1722,37 @@ function NuBar({ spec, value, target, status }) {
           <div className={`h-full rounded-full transition-all ${c.bar}`} style={{ width: `${width}%` }} />
         </div>
       </button>
-      {open && spec.info && (
-        <p className="mt-1.5 rounded-xl bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">{spec.info}</p>
+      {open && (
+        <div className="mt-1.5 space-y-1.5">
+          {spec.info && <p className="rounded-xl bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-600">{spec.info}</p>}
+          {sources.length > 0 ? (
+            <div className="overflow-hidden rounded-xl ring-1 ring-slate-100">
+              <div className="flex justify-between bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                <span>Звідки сьогодні</span><span>{nuFmt(value, spec.unit)} {spec.unit}</span>
+              </div>
+              {sources.map((r) => (
+                <div key={r.id} className="flex items-baseline justify-between gap-2 border-t border-slate-50 px-3 py-1.5 text-[11px]">
+                  <span className="min-w-0 truncate text-slate-600">{r.name} <span className="text-slate-300">{r.grams} г</span></span>
+                  <span className="shrink-0 tabular-nums text-slate-500">
+                    <b className="text-slate-700">{nuFmt(r.amount, spec.unit)}</b> {spec.unit}
+                    <span className="ml-1.5 text-slate-400">{r.share}%</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+              Сьогодні цього не дав жоден із записаних продуктів. Подивись у вкладці «Тиждень», чим це добрати.
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
 /* ---------- the day panel ---------- */
-function NuPanel({ totals, refs }) {
+function NuPanel({ totals, refs, entries }) {
   return (
     <div className="space-y-4">
       {NU_CATS.map((cat) => (
@@ -1729,7 +1760,7 @@ function NuPanel({ totals, refs }) {
           <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-slate-400">{cat.label}</div>
           <div className="space-y-2.5">
             {NU_NUTRIENTS.filter((n) => n.cat === cat.id).map((n) => (
-              <NuBar key={n.k} spec={n} value={totals[n.k] || 0} target={refs[n.k]} status={nuStatus(n.k, totals[n.k] || 0, refs)} />
+              <NuBar key={n.k} spec={n} value={totals[n.k] || 0} target={refs[n.k]} status={nuStatus(n.k, totals[n.k] || 0, refs)} entries={entries} />
             ))}
           </div>
         </div>
@@ -2381,7 +2412,7 @@ function NutritionSection({ name, onRename }) {
                 <p className="mt-2 text-sm text-slate-500">Ще нічого не записано. Додай перший продукт — і панель заповниться.</p>
               </div>
             ) : (
-              <NuPanel totals={totals} refs={refs} />
+              <NuPanel totals={totals} refs={refs} entries={entries} />
             )}
             <NuSafety />
           </>
