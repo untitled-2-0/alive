@@ -35,7 +35,9 @@ export const NUTRIENTS = [
   { k: "b1",         label: "B1 тіамін",   unit: "мг",   cat: "vit", kind: "goal", info: "Тіамін. Перетворює вуглеводи на енергію й підтримує роботу нервової системи." },
   { k: "b2",         label: "B2 рибофлавін", unit: "мг", cat: "vit", kind: "goal", info: "Рибофлавін. Обмін енергії, здоров'я шкіри, слизових і очей. Заїди в куточках рота — класична ознака нестачі." },
   { k: "b3",         label: "B3 ніацин",   unit: "мг",   cat: "vit", kind: "goal", info: "Ніацин. Бере участь в енергетичному обміні кожної клітини, потрібен шкірі й нервовій системі." },
+  { k: "b5",         label: "B5 пантотенова", unit: "мг", cat: "vit", kind: "goal", info: "Пантотенова кислота. Потрібна, щоб з їжі діставалась енергія — бере участь у переробці жирів, білків і вуглеводів. Є майже в усьому потроху, тому справжня нестача рідкісна." },
   { k: "b6",         label: "B6",          unit: "мг",   cat: "vit", kind: "goal", info: "Обмін білка, творення гемоглобіну і нейромедіаторів — зокрема серотоніну. Тобто впливає на настрій і сон." },
+  { k: "b7",         label: "B7 біотин",   unit: "мкг",  cat: "vit", kind: "goal", info: "Біотин. Обмін жирів і цукру, а ще стан волосся, нігтів і шкіри — саме тому його часто п'ють від випадіння волосся. Тіло частково отримує його від мікрофлори кишківника." },
   { k: "b9",         label: "B9 фолат",    unit: "мкг",  cat: "vit", kind: "goal", info: "Фолат. Потрібен для поділу клітин і творення крові. Критично важливий до зачаття й у першому триместрі вагітності." },
   { k: "b12",        label: "B12",         unit: "мкг",  cat: "vit", kind: "goal", info: "Нерви, творення еритроцитів, енергія. Є практично лише у тваринній їжі, тому на веганстві за ним стежать окремо." },
 ];
@@ -92,6 +94,8 @@ export function referenceValues({ sex = "f", age = 30, weightKg = 65, kcal = 200
     b2: f ? 1.1 : 1.3,
     b3: f ? 14 : 16,
     b6: older ? (f ? 1.5 : 1.7) : 1.3,
+    b5: 5,
+    b7: 30,
     b9: 400,
     b12: 2.4,
   };
@@ -261,9 +265,9 @@ export function searchFoods(list, query) {
 const FOOD_PROMPT = (name) => `Ти — довідник складу продуктів. Дай склад продукту «${name}» на 100 г.
 
 Поверни ЛИШЕ JSON без пояснень, без markdown, точно з такими ключами:
-{"name":"назва українською","group":"категорія українською","kcal":0,"protein":0,"fat":0,"satFat":0,"carbs":0,"sugar":0,"fiber":0,"iron":0,"zinc":0,"copper":0,"magnesium":0,"calcium":0,"potassium":0,"sodium":0,"phosphorus":0,"selenium":0,"iodine":0,"vitA":0,"vitC":0,"vitD":0,"vitE":0,"vitK":0,"b1":0,"b2":0,"b3":0,"b6":0,"b9":0,"b12":0}
+{"name":"назва українською","group":"категорія українською","kcal":0,"protein":0,"fat":0,"satFat":0,"carbs":0,"sugar":0,"fiber":0,"iron":0,"zinc":0,"copper":0,"magnesium":0,"calcium":0,"potassium":0,"sodium":0,"phosphorus":0,"selenium":0,"iodine":0,"vitA":0,"vitC":0,"vitD":0,"vitE":0,"vitK":0,"b1":0,"b2":0,"b3":0,"b5":0,"b6":0,"b7":0,"b9":0,"b12":0}
 
-Одиниці: kcal — ккал; protein, fat, satFat, carbs, sugar, fiber — грами; iron, zinc, copper, magnesium, calcium, potassium, sodium, phosphorus, vitC, vitE, b1, b2, b3, b6 — мг; selenium, iodine, vitA, vitD, vitK, b9, b12 — мкг. Усе на 100 г. Кожне поле обов'язкове, став 0 там, де справді нуль.`;
+Одиниці: kcal — ккал; protein, fat, satFat, carbs, sugar, fiber — грами; iron, zinc, copper, magnesium, calcium, potassium, sodium, phosphorus, vitC, vitE, b1, b2, b3, b5, b6 — мг; selenium, iodine, vitA, vitD, vitK, b7, b9, b12 — мкг. Усе на 100 г. Кожне поле обов'язкове, став 0 там, де справді нуль.`;
 
 function extractJson(text) {
   try { return JSON.parse(text); } catch (e) { /* try to find the object */ }

@@ -1653,9 +1653,21 @@ const nuFmt = (v, unit) => {
 function NumInput({ value, onCommit, min, max, decimal, className = "", placeholder, allowEmpty }) {
   const [text, setText] = useState(value == null ? "" : String(value));
   useEffect(() => { setText(value == null ? "" : String(value)); }, [value]);
+  // Поки друкуєш — число віддається як є, без обмежень: інакше значення губиться,
+  // якщо одразу натиснути «Зберегти», не виходячи з поля.
+  const type = (raw) => {
+    setText(raw);
+    const n = parseFloat(String(raw).trim().replace(",", "."));
+    if (isFinite(n) && n !== value) onCommit(Math.round(n * 100) / 100);
+  };
+  // А обмеження 'від і до' застосовуються аж коли виходиш з поля.
   const commit = () => {
     const s = String(text).trim().replace(",", ".");
-    if (!s && allowEmpty) { if (value != null) onCommit(null); return; }
+    if (!s) {
+      if (allowEmpty) { if (value != null) onCommit(null); return; }
+      setText(value == null ? "" : String(value));
+      return;
+    }
     const n = parseFloat(s);
     if (!isFinite(n)) { setText(value == null ? "" : String(value)); return; }
     let v = n;
@@ -1667,7 +1679,7 @@ function NumInput({ value, onCommit, min, max, decimal, className = "", placehol
   };
   return (
     <input type="number" inputMode={decimal ? "decimal" : "numeric"} value={text} placeholder={placeholder}
-      onChange={(e) => setText(e.target.value)} onBlur={commit}
+      onChange={(e) => type(e.target.value)} onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); e.target.blur(); } }}
       className={className} />
   );
@@ -1770,11 +1782,12 @@ function NuPanel({ totals, refs, entries }) {
 }
 
 /* ---------- add a food to the day ---------- */
-function NuAdd({ catalogue, custom, recent, cache, onAdd, onGenerated }) {
+function NuAdd({ catalogue, custom, recent, cache, onAdd, onGenerated, onSaveCustom }) {
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState(null);
   const [grams, setGrams] = useState("100");
   const [gen, setGen] = useState({ busy: false, error: "" });
+  const [draft, setDraft] = useState(null);   // швидке додавання продукту, якого нема в базі
   const pool = useMemo(() => [...custom, ...catalogue], [custom, catalogue]);
   const results = useMemo(() => nuSearch(pool, q), [pool, q]);
   const cached = useMemo(() => Object.values(cache || {}), [cache]);
@@ -1862,16 +1875,47 @@ function NuAdd({ catalogue, custom, recent, cache, onAdd, onGenerated }) {
             </button>
           ))}
           {results.length === 0 && (
-            <div className="rounded-xl bg-slate-50 p-3 text-center">
-              <p className="text-[12px] text-slate-500">«{q}» нема в базі.</p>
-              <button onClick={generate} disabled={gen.busy}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3 py-1.5 text-[12px] font-bold text-white disabled:opacity-60">
-                {gen.busy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                {gen.busy ? "Рахую склад…" : "Порахувати склад"}
-              </button>
-              {gen.error && <p className="mt-2 text-[11px] leading-relaxed text-rose-600">{gen.error}</p>}
-              {cached.length > 0 && !gen.busy && (
-                <div className="mt-2 text-[10px] text-slate-400">Раніше згенеровані: {cached.slice(0, 4).map((f) => f.name).join(", ")}</div>
+            <div className="rounded-xl bg-slate-50 p-3">
+              <p className="text-center text-[12px] text-slate-500">«{q}» нема в базі.</p>
+              {draft ? (
+                <div className="mt-3 rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                  <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Значення на 100 г</div>
+                  <div className="mt-2 grid grid-cols-4 gap-2">
+                    {[["kcal", "Ккал"], ["protein", "Білки"], ["fat", "Жири"], ["carbs", "Вугл."]].map(([k, l]) => (
+                      <label key={k} className="block">
+                        <span className="mb-0.5 block text-[10px] text-slate-400">{l}</span>
+                        <NumInput value={draft[k]} onCommit={(v) => setDraft((p) => ({ ...p, [k]: v }))} min={0} decimal
+                          className="w-full rounded-lg border border-slate-200 px-2 py-1 text-[13px] focus:border-emerald-400 focus:outline-none" />
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
+                    Вітаміни й мінерали лишаться нулями — їх можна дописати пізніше у вкладці «Продукти».
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button onClick={() => setDraft(null)} className="rounded-xl bg-slate-100 px-3 py-1.5 text-[12px] font-semibold text-slate-600">Скасувати</button>
+                    <button onClick={() => { const f = { ...draft, name: draft.name.trim() || q.trim() }; onSaveCustom && onSaveCustom(f); choose(f); setDraft(null); }}
+                      className="flex-1 rounded-xl bg-emerald-600 py-1.5 text-[12px] font-bold text-white">Зберегти і додати</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="mt-2 flex flex-wrap justify-center gap-2">
+                    <button onClick={() => { const f = { id: "my_" + ruid("f"), name: q.trim(), group: "Мої продукти" }; for (const n of NU_NUTRIENTS) f[n.k] = 0; setDraft(f); }}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-[12px] font-bold text-white">
+                      <Plus className="h-3.5 w-3.5" /> Додати вручну
+                    </button>
+                    <button onClick={generate} disabled={gen.busy}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3 py-1.5 text-[12px] font-bold text-white disabled:opacity-60">
+                      {gen.busy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      {gen.busy ? "Рахую склад…" : "Порахувати склад"}
+                    </button>
+                  </div>
+                  {gen.error && <p className="mt-2 text-center text-[11px] leading-relaxed text-rose-600">{gen.error}</p>}
+                  {cached.length > 0 && !gen.busy && (
+                    <div className="mt-2 text-center text-[10px] text-slate-400">Раніше згенеровані: {cached.slice(0, 4).map((f) => f.name).join(", ")}</div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -2390,7 +2434,7 @@ function NutritionSection({ name, onRename }) {
               </div>
             </div>
 
-            <NuAdd catalogue={catalogue} custom={[...dishes, ...custom]} recent={recent} cache={cache} onAdd={addFood} onGenerated={rememberGenerated} />
+            <NuAdd catalogue={catalogue} custom={[...dishes, ...custom]} recent={recent} cache={cache} onAdd={addFood} onGenerated={rememberGenerated} onSaveCustom={saveCustom} />
 
             {entries.length > 0 && (
               <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
