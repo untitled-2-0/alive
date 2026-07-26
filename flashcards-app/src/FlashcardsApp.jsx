@@ -24,6 +24,13 @@ import {
   Package, Lock, HelpCircle, Stethoscope, TestTube2, Minus,
 } from "lucide-react";
 import lottie from "lottie-web";
+import {
+  NUTRIENTS as NU_NUTRIENTS, CATS as NU_CATS,
+  referenceValues as nuRefs, sumEntries as nuSum, statusOf as nuStatus,
+  weekAnalysis as nuWeek, bestSources as nuSources,
+  loadFoods as nuLoadFoods, searchFoods as nuSearch, generateFood as nuGenerateFood,
+  composeDish as nuCompose,
+} from "./nutrition.js";
 import { cloudPush, cloudRemove, isSignedIn as cloudSignedIn, currentEmail, sendCode, verifyCode, signInWithLink, signOutCloud, refreshSession, syncNow } from "./cloud.js";
 
 /* ------------------------------------------------------------------ */
@@ -1597,18 +1604,852 @@ async function collectBooksExport() {
 async function clearBooksData() { for (const key of Object.values(BOKEYS)) await store.remove(key); }
 
 /* ================================================================== */
+/* NUTRITION — calorie and micronutrient tracker                       */
+/* ================================================================== */
+const NUKEYS = {
+  log: "nutrition:log",         // { "2026-07-26": [{id, name, grams, food:{...per 100 g}}] }
+  custom: "nutrition:customFoods", // [food]
+  cache: "nutrition:foodCache", // { "назва": food }  — згенеровані профілі, щоб не питати двічі
+  targets: "nutrition:targets", // { sex, age, weightKg, kcal }
+  recent: "nutrition:recent",   // [food] — останні вживані, для швидкого додавання
+  dishes: "nutrition:dishes",   // [dish] — свої страви, складені з інгредієнтів
+};
+// mode "fasting" — норми беруться з плану схуднення; "manual" — введені тут вручну
+const NU_DEFAULT_TARGETS = { mode: "fasting", sex: "f", age: 30, weightKg: 65, kcal: 2000 };
+
+async function loadNutritionData() {
+  const [log, custom, cache, targets, recent, dishes] = await Promise.all([
+    store.get(NUKEYS.log, {}),
+    store.get(NUKEYS.custom, []),
+    store.get(NUKEYS.cache, {}),
+    store.get(NUKEYS.targets, NU_DEFAULT_TARGETS),
+    store.get(NUKEYS.recent, []),
+    store.get(NUKEYS.dishes, []),
+  ]);
+  return { log, custom, cache, targets: { ...NU_DEFAULT_TARGETS, ...targets }, recent, dishes };
+}
+async function collectNutritionExport() { return loadNutritionData(); }
+async function clearNutritionData() { for (const k of Object.values(NUKEYS)) await store.remove(k); }
+
+const NU_LEVEL = {
+  low:   { bar: "bg-slate-300",   text: "text-slate-400",   chip: "bg-slate-100 text-slate-500" },
+  under: { bar: "bg-amber-400",   text: "text-amber-600",   chip: "bg-amber-50 text-amber-700" },
+  ok:    { bar: "bg-emerald-500", text: "text-emerald-600", chip: "bg-emerald-50 text-emerald-700" },
+  high:  { bar: "bg-amber-500",   text: "text-amber-600",   chip: "bg-amber-50 text-amber-700" },
+  over:  { bar: "bg-rose-500",    text: "text-rose-600",    chip: "bg-rose-50 text-rose-700" },
+  none:  { bar: "bg-slate-200",   text: "text-slate-400",   chip: "bg-slate-100 text-slate-500" },
+};
+const nuFmt = (v, unit) => {
+  if (!isFinite(v)) return "—";
+  if (unit === "мкг" || unit === "ккал") return String(Math.round(v));
+  if (v >= 100) return String(Math.round(v));
+  if (v >= 10) return v.toFixed(1).replace(/\.0$/, "");
+  return v.toFixed(v < 1 ? 2 : 1).replace(/\.00$/, "").replace(/\.0$/, "");
+};
+
+/* Числове поле, яке можна повністю стерти й вписати своє.
+   Тримає власний текст поки друкуєш; число віддає назовні аж на blur/Enter.
+   Без цього `parseFloat(v) || 0` перетворює порожнє поле на «0», який не стирається. */
+function NumInput({ value, onCommit, min, max, decimal, className = "", placeholder, allowEmpty }) {
+  const [text, setText] = useState(value == null ? "" : String(value));
+  useEffect(() => { setText(value == null ? "" : String(value)); }, [value]);
+  const commit = () => {
+    const s = String(text).trim().replace(",", ".");
+    if (!s && allowEmpty) { if (value != null) onCommit(null); return; }
+    const n = parseFloat(s);
+    if (!isFinite(n)) { setText(value == null ? "" : String(value)); return; }
+    let v = n;
+    if (min != null) v = Math.max(min, v);
+    if (max != null) v = Math.min(max, v);
+    v = Math.round(v * 100) / 100;
+    setText(String(v));
+    if (v !== value) onCommit(v);
+  };
+  return (
+    <input type="number" inputMode={decimal ? "decimal" : "numeric"} value={text} placeholder={placeholder}
+      onChange={(e) => setText(e.target.value)} onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); e.target.blur(); } }}
+      className={className} />
+  );
+}
+
+/* ---------- always-visible safety note ---------- */
+function NuSafety() {
+  return (
+    <div className="rounded-2xl bg-sky-50/70 p-4 ring-1 ring-sky-100">
+      <div className="flex items-center gap-2 text-sm font-bold text-sky-900"><Info className="h-4 w-4 shrink-0" /> Як читати цю панель</div>
+      <p className="mt-1.5 text-[12px] leading-relaxed text-sky-800">
+        Повна панель — корисний орієнтир, але недобір у трекері не дорівнює дефіциту в тілі. Реальний дефіцит показує
+        аналіз крові, а не застосунок. Багато добавок у надлишку шкідливі (особливо залізо, цинк, вітаміни A/D/E) —
+        рішення про них ухвалюй з лікарем і аналізами, а не за цифрою тут. Значення складу продуктів приблизні й
+        залежать від сорту й готування.
+      </p>
+    </div>
+  );
+}
+
+/* ---------- one nutrient row ---------- */
+function NuBar({ spec, value, target, status }) {
+  const c = NU_LEVEL[status.level] || NU_LEVEL.none;
+  const width = status.p == null ? 0 : Math.max(2, Math.min(100, status.p));
+  return (
+    <div className={spec.sub ? "pl-4" : ""}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className={`text-[12px] ${spec.sub ? "text-slate-400" : "font-medium text-slate-600"}`}>{spec.label}</span>
+        <span className="shrink-0 text-[12px] tabular-nums text-slate-500">
+          <span className={`font-bold ${c.text}`}>{nuFmt(value, spec.unit)}</span>
+          <span className="text-slate-300"> / {nuFmt(target, spec.unit)} {spec.unit}</span>
+          {status.p != null && <span className={`ml-1.5 font-semibold ${c.text}`}>{status.p}%</span>}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100">
+        <div className={`h-full rounded-full transition-all ${c.bar}`} style={{ width: `${width}%` }} />
+      </div>
+    </div>
+  );
+}
+
+/* ---------- the day panel ---------- */
+function NuPanel({ totals, refs }) {
+  return (
+    <div className="space-y-4">
+      {NU_CATS.map((cat) => (
+        <div key={cat.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+          <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-slate-400">{cat.label}</div>
+          <div className="space-y-2.5">
+            {NU_NUTRIENTS.filter((n) => n.cat === cat.id).map((n) => (
+              <NuBar key={n.k} spec={n} value={totals[n.k] || 0} target={refs[n.k]} status={nuStatus(n.k, totals[n.k] || 0, refs)} />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- add a food to the day ---------- */
+function NuAdd({ catalogue, custom, recent, cache, onAdd, onGenerated }) {
+  const [q, setQ] = useState("");
+  const [picked, setPicked] = useState(null);
+  const [grams, setGrams] = useState("100");
+  const [gen, setGen] = useState({ busy: false, error: "" });
+  const pool = useMemo(() => [...custom, ...catalogue], [custom, catalogue]);
+  const results = useMemo(() => nuSearch(pool, q), [pool, q]);
+  const cached = useMemo(() => Object.values(cache || {}), [cache]);
+
+  const choose = (f) => { setPicked(f); setGrams(String(f.portion || 100)); setQ(""); };
+  const confirm = () => {
+    const g = parseFloat(String(grams).replace(",", "."));
+    if (!picked || !isFinite(g) || g <= 0) return;
+    onAdd(picked, Math.round(g));
+    setPicked(null); setGrams("100");
+  };
+  const generate = async () => {
+    const name = q.trim();
+    if (!name) return;
+    setGen({ busy: true, error: "" });
+    try {
+      const hit = (cache || {})[name.toLowerCase()];
+      const food = hit || await nuGenerateFood(name);
+      if (!hit) onGenerated(name.toLowerCase(), food);
+      choose(food);
+      setGen({ busy: false, error: "" });
+    } catch (e) {
+      setGen({ busy: false, error: "Не вдалось згенерувати — додай продукт вручну у вкладці «Продукти»." });
+    }
+  };
+
+  if (picked) {
+    return (
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="font-bold text-slate-800">{picked.name}</div>
+            <div className="text-[11px] text-slate-400">{picked.group}{picked.ai ? " · згенеровано" : ""} · {Math.round(picked.kcal)} ккал / 100 г</div>
+          </div>
+          <button onClick={() => setPicked(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <input type="number" inputMode="decimal" value={grams} autoFocus
+            onChange={(e) => setGrams(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirm(); } }}
+            className="w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none" />
+          <span className="text-sm text-slate-400">г</span>
+          {picked.portion ? (
+            <button onClick={() => setGrams(String(picked.portion))} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+              {picked.portionLabel || "порція"} = {picked.portion} г
+            </button>
+          ) : null}
+          <button onClick={confirm} className="ml-auto rounded-xl bg-emerald-600 px-4 py-1.5 text-sm font-bold text-white">Додати</button>
+        </div>
+        <div className="mt-2 text-[11px] text-slate-400">
+          ≈ {Math.round((picked.kcal * (parseFloat(grams) || 0)) / 100)} ккал ·
+          Б {nuFmt((picked.protein * (parseFloat(grams) || 0)) / 100, "г")} ·
+          Ж {nuFmt((picked.fat * (parseFloat(grams) || 0)) / 100, "г")} ·
+          В {nuFmt((picked.carbs * (parseFloat(grams) || 0)) / 100, "г")}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Що ти з'їла? напр. гречка"
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:border-emerald-400 focus:bg-white focus:outline-none" />
+      </div>
+
+      {!q && recent.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">Часто додаєш</div>
+          <div className="flex flex-wrap gap-1.5">
+            {recent.slice(0, 10).map((f) => (
+              <button key={f.id} onClick={() => choose(f)} className="rounded-full bg-emerald-50 px-3 py-1 text-[12px] font-semibold text-emerald-700 hover:bg-emerald-100">{f.name}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {q && (
+        <div className="mt-3 space-y-1">
+          {results.map((f) => (
+            <button key={f.id} onClick={() => choose(f)} className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left hover:bg-slate-50">
+              <span className="text-sm text-slate-700">{f.name}{f.ai && <span className="ml-1.5 text-[10px] text-violet-500">AI</span>}</span>
+              <span className="shrink-0 text-[11px] text-slate-400">{Math.round(f.kcal)} ккал</span>
+            </button>
+          ))}
+          {results.length === 0 && (
+            <div className="rounded-xl bg-slate-50 p-3 text-center">
+              <p className="text-[12px] text-slate-500">«{q}» нема в базі.</p>
+              <button onClick={generate} disabled={gen.busy}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3 py-1.5 text-[12px] font-bold text-white disabled:opacity-60">
+                {gen.busy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                {gen.busy ? "Рахую склад…" : "Порахувати склад"}
+              </button>
+              {gen.error && <p className="mt-2 text-[11px] leading-relaxed text-rose-600">{gen.error}</p>}
+              {cached.length > 0 && !gen.busy && (
+                <div className="mt-2 text-[10px] text-slate-400">Раніше згенеровані: {cached.slice(0, 4).map((f) => f.name).join(", ")}</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- weekly shortfalls + what to eat ---------- */
+function NuWeek({ log, refs, catalogue, custom }) {
+  const days = useMemo(() => {
+    const out = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const key = dateKey(d.getTime());
+      out.push({ date: key, totals: nuSum(log[key] || []) });
+    }
+    return out;
+  }, [log]);
+  const analysis = useMemo(() => nuWeek(days, refs), [days, refs]);
+  const pool = useMemo(() => [...custom, ...catalogue], [custom, catalogue]);
+
+  if (analysis.daysCounted < 2) {
+    return (
+      <div className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-100">
+        <Utensils className="mx-auto h-8 w-8 text-slate-200" />
+        <p className="mt-2 text-sm text-slate-500">Записуй їжу хоча б два дні — і тут з'явиться, чого стабільно бракує, і що з'їсти, щоб добрати.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+        <div className="text-sm font-bold text-slate-700">За останні 7 днів</div>
+        <div className="text-[11px] text-slate-400">записано днів: {analysis.daysCounted} · середнє за ці дні</div>
+        <div className="mt-3 flex gap-1">
+          {days.map((d) => {
+            const p = d.totals.kcal ? Math.min(100, Math.round((d.totals.kcal / refs.kcal) * 100)) : 0;
+            return (
+              <div key={d.date} className="flex-1">
+                <div className="h-16 overflow-hidden rounded-lg bg-slate-100">
+                  <div className="mt-auto h-full w-full origin-bottom rounded-lg bg-emerald-400 transition-all" style={{ transform: `scaleY(${p / 100})` }} />
+                </div>
+                <div className="mt-1 text-center text-[9px] text-slate-400">{d.date.slice(8)}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {analysis.short.length === 0 ? (
+        <div className="rounded-2xl bg-emerald-50 p-4 text-center text-sm text-emerald-800 ring-1 ring-emerald-100">
+          ✓ Стабільних недоборів за ці дні не видно. Тримай різноманітність — це найкраще, що можна зробити.
+        </div>
+      ) : (
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
+          <div className="text-sm font-bold text-slate-700">Чого стабільно бракує</div>
+          <div className="mt-3 space-y-4">
+            {analysis.short.map((s) => (
+              <div key={s.k}>
+                <div className="flex items-baseline justify-between">
+                  <span className="font-semibold text-slate-700">{s.label}</span>
+                  <span className="text-[11px] text-amber-600">{s.avgPct}% від норми · {nuFmt(s.avg, s.unit)} з {nuFmt(s.target, s.unit)} {s.unit}</span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {nuSources(pool, s.k, 5).map((f) => (
+                    <span key={f.id} className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] text-emerald-800">
+                      {f.name} <b className="tabular-nums">{nuFmt(f.amount, s.unit)} {s.unit}</b><span className="text-emerald-500">/100 г</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+            Якщо недобір тримається тижнями попри зміни в їжі — це привід здати аналіз і обговорити з лікарем,
+            чи потрібна добавка. Дозування призначає лікар, не застосунок.
+          </p>
+        </div>
+      )}
+
+      {analysis.excess.length > 0 && (
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
+          <div className="text-sm font-bold text-slate-700">Чого забагато</div>
+          <div className="mt-2 space-y-1.5">
+            {analysis.excess.map((s) => (
+              <div key={s.k} className="flex items-baseline justify-between text-[12px]">
+                <span className="text-slate-600">{s.label}</span>
+                <span className="text-rose-600">{nuFmt(s.avg, s.unit)} {s.unit} · {s.avgPct}% {s.isUL ? "від верхньої межі" : "від норми"} · {s.days} дн.</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <NuSafety />
+    </div>
+  );
+}
+
+/* ---------- catalogue + custom foods ---------- */
+function NuFoods({ catalogue, custom, onSaveCustom, onDeleteCustom }) {
+  const [q, setQ] = useState("");
+  const [form, setForm] = useState(null);
+  const pool = useMemo(() => [...custom, ...catalogue], [custom, catalogue]);
+  const shown = useMemo(() => (q ? nuSearch(pool, q) : pool.slice(0, 40)), [pool, q]);
+
+  const blank = () => { const f = { id: "my_" + ruid("f"), name: "", group: "Мої продукти" }; for (const n of NU_NUTRIENTS) f[n.k] = 0; return f; };
+  const setField = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  if (form) {
+    return (
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-bold text-slate-700">Свій продукт <span className="font-normal text-slate-400">— значення на 100 г</span></div>
+          <button onClick={() => setForm(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+        </div>
+        <input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="Назва"
+          className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {NU_NUTRIENTS.map((n) => (
+            <label key={n.k} className="block">
+              <span className="mb-0.5 block text-[10px] text-slate-400">{n.label}, {n.unit}</span>
+              <NumInput value={form[n.k]} onCommit={(v) => setField(n.k, v)} min={0} decimal
+                className="w-full rounded-lg border border-slate-200 px-2 py-1 text-[13px] focus:border-emerald-400 focus:outline-none" />
+            </label>
+          ))}
+        </div>
+        <button onClick={() => { if (form.name.trim()) { onSaveCustom({ ...form, name: form.name.trim() }); setForm(null); } }}
+          className="mt-3 w-full rounded-xl bg-emerald-600 py-2 text-sm font-bold text-white">Зберегти</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Пошук серед продуктів"
+            className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-emerald-400 focus:outline-none" />
+        </div>
+        <button onClick={() => setForm(blank())} className="shrink-0 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white"><Plus className="h-4 w-4" /></button>
+      </div>
+      <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+        {shown.map((f, i) => (
+          <div key={f.id} className={`flex items-center justify-between gap-2 px-4 py-2.5 ${i ? "border-t border-slate-50" : ""}`}>
+            <div className="min-w-0">
+              <div className="truncate text-sm text-slate-700">{f.name}{f.ai && <span className="ml-1.5 text-[10px] text-violet-500">AI</span>}</div>
+              <div className="text-[10px] text-slate-400">{f.group} · Б {nuFmt(f.protein, "г")} · Ж {nuFmt(f.fat, "г")} · В {nuFmt(f.carbs, "г")}</div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-[12px] font-semibold tabular-nums text-slate-500">{Math.round(f.kcal)} ккал</span>
+              {String(f.id).startsWith("my_") && (
+                <button onClick={() => onDeleteCustom(f.id)} className="rounded-lg p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
+              )}
+            </div>
+          </div>
+        ))}
+        {shown.length === 0 && <div className="p-6 text-center text-sm text-slate-400">Нічого не знайшлось</div>}
+      </div>
+      <p className="px-1 text-[11px] leading-relaxed text-slate-400">
+        У базі {catalogue.length} продуктів{custom.length ? ` + ${custom.length} твоїх` : ""}. Значення приблизні,
+        з довідкових таблиць складу продуктів.
+      </p>
+    </div>
+  );
+}
+
+/* ---------- own dishes: compose from ingredients ---------- */
+function NuDishes({ dishes, catalogue, custom, onSave, onDelete, onLog }) {
+  const [edit, setEdit] = useState(null);   // { id?, name, items:[{food, grams}], cookedGrams }
+  const [q, setQ] = useState("");
+  const pool = useMemo(() => [...custom, ...catalogue], [custom, catalogue]);
+  const hits = useMemo(() => nuSearch(pool, q), [pool, q]);
+
+  const preview = useMemo(() => (edit ? nuCompose(edit) : null), [edit]);
+  const addItem = (food) => { setEdit((p) => ({ ...p, items: [...p.items, { food, grams: food.portion || 100 }] })); setQ(""); };
+  const setGrams = (i, v) => setEdit((p) => ({ ...p, items: p.items.map((it, n) => (n === i ? { ...it, grams: v } : it)) }));
+  const dropItem = (i) => setEdit((p) => ({ ...p, items: p.items.filter((_, n) => n !== i) }));
+
+  if (edit) {
+    const totalRaw = edit.items.reduce((s, i) => s + (parseFloat(i.grams) || 0), 0);
+    return (
+      <div className="space-y-3">
+        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-bold text-slate-700">{edit.id ? "Редагувати страву" : "Нова страва"}</div>
+            <button onClick={() => setEdit(null)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-50"><X className="h-4 w-4" /></button>
+          </div>
+          <input value={edit.name} onChange={(e) => setEdit((p) => ({ ...p, name: e.target.value }))}
+            placeholder="Назва страви, напр. салат з тунцем"
+            className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+
+          <div className="relative mt-3">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Додати інгредієнт"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:border-emerald-400 focus:bg-white focus:outline-none" />
+          </div>
+          {q && (
+            <div className="mt-1 max-h-52 overflow-y-auto rounded-xl ring-1 ring-slate-100">
+              {hits.map((f) => (
+                <button key={f.id} onClick={() => addItem(f)} className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-50">
+                  <span className="text-sm text-slate-700">{f.name}</span>
+                  <span className="text-[11px] text-slate-400">{Math.round(f.kcal)} ккал</span>
+                </button>
+              ))}
+              {hits.length === 0 && <div className="px-3 py-2 text-[12px] text-slate-400">Нічого не знайшлось — додай продукт у вкладці «Продукти»</div>}
+            </div>
+          )}
+
+          {edit.items.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {edit.items.map((it, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{it.food.name}</span>
+                  <input type="number" inputMode="decimal" value={it.grams} onChange={(e) => setGrams(i, e.target.value)}
+                    className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-[13px] focus:border-emerald-400 focus:outline-none" />
+                  <span className="text-[11px] text-slate-400">г</span>
+                  <button onClick={() => dropItem(i)} className="rounded-lg p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <label className="mt-3 block">
+            <span className="mb-1 block text-[11px] text-slate-400">Вага готової страви, г <span className="text-slate-300">— якщо порожньо, беру суму інгредієнтів ({Math.round(totalRaw)} г)</span></span>
+            <input type="number" inputMode="decimal" value={edit.cookedGrams} onChange={(e) => setEdit((p) => ({ ...p, cookedGrams: e.target.value }))}
+              placeholder={String(Math.round(totalRaw))}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+          </label>
+
+          {preview && preview.portion > 0 && (
+            <div className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-[12px] text-emerald-900">
+              <div className="font-bold">Вся страва — {preview.portion} г · {Math.round((preview.kcal * preview.portion) / 100)} ккал</div>
+              <div className="text-emerald-700">На 100 г: {Math.round(preview.kcal)} ккал · Б {nuFmt(preview.protein, "г")} · Ж {nuFmt(preview.fat, "г")} · В {nuFmt(preview.carbs, "г")}</div>
+            </div>
+          )}
+
+          <button onClick={() => { if (edit.name.trim() && edit.items.length) { onSave(nuCompose(edit)); setEdit(null); } }}
+            disabled={!edit.name.trim() || !edit.items.length}
+            className="mt-3 w-full rounded-xl bg-emerald-600 py-2 text-sm font-bold text-white disabled:opacity-40">Зберегти страву</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <button onClick={() => setEdit({ name: "", items: [], cookedGrams: "" })}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3 text-sm font-bold text-white">
+        <Plus className="h-4 w-4" /> Скласти страву
+      </button>
+
+      {dishes.length === 0 ? (
+        <div className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-100">
+          <Utensils className="mx-auto h-8 w-8 text-slate-200" />
+          <p className="mt-2 text-sm text-slate-500">
+            Тут живуть твої страви. Складаєш один раз із інгредієнтів — далі додаєш у день однією кнопкою,
+            і склад рахується сам.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {dishes.map((d) => (
+            <div key={d.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate font-bold text-slate-800">{d.name}</div>
+                  <div className="text-[11px] text-slate-400">
+                    {d.portion} г · {Math.round((d.kcal * d.portion) / 100)} ккал вся страва · {Math.round(d.kcal)} ккал/100 г
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <button onClick={() => setEdit({ id: d.id, name: d.name, cookedGrams: String(d.portion),
+                    items: (d.items || []).map((it) => ({ food: { ...it.food, name: it.name, id: "ing_" + it.name }, grams: it.grams })) })}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => onDelete(d.id)} className="rounded-lg p-1.5 text-slate-300 hover:bg-rose-50 hover:text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                </div>
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {(d.items || []).map((it, i) => (
+                  <span key={i} className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">{it.name} {it.grams} г</span>
+                ))}
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button onClick={() => onLog(d, d.portion)} className="flex-1 rounded-xl bg-emerald-50 py-1.5 text-[12px] font-bold text-emerald-700 hover:bg-emerald-100">+ вся страва</button>
+                <button onClick={() => onLog(d, Math.round(d.portion / 2))} className="flex-1 rounded-xl bg-slate-50 py-1.5 text-[12px] font-semibold text-slate-600 hover:bg-slate-100">+ половина</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="px-1 text-[11px] leading-relaxed text-slate-400">
+        Склад страви рахується як сума інгредієнтів, поділена на вагу готової страви. Якщо після варіння вага
+        змінилась — впиши реальну, і значення на 100 г будуть точніші.
+      </p>
+    </div>
+  );
+}
+
+/* ---------- targets ---------- */
+function NuSettings({ targets, onSave, plan, linked, refs }) {
+  const set = (k, v) => onSave({ [k]: v });
+  const inputCls = "w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-emerald-400 focus:outline-none";
+  return (
+    <div className="space-y-3">
+      {/* звідки беруться норми */}
+      <div className={`rounded-2xl p-4 shadow-sm ring-1 ${linked ? "bg-emerald-50 ring-emerald-100" : "bg-white ring-slate-100"}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-bold text-slate-800">Звідки норми</div>
+            <div className="mt-0.5 text-[12px] leading-relaxed text-slate-600">
+              {linked
+                ? <>Беруться з твого плану схуднення у <b>Fasting</b>. Зміниш там ціль — зміняться й тут.</>
+                : plan.ok
+                  ? <>Зараз введені вручну. План у Fasting пропонує <b>{plan.kcal} ккал</b>, Б {plan.protein} · Ж {plan.fat} · В {plan.carbs} г.</>
+                  : <>Плану схуднення у Fasting ще нема — впиши норми вручну, або заповни план, і вони підтягнуться сюди самі.</>}
+            </div>
+          </div>
+          {plan.ok && (
+            <button onClick={() => onSave({ mode: linked ? "manual" : "fasting" })}
+              className={`shrink-0 rounded-xl px-3 py-1.5 text-[12px] font-bold ${linked ? "bg-white text-slate-600 ring-1 ring-slate-200" : "bg-emerald-600 text-white"}`}>
+              {linked ? "Ввести вручну" : "Взяти з Fasting"}
+            </button>
+          )}
+        </div>
+        {linked && (
+          <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+            {[["Калорії", plan.kcal, "ккал"], ["Білки", plan.protein, "г"], ["Жири", plan.fat, "г"], ["Вуглеводи", plan.carbs, "г"]].map(([l, v, u]) => (
+              <div key={l} className="rounded-xl bg-white/80 px-2 py-2">
+                <div className="text-[10px] text-slate-400">{l}</div>
+                <div className="text-base font-extrabold tabular-nums text-emerald-700">{v}</div>
+                <div className="text-[10px] text-slate-400">{u}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className={`rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100 ${linked ? "opacity-60" : ""}`}>
+        <div className="text-sm font-bold text-slate-700">Твої дані <span className="font-normal text-slate-400">{linked ? "— зараз беруться з Fasting" : "— від них рахуються норми"}</span></div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <label className="block"><span className="mb-1 block text-[11px] text-slate-400">Вік</span>
+            <NumInput value={linked ? plan.age : targets.age} onCommit={(v) => set("age", v)} min={10} max={100} className={inputCls} /></label>
+          <label className="block"><span className="mb-1 block text-[11px] text-slate-400">Вага, кг</span>
+            <NumInput value={linked ? plan.weightKg : targets.weightKg} onCommit={(v) => set("weightKg", v)} min={25} max={300} decimal className={inputCls} /></label>
+          <div><span className="mb-1 block text-[11px] text-slate-400">Стать</span>
+            <div className="flex gap-1">{[["f", "Ж"], ["m", "Ч"]].map(([v, l]) => (
+              <button key={v} onClick={() => set("sex", v)} className={`flex-1 rounded-lg py-1.5 text-sm font-semibold transition ${(linked ? plan.sex : targets.sex) === v ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-500"}`}>{l}</button>
+            ))}</div>
+          </div>
+        </div>
+        <label className="mt-3 block"><span className="mb-1 block text-[11px] text-slate-400">Ціль по калоріях на день</span>
+          <NumInput value={linked ? plan.kcal : targets.kcal} onCommit={(v) => set("kcal", v)} min={800} max={6000}
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" /></label>
+      </div>
+      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-100">
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Твої денні норми</div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+          {NU_NUTRIENTS.filter((n) => n.k !== "kcal").map((n) => (
+            <div key={n.k} className="flex justify-between text-[11px]">
+              <span className="truncate text-slate-500">{n.label}</span>
+              <span className="shrink-0 font-semibold tabular-nums text-slate-600">{nuFmt(refs[n.k], n.unit)} {n.unit}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+          Норми — стандартні добові (RDA/AI) для дорослих. Білок вищий за офіційний мінімум (1.6 г/кг),
+          бо в дефіциті він зберігає м'язи. Натрій, насичені жири й цукор — це стелі, а не цілі.
+        </p>
+      </div>
+      <NuSafety />
+    </div>
+  );
+}
+
+/* ---------- section ---------- */
+function NutritionSection({ name, onRename }) {
+  const [loading, setLoading] = useState(true);
+  const [view, setView] = useState("today");
+  const [date, setDate] = useState(dateKey(Date.now()));
+  const [log, setLog] = useState({});
+  const [custom, setCustom] = useState([]);
+  const [cache, setCache] = useState({});
+  const [recent, setRecent] = useState([]);
+  const [targets, setTargets] = useState(NU_DEFAULT_TARGETS);
+  const [dishes, setDishes] = useState([]);
+  const [catalogue, setCatalogue] = useState([]);
+  const [plan, setPlan] = useState({ ok: false });
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const [d, foods, fast] = await Promise.all([loadNutritionData(), nuLoadFoods(), loadFastingData()]);
+      if (!alive) return;
+      setLog(d.log); setCustom(d.custom); setCache(d.cache); setTargets(d.targets); setRecent(d.recent); setDishes(d.dishes || []);
+      setPlan(fastingPlanTargets(fast.goals, fast.diary));
+      setCatalogue(foods); setLoading(false);
+    })();
+    const onReset = async () => { const d = await loadNutritionData(); setLog(d.log); setCustom(d.custom); setCache(d.cache); setTargets(d.targets); setRecent(d.recent); setDishes(d.dishes || []); };
+    window.addEventListener("nutrition-reset", onReset);
+    return () => { alive = false; window.removeEventListener("nutrition-reset", onReset); };
+  }, []);
+
+  const flash = useCallback((t) => { setMsg(t); setTimeout(() => setMsg(""), 1800); }, []);
+  const saveLog = useCallback(async (next) => { setLog(next); await store.set(NUKEYS.log, next); }, []);
+
+  const entries = log[date] || [];
+  const totals = useMemo(() => nuSum(entries), [entries]);
+  // Норми: за замовчуванням із плану у Fasting, вручну — лише якщо сама перемкнула
+  const linked = targets.mode !== "manual" && plan.ok;
+  const refs = useMemo(() => {
+    const base = nuRefs(linked
+      ? { sex: plan.sex, age: plan.age, weightKg: plan.weightKg, kcal: plan.kcal }
+      : targets);
+    if (linked) { base.protein = plan.protein; base.fat = plan.fat; base.carbs = plan.carbs; }
+    return base;
+  }, [targets, plan, linked]);
+
+  const addFood = useCallback(async (food, grams) => {
+    const entry = { id: ruid("n"), name: food.name, grams, food: Object.fromEntries([["kcal", food.kcal], ...NU_NUTRIENTS.map((n) => [n.k, Number(food[n.k]) || 0])]) };
+    await saveLog({ ...log, [date]: [...(log[date] || []), entry] });
+    const nextRecent = [food, ...recent.filter((f) => f.id !== food.id)].slice(0, 12);
+    setRecent(nextRecent); await store.set(NUKEYS.recent, nextRecent);
+    flash(`${food.name} — ${grams} г ✓`);
+  }, [log, date, recent, saveLog, flash]);
+
+  const removeEntry = useCallback(async (id) => {
+    await saveLog({ ...log, [date]: (log[date] || []).filter((e) => e.id !== id) });
+  }, [log, date, saveLog]);
+
+  const saveTargets = useCallback(async (patch) => {
+    const next = { ...targets, ...patch };
+    setTargets(next); await store.set(NUKEYS.targets, next);
+  }, [targets]);
+
+  const saveCustom = useCallback(async (food) => {
+    const next = [food, ...custom.filter((f) => f.id !== food.id)];
+    setCustom(next); await store.set(NUKEYS.custom, next); flash("Продукт збережено");
+  }, [custom, flash]);
+
+  const deleteCustom = useCallback(async (id) => {
+    const next = custom.filter((f) => f.id !== id);
+    setCustom(next); await store.set(NUKEYS.custom, next);
+  }, [custom]);
+
+  const saveDish = useCallback(async (dish) => {
+    const next = [dish, ...dishes.filter((d) => d.id !== dish.id)];
+    setDishes(next); await store.set(NUKEYS.dishes, next); flash("Страву збережено 🍲");
+  }, [dishes, flash]);
+
+  const deleteDish = useCallback(async (id) => {
+    const next = dishes.filter((d) => d.id !== id);
+    setDishes(next); await store.set(NUKEYS.dishes, next);
+  }, [dishes]);
+
+  const rememberGenerated = useCallback(async (key, food) => {
+    const next = { ...cache, [key]: food };
+    setCache(next); await store.set(NUKEYS.cache, next);
+  }, [cache]);
+
+  const shiftDate = (delta) => {
+    const d = new Date(date + "T00:00:00"); d.setDate(d.getDate() + delta);
+    const k = dateKey(d.getTime());
+    if (k <= dateKey(Date.now())) setDate(k);
+  };
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-emerald-400"><RefreshCw className="h-6 w-6 animate-spin" /></div>;
+
+  const kcalStatus = nuStatus("kcal", totals.kcal, refs);
+  const TABS = [["today", "День"], ["week", "Тиждень"], ["dishes", "Страви"], ["foods", "Продукти"], ["settings", "Норми"]];
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-emerald-50/40 pb-24">
+      <header className="sticky top-0 z-20 border-b border-emerald-100 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-4 py-3">
+          <h1 className="text-lg font-extrabold text-slate-800">{name || "Харчування"}</h1>
+          {onRename && <button onClick={onRename} className="rounded-lg p-1 text-slate-300 hover:text-slate-500"><Pencil className="h-3.5 w-3.5" /></button>}
+          <div className="ml-auto flex gap-1">
+            {TABS.map(([id, label]) => (
+              <button key={id} onClick={() => setView(id)}
+                className={`rounded-full px-3 py-1 text-[12px] font-semibold transition ${view === id ? "bg-emerald-600 text-white" : "text-slate-500 hover:bg-slate-100"}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto w-full max-w-3xl space-y-3 px-4 pt-4">
+        {msg && <div className="rounded-xl bg-emerald-600 px-4 py-2 text-center text-sm font-semibold text-white">{msg}</div>}
+
+        {view === "today" && (
+          <>
+            <div className="flex items-center justify-between rounded-2xl bg-white px-3 py-2 shadow-sm ring-1 ring-slate-100">
+              <button onClick={() => shiftDate(-1)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50"><ChevronLeft className="h-4 w-4" /></button>
+              <span className="text-sm font-bold text-slate-700">{date === dateKey(Date.now()) ? "Сьогодні" : date}</span>
+              <button onClick={() => shiftDate(1)} disabled={date >= dateKey(Date.now())} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+            </div>
+
+            <div className="rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-500 p-5 text-white shadow-sm">
+              <div className="flex items-end justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-white/90">Калорії за день</div>
+                  <div className="text-3xl font-extrabold tabular-nums">{Math.round(totals.kcal)} <span className="text-lg font-bold text-white/70">/ {refs.kcal}</span></div>
+                </div>
+                <div className="text-right text-sm text-white/90">
+                  <div>Б {nuFmt(totals.protein, "г")} г</div>
+                  <div>Ж {nuFmt(totals.fat, "г")} г</div>
+                  <div>В {nuFmt(totals.carbs, "г")} г</div>
+                </div>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/25">
+                <div className="h-full rounded-full bg-white transition-all" style={{ width: `${Math.min(100, kcalStatus.p || 0)}%` }} />
+              </div>
+            </div>
+
+            <NuAdd catalogue={catalogue} custom={[...dishes, ...custom]} recent={recent} cache={cache} onAdd={addFood} onGenerated={rememberGenerated} />
+
+            {entries.length > 0 && (
+              <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+                {entries.map((e, i) => (
+                  <div key={e.id} className={`flex items-center justify-between gap-2 px-4 py-2.5 ${i ? "border-t border-slate-50" : ""}`}>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm text-slate-700">{e.name}</div>
+                      <div className="text-[11px] text-slate-400">{e.grams} г · {Math.round(((e.food.kcal || 0) * e.grams) / 100)} ккал</div>
+                    </div>
+                    <button onClick={() => removeEntry(e.id)} className="shrink-0 rounded-lg p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {entries.length === 0 ? (
+              <div className="rounded-2xl bg-white p-6 text-center shadow-sm ring-1 ring-slate-100">
+                <Utensils className="mx-auto h-8 w-8 text-slate-200" />
+                <p className="mt-2 text-sm text-slate-500">Ще нічого не записано. Додай перший продукт — і панель заповниться.</p>
+              </div>
+            ) : (
+              <NuPanel totals={totals} refs={refs} />
+            )}
+            <NuSafety />
+          </>
+        )}
+
+        {view === "week" && <NuWeek log={log} refs={refs} catalogue={catalogue} custom={[...dishes, ...custom]} />}
+        {view === "dishes" && <NuDishes dishes={dishes} catalogue={catalogue} custom={custom} onSave={saveDish} onDelete={deleteDish} onLog={addFood} />}
+        {view === "foods" && <NuFoods catalogue={catalogue} custom={custom} onSaveCustom={saveCustom} onDeleteCustom={deleteCustom} />}
+        {view === "settings" && <NuSettings targets={targets} onSave={saveTargets} plan={plan} linked={linked} refs={refs} />}
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
 /* FITNESS — animated home workouts                                    */
 /* ================================================================== */
 const FTKEYS = {
   log: "fitness:log",           // [{id, date, ts, name, sec, count}]
   custom: "fitness:custom",     // [{id, name, items:[{ex, sec}]}]
   settings: "fitness:settings", // {name, restSec}
+  photos: "fitness:photos",     // { exerciseId: dataURL } — власні фото вправ
 };
+
+/* ---------- own exercise photos ----------
+   Живуть у сховищі апки (і синхронізуються твоїм Supabase), а не в репозиторії:
+   репозиторій публічний, фото — ні. Кожне фото стискається перед збереженням,
+   бо оригінал із телефона — це кілька мегабайт, а в кв-таблиці їм не місце. */
+const FT_PHOTO_MAX = 640;
+let FT_PHOTOS = {};
+const ftPhotoSubs = new Set();
+
+function ftShrinkImage(file, max = FT_PHOTO_MAX, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("не вдалось прочитати файл"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("це не картинка"));
+      img.onload = () => {
+        // квадратний кроп по центру — картки вправ квадратні
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2;
+        const sy = (img.height - side) / 2;
+        const out = Math.min(max, side);
+        const c = document.createElement("canvas");
+        c.width = out; c.height = out;
+        c.getContext("2d").drawImage(img, sx, sy, side, side, 0, 0, out, out);
+        resolve(c.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function ftLoadPhotos() { FT_PHOTOS = await store.get(FTKEYS.photos, {}); ftPhotoSubs.forEach((f) => f()); return FT_PHOTOS; }
+async function ftSetPhoto(id, dataUrl) {
+  FT_PHOTOS = { ...FT_PHOTOS, [id]: dataUrl };
+  await store.set(FTKEYS.photos, FT_PHOTOS);
+  ftPhotoSubs.forEach((f) => f());
+}
+async function ftClearPhoto(id) {
+  const next = { ...FT_PHOTOS }; delete next[id];
+  FT_PHOTOS = next;
+  await store.set(FTKEYS.photos, next);
+  ftPhotoSubs.forEach((f) => f());
+}
+function useExercisePhoto(id) {
+  const [, bump] = useState(0);
+  useEffect(() => { const fn = () => bump((n) => n + 1); ftPhotoSubs.add(fn); return () => { ftPhotoSubs.delete(fn); }; }, []);
+  return (FT_PHOTOS && FT_PHOTOS[id]) || null;
+}
 async function collectFitnessExport() {
   const log = await store.get(FTKEYS.log, []);
   const custom = await store.get(FTKEYS.custom, []);
   const settings = await store.get(FTKEYS.settings, { name: "Fitness", restSec: 15 });
-  return { log, custom, settings };
+  const photos = await store.get(FTKEYS.photos, {});
+  return { log, custom, settings, photos };
 }
 async function clearFitnessData() { for (const k of Object.values(FTKEYS)) await store.remove(k); }
 
@@ -1717,7 +2558,7 @@ const EXERCISES = {
 };
 const FT_WORKOUTS = [
   { id: "callanetics", name: "Калланетика", emoji: "🩰", desc: "Повне заняття · розминка → статика і пульси → розтяжка",
-    items: ["reachUp", "armCircles", "sideBendWarm", "sideReach", "pelvisTilt",
+    items: ["reachUp", "sideBendWarm", "sideReach", "pelvisTilt",
             "scapulaSpring", "sideSpring", "sideSpring", "chestPress",
             "forwardFold", "legFold",
             "absCurl", "absOneLeg", "absOneLeg", "absTwoLegs", "cobra",
@@ -1864,7 +2705,7 @@ export default function FlashcardsApp() {
         settings: { newPerDay: DEFAULT_NEW_PER_DAY },
       });
       if (!alive) return;
-      setSection(["review", "studying", "languages", "routine", "calm", "fasting", "management", "inventory", "money", "analyses", "books", "fitness"].includes(ui.section) ? ui.section : "studying");
+      setSection(["review", "studying", "languages", "routine", "calm", "fasting", "management", "inventory", "money", "analyses", "books", "fitness", "nutrition"].includes(ui.section) ? ui.section : "studying");
       setSidebarCollapsed(!!ui.sidebarCollapsed);
       setCalmName(calmSettings?.name && calmSettings.name !== "Calm" ? calmSettings.name : "Спокій");
       setFastingName(fastingSettings?.name || "Fasting");
@@ -2439,6 +3280,7 @@ export default function FlashcardsApp() {
     await clearAnalysesData();
     await clearBooksData();
     await clearFitnessData();
+    await clearNutritionData();
     setDecks([]);
     setGroups([]);
     setCardsByDeck({});
@@ -2466,6 +3308,7 @@ export default function FlashcardsApp() {
     window.dispatchEvent(new CustomEvent("analyses-reset"));
     window.dispatchEvent(new CustomEvent("books-reset"));
     window.dispatchEvent(new CustomEvent("fitness-reset"));
+    window.dispatchEvent(new CustomEvent("nutrition-reset"));
   }, [decks, cardsByDeck, flash]);
 
   const exportAll = useCallback(async () => {
@@ -2483,6 +3326,7 @@ export default function FlashcardsApp() {
     const analyses = await collectAnalysesExport();
     const books = await collectBooksExport();
     const fitness = await collectFitnessExport();
+    const nutrition = await collectNutritionExport();
     const payload = {
       exportedAt: new Date().toISOString(),
       version: 13,
@@ -2504,6 +3348,7 @@ export default function FlashcardsApp() {
       analyses,
       books,
       fitness,
+      nutrition,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -2762,6 +3607,8 @@ export default function FlashcardsApp() {
           <AnalysesSection />
         ) : section === "fitness" ? (
           <FitnessSection name={fitnessName} onRename={renameFitness} />
+        ) : section === "nutrition" ? (
+          <NutritionSection name="Харчування" />
         ) : section === "books" ? (
           <BooksSection name={booksName} onRename={renameBooks} />
         ) : (
@@ -2961,6 +3808,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
     { id: "books", label: booksName || "Книги", icon: BookMarked, badge: 0 },
     { id: "fitness", label: fitnessName || "Fitness", icon: HeartPulse, badge: 0 },
+    { id: "nutrition", label: "Харчування", icon: Utensils, badge: 0 },
   ];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 backdrop-blur lg:hidden" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
@@ -3021,6 +3869,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
     { id: "books", label: booksName || "Книги", icon: BookMarked, badge: 0 },
     { id: "fitness", label: fitnessName || "Fitness", icon: HeartPulse, badge: 0 },
+    { id: "nutrition", label: "Харчування", icon: Utensils, badge: 0 },
   ];
   const wide = !collapsed;
   return (
@@ -9117,11 +9966,50 @@ function StaticFigure({ id, size = 200, playing = true }) {
 }
 
 
+/* Кнопка «своє фото» на картці вправи: стискає, зберігає, дає прибрати. */
+function ExercisePhotoButton({ id, onFlash }) {
+  const fileRef = useRef(null);
+  const mine = useExercisePhoto(id);
+  const [busy, setBusy] = useState(false);
+  const pick = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const url = await ftShrinkImage(file);
+      await ftSetPhoto(id, url);
+      onFlash && onFlash("Фото збережено 📷");
+    } catch (e) {
+      onFlash && onFlash(e.message || "Не вдалось додати фото");
+    }
+    setBusy(false);
+  };
+  return (
+    <>
+      <input ref={fileRef} type="file" accept="image/*" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; pick(f); e.target.value = ""; }} />
+      <div className="absolute bottom-1 right-1 flex gap-1">
+        {mine && (
+          <button onClick={() => ftClearPhoto(id)} title="Прибрати фото"
+            className="rounded-full bg-white/90 p-1 text-slate-400 shadow ring-1 ring-slate-200 hover:text-rose-500"><X className="h-3 w-3" /></button>
+        )}
+        <button onClick={() => fileRef.current?.click()} disabled={busy} title={mine ? "Замінити фото" : "Своє фото"}
+          className="rounded-full bg-white/90 p-1 text-slate-400 shadow ring-1 ring-slate-200 hover:text-emerald-600 disabled:opacity-50">
+          {busy ? <RefreshCw className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}
+        </button>
+      </div>
+    </>
+  );
+}
+
 function GirlFigure({ id, size = 200, playing = true }) {
   const ex = EXERCISES[id];
   const host = useRef(null);
   const animRef = useRef(null);
   const file = ex && ex.lottie;
+  // Пріоритет: твоє завантажене фото → вбудоване фото → анімація.
+  const [photoBroken, setPhotoBroken] = useState(false);
+  const userPhoto = useExercisePhoto(id);
+  const photo = ex && ex.photo && !photoBroken ? ex.photo : null;
 
   useEffect(() => {
     if (!file || !host.current) return;
@@ -9147,6 +10035,15 @@ function GirlFigure({ id, size = 200, playing = true }) {
   }, [playing]);
 
   if (!ex) return null;
+  if (userPhoto) {
+    return <img src={userPhoto} alt={ex.name} style={{ width: size, height: size }} className="rounded-2xl object-cover" />;
+  }
+  if (photo) {
+    return (
+      <img src={`/exercises/${photo}`} alt={ex.name} onError={() => setPhotoBroken(true)}
+        style={{ width: size, height: size }} className="rounded-2xl object-cover" />
+    );
+  }
   // no animation for this exercise → static illustration of the pose
   if (!file) return <StaticFigure id={id} size={size} playing={false} />;
   return <div ref={host} style={{ width: size, height: size }} aria-label={ex.name} />;
@@ -9168,6 +10065,7 @@ function FitnessSection({ name, onRename }) {
 
   useEffect(() => {
     (async () => {
+      await ftLoadPhotos();
       const d = await collectFitnessExport();
       setLog(d.log); setCustom(d.custom); setSettings({ restSec: 15, ...d.settings }); setLoading(false);
     })();
@@ -9266,7 +10164,10 @@ function FitnessSection({ name, onRename }) {
                 <div className="grid gap-3 sm:grid-cols-3">
                   {Object.entries(EXERCISES).map(([id, ex]) => (
                     <div key={id} className="rounded-2xl bg-white p-3 text-center shadow-sm ring-1 ring-emerald-50">
-                      <GirlFigure id={id} size={104} />
+                      <div className="relative inline-block">
+                        <GirlFigure id={id} size={104} />
+                        <ExercisePhotoButton id={id} onFlash={flash} />
+                      </div>
                       <div className="mt-1 text-sm font-bold text-slate-700">{ex.emoji} {ex.name}</div>
                       <div className="text-[11px] text-slate-400">{ex.group}</div>
                       <div className="mt-1 text-[11px] leading-snug text-slate-500">{ex.tip}</div>
@@ -10445,10 +11346,46 @@ function ProtocolLadder({ goals, diary, onSet, onSaveGoals }) {
 }
 
 /* ---------- Overview: goals + metrics + charts ---------- */
+/* Цілі КБЖУ з плану схуднення (вкладка Fasting) — одна функція на два місця:
+   план їх показує, а Харчування бере як денні норми, щоб не вводити те саме двічі. */
+function fastingPlanTargets(goals, diary) {
+  const g = goals || {};
+  const weighed = (diary || []).filter((r) => r.weight != null).sort((a, b) => a.date.localeCompare(b.date));
+  const currentW = weighed.length ? weighed[weighed.length - 1].weight : g.startWeight;
+  const w = currentW ?? g.startWeight;
+  const h = g.heightCm, age = g.age, sex = g.sex || "f";
+  const months = g.planMonths || 12;
+  const ready = g.startWeight != null && g.targetWeight != null && g.startWeight > g.targetWeight;
+  if (!ready || w == null || h == null || age == null) return { ok: false, weightKg: w ?? null, sex, age: age ?? null };
+
+  const perWeek = (g.startWeight - g.targetWeight) / (months * 4.345);
+  const bmr = Math.round(10 * w + 6.25 * h - 5 * age + (sex === "m" ? 5 : -161));
+  const tdee = Math.round(bmr * (g.activity || 1.375));
+  const dailyDeficit = Math.round((perWeek * 7700) / 7);
+  const floorKcal = sex === "m" ? 1500 : 1200;
+  const kcal = Math.max(floorKcal, tdee - dailyDeficit);
+  const refW = g.targetWeight || w;
+  const protein = Math.round(1.8 * refW);
+  const fat = Math.max(40, Math.round(0.8 * refW));
+  const carbs = Math.max(30, Math.round((kcal - protein * 4 - fat * 9) / 4));
+  return { ok: true, kcal, protein, fat, carbs, bmr, tdee, dailyDeficit, perWeek, weightKg: w, sex, age };
+}
+
 /* ---------- Fasting: gradual weight-loss plan ---------- */
 function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
   const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
   const months = goals.planMonths || 12;
+  // "Місяців" тримає свій текст, поки друкуєш — обмеження 3…24 застосовується аж коли вийдеш з поля.
+  // Інакше стерти «12» і почати вписувати «18» неможливо: «1» одразу підстрибує до «3».
+  const [monthsText, setMonthsText] = useState(String(months));
+  useEffect(() => { setMonthsText(String(months)); }, [months]);
+  const commitMonths = () => {
+    const n = parseInt(monthsText, 10);
+    if (isNaN(n)) { setMonthsText(String(months)); return; }
+    const clamped = Math.max(3, Math.min(24, n));
+    setMonthsText(String(clamped));
+    if (clamped !== months) onSaveGoals({ planMonths: clamped });
+  };
   const startW = goals.startWeight;
   const targetW = goals.targetWeight;
   const startDate = goals.planStart || goals.startDate || dateKey(Date.now());
@@ -10542,7 +11479,7 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
       <div className="mt-3 grid grid-cols-3 gap-2">
         <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Старт, кг</span><input type="number" step="0.1" value={goals.startWeight ?? ""} onChange={(e) => onSaveGoals({ startWeight: num(e.target.value) })} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
         <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Ціль, кг</span><input type="number" step="0.1" value={goals.targetWeight ?? ""} onChange={(e) => onSaveGoals({ targetWeight: num(e.target.value) })} placeholder={startW != null ? String(Math.round(startW - 30)) : ""} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
-        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Місяців</span><input type="number" min={3} max={24} value={months} onChange={(e) => onSaveGoals({ planMonths: Math.max(3, Math.min(24, +e.target.value || 12)) })} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Місяців</span><input type="number" inputMode="numeric" min={3} max={24} value={monthsText} onChange={(e) => setMonthsText(e.target.value)} onBlur={commitMonths} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitMonths(); e.target.blur(); } }} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
       </div>
 
       {/* personal data for the calorie calc */}
