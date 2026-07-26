@@ -2644,28 +2644,49 @@ const FT_PHOTO_MAX = 640;
 let FT_PHOTOS = {};
 const ftPhotoSubs = new Set();
 
-function ftShrinkImage(file, max = FT_PHOTO_MAX, quality = 0.82) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("не вдалось прочитати файл"));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error("це не картинка"));
-      img.onload = () => {
-        // квадратний кроп по центру — картки вправ квадратні
-        const side = Math.min(img.width, img.height);
-        const sx = (img.width - side) / 2;
-        const sy = (img.height - side) / 2;
-        const out = Math.min(max, side);
-        const c = document.createElement("canvas");
-        c.width = out; c.height = out;
-        c.getContext("2d").drawImage(img, sx, sy, side, side, 0, 0, out, out);
-        resolve(c.toDataURL("image/jpeg", quality));
+async function ftShrinkImage(file, max = FT_PHOTO_MAX, quality = 0.82) {
+  if (!file) throw new Error("файл не обрано");
+  if (file.type && !file.type.startsWith("image/")) throw new Error("Це не картинка");
+
+  // Фото з телефона майже завжди мають EXIF-поворот. createImageBitmap з
+  // imageOrientation:"from-image" застосовує його; малювання <img> на canvas — ні,
+  // тому без цього портретні фото лягали боком.
+  let src = null;
+  try {
+    src = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch (e) {
+    src = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("не вдалось прочитати файл"));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error("HEIC"));
+        img.onload = () => resolve(img);
+        img.src = reader.result;
       };
-      img.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
+      reader.readAsDataURL(file);
+    }).catch((err) => {
+      if (err.message === "HEIC" || /heic|heif/i.test(file.type || file.name || "")) {
+        throw new Error("Браузер не читає формат HEIC. У налаштуваннях камери постав «Найсумісніший» (JPEG) — або перешли фото собі в месенджер, воно стане JPEG.");
+      }
+      throw err;
+    });
+  }
+
+  // Пропорції зберігаємо: на портретному фото на весь зріст квадратний кроп
+  // відрізав би голову й ноги, а саме поза — це те, заради чого фото й додається.
+  const w = src.width, h = src.height;
+  const k = Math.min(1, max / Math.max(w, h));
+  const cw = Math.max(1, Math.round(w * k));
+  const ch = Math.max(1, Math.round(h * k));
+  const c = document.createElement("canvas");
+  c.width = cw; c.height = ch;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, cw, ch);
+  ctx.drawImage(src, 0, 0, cw, ch);
+  if (src.close) src.close();
+  return c.toDataURL("image/jpeg", quality);
 }
 
 async function ftLoadPhotos() { FT_PHOTOS = await store.get(FTKEYS.photos, {}); ftPhotoSubs.forEach((f) => f()); return FT_PHOTOS; }
@@ -10263,14 +10284,15 @@ function ExercisePhotoButton({ id, onFlash }) {
     <>
       <input ref={fileRef} type="file" accept="image/*" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; pick(f); e.target.value = ""; }} />
-      <div className="absolute bottom-1 right-1 flex gap-1">
+      <div className="absolute -bottom-1 right-0 flex gap-1">
         {mine && (
-          <button onClick={() => ftClearPhoto(id)} title="Прибрати фото"
-            className="rounded-full bg-white/90 p-1 text-slate-400 shadow ring-1 ring-slate-200 hover:text-rose-500"><X className="h-3 w-3" /></button>
+          <button onClick={() => ftClearPhoto(id)} title="Прибрати фото" aria-label="Прибрати фото"
+            className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-400 shadow-md ring-1 ring-slate-200 active:scale-95 hover:text-rose-500"><X className="h-4 w-4" /></button>
         )}
-        <button onClick={() => fileRef.current?.click()} disabled={busy} title={mine ? "Замінити фото" : "Своє фото"}
-          className="rounded-full bg-white/90 p-1 text-slate-400 shadow ring-1 ring-slate-200 hover:text-emerald-600 disabled:opacity-50">
-          {busy ? <RefreshCw className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}
+        <button onClick={() => fileRef.current?.click()} disabled={busy}
+          title={mine ? "Замінити фото" : "Своє фото"} aria-label={mine ? "Замінити фото" : "Додати своє фото"}
+          className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-md ring-1 ring-slate-200 active:scale-95 hover:text-emerald-600 disabled:opacity-50">
+          {busy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
         </button>
       </div>
     </>
@@ -10312,7 +10334,7 @@ function GirlFigure({ id, size = 200, playing = true }) {
 
   if (!ex) return null;
   if (userPhoto) {
-    return <img src={userPhoto} alt={ex.name} style={{ width: size, height: size }} className="rounded-2xl object-cover" />;
+    return <img src={userPhoto} alt={ex.name} style={{ width: size, height: size }} className="rounded-2xl bg-slate-50 object-contain" />;
   }
   if (photo) {
     return (
