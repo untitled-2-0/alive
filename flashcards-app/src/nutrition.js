@@ -12,6 +12,8 @@ export const NUTRIENTS = [
   { k: "protein",    label: "Білки",       unit: "г",    cat: "macro",  kind: "goal", info: "Будівельний матеріал: м'язи, шкіра, волосся, нігті, ферменти, антитіла. У дефіциті калорій саме білок тримає м'язи, щоб худнути жиром, а не ними." },
   { k: "fat",        label: "Жири",        unit: "г",    cat: "macro",  kind: "goal", info: "Потрібен для гормонів (зокрема статевих), оболонок клітин і засвоєння вітамінів A, D, E, K. Надто мало жиру — сухість шкіри й збої циклу." },
   { k: "satFat",     label: "з них насичені", unit: "г", cat: "macro",  kind: "ceiling", sub: true, info: "Насичені жири. Трохи потрібно, але надлишок піднімає «поганий» холестерин і навантажує судини. Тому це стеля, а не ціль." },
+  { k: "omega3ala",    label: "омега-3 ALA",     unit: "г",  cat: "macro", kind: "goal", sub: true, info: "Рослинна омега-3 (альфа-ліноленова кислота). Найбільше в лляному й чіа насінні, волоських горіхах, ріпаковій олії. Тіло вміє перетворювати її на EPA і DHA, але дуже погано — у EPA переходить близько 5–10%, у DHA менше 1%. Тому ALA не замінює риб'ячу омега-3, хоч формально це теж омега-3." },
+  { k: "omega3epadha", label: "омега-3 EPA+DHA", unit: "мг", cat: "macro", kind: "goal", sub: true, info: "Морська омега-3 — саме та, довкола якої побудована більшість досліджень: серце й судини, запалення, робота мозку, сітківка ока. Є практично лише в жирній рибі, морепродуктах і водоростях; у рослинній їжі її НЕМА взагалі — ні в лляному насінні, ні в чіа, ні в горіхах. Норма 250 мг на день — це приблизно дві порції жирної риби на тиждень." },
   { k: "carbs",      label: "Вуглеводи",   unit: "г",    cat: "macro",  kind: "goal", info: "Головне швидке паливо для мозку й м'язів — мозок працює майже виключно на глюкозі. Найкращі джерела — крупи, овочі, фрукти, бобові." },
   { k: "sugar",      label: "з них цукри", unit: "г",    cat: "macro",  kind: "ceiling", sub: true, info: "Вуглеводи, що засвоюються миттєво: різкий стрибок енергії й таке саме падіння, плюс навантаження на зуби й обмін. Стеля, а не ціль." },
   { k: "fiber",      label: "Клітковина",  unit: "г",    cat: "macro",  kind: "goal", info: "Клітковина не засвоюється, але годує мікрофлору кишківника, дає ситість, вирівнює цукор у крові й налагоджує травлення." },
@@ -78,6 +80,8 @@ export function referenceValues({ sex = "f", age = 30, weightKg = 65, kcal = 200
     carbs: Math.round((kcal * 0.45) / 4),
     satFat: Math.round((kcal * 0.1) / 9),          // стеля
     sugar: Math.round((kcal * 0.1) / 4),           // стеля
+    omega3ala: f ? 1.1 : 1.6,                      // AI, г/день
+    omega3epadha: 250,                             // AI EFSA, мг/день
     fiber: f ? 25 : 38,
 
     iron: f && !older ? 18 : 8,
@@ -272,9 +276,9 @@ export function searchFoods(list, query) {
 const FOOD_PROMPT = (name) => `Ти — довідник складу продуктів. Дай склад продукту «${name}» на 100 г.
 
 Поверни ЛИШЕ JSON без пояснень, без markdown, точно з такими ключами:
-{"name":"назва українською","group":"категорія українською","kcal":0,"protein":0,"fat":0,"satFat":0,"carbs":0,"sugar":0,"fiber":0,"iron":0,"zinc":0,"copper":0,"magnesium":0,"calcium":0,"potassium":0,"sodium":0,"phosphorus":0,"selenium":0,"iodine":0,"vitA":0,"vitC":0,"vitD":0,"vitE":0,"vitK":0,"b1":0,"b2":0,"b3":0,"b5":0,"b6":0,"b7":0,"b9":0,"b12":0}
+{"name":"назва українською","group":"категорія українською","kcal":0,"protein":0,"fat":0,"satFat":0,"carbs":0,"sugar":0,"fiber":0,"iron":0,"zinc":0,"copper":0,"magnesium":0,"calcium":0,"potassium":0,"sodium":0,"phosphorus":0,"selenium":0,"iodine":0,"vitA":0,"vitC":0,"vitD":0,"vitE":0,"vitK":0,"b1":0,"b2":0,"b3":0,"b5":0,"b6":0,"b7":0,"b9":0,"b12":0,"omega3ala":0,"omega3epadha":0,"taurine":0,"inositol":0}
 
-Одиниці: kcal — ккал; protein, fat, satFat, carbs, sugar, fiber — грами; iron, zinc, copper, magnesium, calcium, potassium, sodium, phosphorus, vitC, vitE, b1, b2, b3, b5, b6 — мг; selenium, iodine, vitA, vitD, vitK, b7, b9, b12 — мкг. Усе на 100 г. Кожне поле обов'язкове, став 0 там, де справді нуль.`;
+Одиниці: kcal — ккал; protein, fat, satFat, carbs, sugar, fiber — грами; iron, zinc, copper, magnesium, calcium, potassium, sodium, phosphorus, vitC, vitE, b1, b2, b3, b5, b6, taurine, inositol, omega3epadha — мг; selenium, iodine, vitA, vitD, vitK, b7, b9, b12 — мкг; omega3ala — грами. Усе на 100 г. Кожне поле обов'язкове, став 0 там, де справді нуль.`;
 
 function extractJson(text) {
   try { return JSON.parse(text); } catch (e) { /* try to find the object */ }
