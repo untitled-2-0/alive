@@ -3,7 +3,9 @@
     "allow": [
       "PowerShell(python --version)",
       "PowerShell(python3 --version 2>$null)",
-      "PowerShell(py --version 2>$null)"
+      "PowerShell(py --version 2>$null)",
+      "Bash(awk -F: '$1>7800 && $1<10000')",
+      "Bash(python3 -)"
     ]
   }
 }
