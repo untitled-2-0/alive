@@ -1454,6 +1454,20 @@ function fastingStreak(diary, today = dateKey(Date.now())) {
   for (let i = 0; i < 800; i++) { if (met.has(dateKey(d.getTime()))) { cur += 1; d.setDate(d.getDate() - 1); } else break; }
   return cur;
 }
+// Тренування з вкладки Fitness за останні 7 днів → скільки калорій вони спалили.
+// Fitness пише лише тривалість, тож калорії — груба оцінка через MET домашнього
+// комплексу середньої інтенсивності. Це орієнтир, а не вимірювання.
+const FAST_WORKOUT_MET = 5;
+function fastWorkoutWeek(fitLog, weightKg, today = dateKey(Date.now())) {
+  const from = new Date(today + "T00:00:00");
+  from.setDate(from.getDate() - 6);
+  const fromKey = dateKey(from.getTime());
+  const rows = (fitLog || []).filter((r) => r.date >= fromKey && r.date <= today);
+  const sec = rows.reduce((s, r) => s + (r.sec || 0), 0);
+  const kcal = weightKg ? Math.round((FAST_WORKOUT_MET * weightKg * sec) / 3600) : 0;
+  return { count: rows.length, minutes: Math.round(sec / 60), kcal, perDay: Math.round(kcal / 7) };
+}
+
 const fmtHM = (ms) => { const m = Math.max(0, Math.floor(ms / 60000)); return `${Math.floor(m / 60)}г ${m % 60}хв`; };
 const fmtHMS = (ms) => { const t = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60; return `${h}г ${m}хв ${s}с`; };
 
@@ -2422,7 +2436,7 @@ function NutritionSection({ name, onRename }) {
       if (backfilled) await store.set(NUKEYS.log, backfilled);
       setLog(backfilled || d.log);
       setCustom(d.custom); setCache(d.cache); setTargets(d.targets); setRecent(d.recent); setDishes(dishList);
-      setPlan(fastingPlanTargets(fast.goals, fast.diary));
+      setPlan(fastingPlanTargets(fast.goals, fast.diary, fit || []));
       setFitLog(fit || []);
       setCatalogue(foods); setLoading(false);
     })();
@@ -3870,7 +3884,7 @@ export default function FlashcardsApp() {
         ) : section === "calm" ? (
           <CalmSection name={calmName} onRename={renameCalm} />
         ) : section === "fasting" ? (
-          <FastingSection name={fastingName} onRename={renameFasting} />
+          <FastingSection name={fastingName} onRename={renameFasting} onGo={changeSection} />
         ) : section === "management" ? (
           <ManagementSection name={mgmtName} onRename={renameMgmt} />
         ) : section === "money" ? (
@@ -11853,28 +11867,49 @@ function CalmStats({ sessions, onExit }) {
 /* ================================================================== */
 /* FASTING — section UI                                               */
 /* ================================================================== */
-function FastingSection({ name, onRename }) {
+/* ---------- Fasting: один суцільний скрол замість шести підтабів ----------
+   Палітра теплих пастелей із редизайну; великі цифри — Mulish (кирилиці в ньому
+   немає, тож одиниці «г», «хв», «кг», «ккал» лишаються в Manrope через <FUnit>). */
+const FNUM = { fontFamily: "'Mulish', ui-sans-serif, system-ui, sans-serif" };
+const FBODY = { fontFamily: "'Manrope', ui-sans-serif, system-ui, sans-serif" };
+const FUnit = ({ children, className = "" }) => <span style={FBODY} className={className}>{children}</span>;
+
+const FAST_MOODS = [["😣", 1], ["😕", 2], ["🙂", 3], ["😃", 4], ["🤩", 5]];
+const FAST_KNOWLEDGE = [
+  { id: "drinks", e: "🥤", title: "Що можна пити", sub: "вода, кава, чай — і що перериває голодування" },
+  { id: "tips", e: "💡", title: "10 порад, як витримати", sub: "коротко, з книг д-ра Фанга" },
+  { id: "safety", e: "🛟", title: "Безпека й протипоказання", sub: "кому не можна і коли зупинитись" },
+];
+
+function FastingSection({ name, onRename, onGo }) {
   const [loading, setLoading] = useState(true);
-  const [fview, setFview] = useState("timer"); // timer | ladder | diary | overview | reference
   const [goals, setGoals] = useState({ startWeight: null, targetWeight: null, protocol: "16:8", startDate: dateKey(Date.now()) });
   const [diary, setDiary] = useState([]);
   const [current, setCurrent] = useState(null);
   const [eating, setEating] = useState(null); // { startTs, windowHrs, protocol } — вікно їжі після фасту
+  const [fitLog, setFitLog] = useState([]);   // тренування з Fitness — лише читаємо
   const [diaryEditor, setDiaryEditor] = useState(null); // {entry} | {entry:null}
+  const [drill, setDrill] = useState(null);   // plan | ladder | diary | overview
+  const [openK, setOpenK] = useState(null);   // відкритий рядок «Знання»
+  const [stagesOpen, setStagesOpen] = useState(true);
+  const [startPick, setStartPick] = useState(false);
+  const [customStart, setCustomStart] = useState("");
+  const [editStart, setEditStart] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(name);
   const [toast, setToast] = useState(null);
   const [now, setNow] = useState(Date.now());
+  const anchors = { now: useRef(null), progress: useRef(null), knowledge: useRef(null) };
 
   const flash = useCallback((m) => { setToast(m); window.clearTimeout(flash._t); flash._t = window.setTimeout(() => setToast(null), 2400); }, []);
 
   const reload = useCallback(async () => {
-    const d = await loadFastingData();
-    setGoals(d.goals); setDiary(d.diary); setCurrent(d.current); setEating(d.eating); setLoading(false);
+    const [d, fit] = await Promise.all([loadFastingData(), store.get(FTKEYS.log, [])]);
+    setGoals(d.goals); setDiary(d.diary); setCurrent(d.current); setEating(d.eating); setFitLog(fit || []); setLoading(false);
   }, []);
   useEffect(() => {
     reload();
-    const onReset = () => { setGoals({ startWeight: null, targetWeight: null, protocol: "16:8", startDate: dateKey(Date.now()) }); setDiary([]); setCurrent(null); setEating(null); setFview("timer"); };
+    const onReset = () => { setGoals({ startWeight: null, targetWeight: null, protocol: "16:8", startDate: dateKey(Date.now()) }); setDiary([]); setCurrent(null); setEating(null); setDrill(null); };
     window.addEventListener("fasting-reset", onReset);
     return () => window.removeEventListener("fasting-reset", onReset);
   }, [reload]);
@@ -11898,6 +11933,7 @@ function FastingSection({ name, onRename }) {
     const startTs = (typeof customTs === "number" && !isNaN(customTs)) ? Math.min(customTs, Date.now()) : Date.now();
     await saveCurrent({ startTs, targetHrs: protocol.hrs, protocol: protocol.id });
     if (eating) await saveEating(null); // starting a fast closes the eating window
+    setStartPick(false);
     flash(`Пішов відлік — ціль ${protocol.hrs} год 💪`);
   }, [saveCurrent, protocol, eating, saveEating, flash]);
 
@@ -11918,7 +11954,6 @@ function FastingSection({ name, onRename }) {
     const win = getProtocol(current.protocol).window || 0;
     if (win > 0) await saveEating({ startTs: Date.now(), windowHrs: win, protocol: current.protocol });
     setDiaryEditor({ entry });
-    setFview("diary");
     const winMsg = win > 0 ? ` Вікно їжі відкрито — ${win} год 🍽️` : "";
     flash((entry.goalMet ? "Ціль досягнута! ✓" : "Голодування записано.") + winMsg);
   }, [current, diary, saveDiary, saveCurrent, saveEating, flash]);
@@ -11930,160 +11965,609 @@ function FastingSection({ name, onRename }) {
   }, [diary, saveDiary, flash]);
   const deleteEntry = useCallback(async (id) => { await saveDiary(diary.filter((r) => r.id !== id)); flash("Видалено"); }, [diary, saveDiary, flash]);
 
-  if (loading) return <div className="flex flex-1 items-center justify-center text-orange-400"><div className="flex flex-col items-center gap-3"><Hourglass className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+  // швидка позначка самопочуття за сьогодні — щоб записати настрій в один тап
+  const tapMood = useCallback(async (val) => {
+    const today = dateKey(Date.now());
+    const mine = diary.filter((r) => r.date === today);
+    const target = mine[mine.length - 1];
+    if (target) await saveDiary(diary.map((r) => (r.id === target.id ? { ...r, energy: val } : r)));
+    else await saveDiary([...diary, { id: ruid("d"), ts: Date.now(), date: today, protocol: goals.protocol, targetHrs: protocol.hrs, actualHrs: null, goalMet: false, weight: null, waist: null, energy: val, hunger: null, wellbeing: "", notes: "" }]);
+    flash("Записала самопочуття 💛");
+  }, [diary, saveDiary, goals.protocol, protocol.hrs, flash]);
 
-  const NAV = [
-    { id: "timer", label: "Таймер", icon: Timer },
-    { id: "ladder", label: "Драбина", icon: TrendingUp },
-    { id: "plan", label: "План", icon: Target },
-    { id: "diary", label: "Щоденник", icon: NotebookPen },
-    { id: "overview", label: "Огляд", icon: Scale },
-    { id: "reference", label: "Довідник", icon: Info },
-  ];
+  const scrollTo = (key) => anchors[key].current?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const metrics = useMemo(() => fastingMetrics(goals, diary), [goals, diary]);
+  const streak = useMemo(() => fastingStreak(diary), [diary]);
+  const plan = useMemo(() => fastingPlanTargets(goals, diary, fitLog), [goals, diary, fitLog]);
+  const workout = useMemo(() => fastWorkoutWeek(fitLog, metrics.currentWeight ?? goals.startWeight), [fitLog, metrics.currentWeight, goals.startWeight]);
+  const week = useMemo(() => {
+    const base = new Date(dateKey(Date.now()) + "T00:00:00");
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(base); d.setDate(d.getDate() - (6 - i));
+      const ds = dateKey(d.getTime());
+      const rows = diary.filter((r) => r.date === ds && r.actualHrs != null);
+      return { ds, label: WD_UA[d.getDay()], hrs: rows.reduce((s, r) => Math.max(s, r.actualHrs), 0), met: rows.some((r) => r.goalMet) };
+    });
+  }, [diary]);
+
+  if (loading) return <div className="flex flex-1 items-center justify-center text-[#d97a52]"><div className="flex flex-col items-center gap-3"><Hourglass className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження…</span></div></div>;
+
+  const firstRun = !current && !eating && diary.length === 0;
+  const todayLabel = new Date().toLocaleDateString("uk-UA", { weekday: "short", day: "numeric", month: "long" });
 
   return (
-    <div className="min-h-screen flex-1 bg-gradient-to-b from-amber-50 via-orange-50/40 to-white">
-      <header className="sticky top-0 z-20 border-b border-amber-100 bg-white/85 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-1 px-4">
+    <div style={FBODY} className="min-h-screen flex-1 bg-[#f6ede3] text-[#2a211c]">
+      <header className="sticky top-0 z-20 border-b border-[#efe1d2] bg-[#f6ede3]/90 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
           {renaming ? (
-            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-32 rounded-lg border border-amber-200 px-2 py-1 text-base font-semibold focus:outline-none" />
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="w-32 rounded-lg border border-[#e6d5c4] bg-white px-2 py-1 text-base font-bold focus:outline-none" />
           ) : (
-            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="text-left">
+              <span className="text-base font-extrabold text-[#2a211c]">{name}</span>
+              <Pencil className="ml-1 inline h-3.5 w-3.5 text-[#c9a789]" />
+              <span className="ml-2 hidden text-xs text-[#a2938a] sm:inline">{protocol.label} · {todayLabel}</span>
+            </button>
           )}
-          {NAV.map((n) => <NavButton key={n.id} active={fview === n.id} onClick={() => setFview(n.id)} icon={n.icon}>{n.label}</NavButton>)}
+          <div className="ml-auto hidden items-center gap-1 sm:flex">
+            {[["now", "Зараз"], ["progress", "Прогрес"], ["knowledge", "Знання"]].map(([k, l]) => (
+              <button key={k} onClick={() => scrollTo(k)} className="rounded-full px-3 py-1.5 text-xs font-bold text-[#6b5c52] transition hover:bg-white">{l}</button>
+            ))}
+          </div>
+          <span className="ml-auto shrink-0 rounded-full bg-[#fff0e6] px-3 py-1.5 text-xs font-bold text-[#d97a52] sm:ml-2">🔥 {streak} {streak === 1 ? "день" : "дн"}</span>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-3xl px-4 py-6">
-        {fview === "timer" && <FastTimer current={current} eating={eating} now={now} protocol={protocol} onStart={startFast} onEnd={endFast} onSetStart={setStartTs} onChangeProtocol={() => setFview("ladder")} />}
-        {fview === "ladder" && <ProtocolLadder goals={goals} diary={diary} onSaveGoals={saveGoals} onSet={(id) => { saveGoals({ protocol: id, protocolSince: dateKey(Date.now()), stepUpDismissed: null }); flash(`Протокол: ${getProtocol(id).label}`); setFview("timer"); }} />}
-        {fview === "plan" && <FastPlan goals={goals} diary={diary} onSaveGoals={saveGoals} onGoLog={() => setDiaryEditor({ entry: null })} />}
-        {fview === "diary" && <FastDiary diary={diary} onNew={() => setDiaryEditor({ entry: null })} onEdit={(e) => setDiaryEditor({ entry: e })} onDelete={deleteEntry} />}
-        {fview === "overview" && <FastOverview goals={goals} diary={diary} onSaveGoals={saveGoals} />}
-        {fview === "reference" && <FastReference />}
+      <main className="mx-auto w-full max-w-3xl space-y-3 px-4 pb-24 pt-4">
+        <div ref={anchors.now} className="scroll-mt-16" />
+        {firstRun ? (
+          <FastFirstRun
+            goals={goals} protocol={protocol}
+            onPick={(id) => saveGoals({ protocol: id, protocolSince: dateKey(Date.now()) })}
+            onStart={() => startFast()}
+            onManualStart={() => { setStartPick(true); setCustomStart(toLocalInput(Date.now())); }}
+            startPick={startPick} customStart={customStart} setCustomStart={setCustomStart}
+            onStartCustom={() => startFast(new Date(customStart).getTime())}
+            onGoPlan={() => setDrill("plan")} onGoLadder={() => setDrill("ladder")}
+            openK={openK} setOpenK={setOpenK}
+            knowledgeRef={anchors.knowledge}
+          />
+        ) : (
+          <>
+            <FastHero
+              current={current} eating={eating} now={now} protocol={protocol} streak={streak}
+              stagesOpen={stagesOpen} onToggleStages={() => setStagesOpen((v) => !v)}
+              onEnd={endFast} onStart={() => startFast()} onChangeProtocol={() => setDrill("ladder")}
+              editStart={editStart} onToggleEditStart={() => setEditStart((v) => !v)} onSetStart={setStartTs}
+              startPick={startPick} customStart={customStart} setCustomStart={setCustomStart}
+              onManualStart={() => { setStartPick(true); setCustomStart(toLocalInput(Date.now())); }}
+              onStartCustom={() => startFast(new Date(customStart).getTime())}
+              onCancelPick={() => setStartPick(false)}
+            />
+
+            <div ref={anchors.progress} className="scroll-mt-16" />
+            <FastWeekRow week={week} />
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <FastWeightCard diary={diary} metrics={metrics} onOpen={() => setDrill("overview")} />
+              <FastPlanCard goals={goals} metrics={metrics} plan={plan} onOpen={() => setDrill("plan")} />
+              <FastLadderCard goals={goals} diary={diary} onOpen={() => setDrill("ladder")} />
+            </div>
+
+            <FastKcalCard plan={plan} goals={goals} workout={workout} onGo={onGo} onOpenPlan={() => setDrill("plan")} />
+
+            <FastDiaryCard
+              diary={diary} onTapMood={tapMood} onOpenAll={() => setDrill("diary")}
+              onEdit={(e) => setDiaryEditor({ entry: e })} onNew={() => setDiaryEditor({ entry: null })}
+            />
+
+            <div ref={anchors.knowledge} className="scroll-mt-16" />
+            <FastKnowledge open={openK} onToggle={(id) => setOpenK((v) => (v === id ? null : id))} />
+          </>
+        )}
       </main>
 
+      {drill === "plan" && <FastSheet title="План схуднення" onClose={() => setDrill(null)}><FastPlan goals={goals} diary={diary} fitLog={fitLog} onSaveGoals={saveGoals} onGoLog={() => setDiaryEditor({ entry: null })} /></FastSheet>}
+      {drill === "ladder" && <FastSheet title="Драбина протоколів" onClose={() => setDrill(null)}><ProtocolLadder goals={goals} diary={diary} onSaveGoals={saveGoals} onSet={(id) => { saveGoals({ protocol: id, protocolSince: dateKey(Date.now()), stepUpDismissed: null }); flash(`Протокол: ${getProtocol(id).label}`); setDrill(null); }} /></FastSheet>}
+      {drill === "diary" && <FastSheet title="Щоденник" onClose={() => setDrill(null)}><FastDiary diary={diary} onNew={() => setDiaryEditor({ entry: null })} onEdit={(e) => setDiaryEditor({ entry: e })} onDelete={deleteEntry} /></FastSheet>}
+      {drill === "overview" && <FastSheet title="Прогрес у часі" onClose={() => setDrill(null)}><FastOverview goals={goals} diary={diary} onSaveGoals={saveGoals} /></FastSheet>}
+
       {diaryEditor && <DiaryForm entry={diaryEditor.entry} defaultProtocol={goals.protocol} onClose={() => setDiaryEditor(null)} onSave={(e) => saveEntry(e, diaryEditor.entry?.id)} />}
-      {toast && <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2 text-sm text-white shadow-lg">{toast}</div>}
+      {toast && <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full bg-[#2a211c] px-4 py-2 text-sm text-white shadow-lg lg:bottom-6">{toast}</div>}
     </div>
   );
 }
 
-/* ---------- Live timer ---------- */
-function FastRing({ pct, size = 240, stroke = 16, color = "#f97316", children }) {
-  const r = (size - stroke) / 2, c = 2 * Math.PI * r, off = c * (1 - Math.max(0, Math.min(1, pct)));
+/* Підекран поверх стрічки: повні редактори (план, драбина, щоденник, графіки)
+   лишились ті самі — просто відкриваються звідси, а не з підтабів. */
+function FastSheet({ title, onClose, children }) {
   return (
-    <div className="relative" style={{ width: size, height: size }}>
-      <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#fdead1" strokeWidth={stroke} />
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" style={{ transition: "stroke-dashoffset 1s linear" }} />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">{children}</div>
+    <div className="fixed inset-0 z-[55] overflow-y-auto bg-[#f6ede3]" style={FBODY}>
+      <header className="sticky top-0 z-10 border-b border-[#efe1d2] bg-[#f6ede3]/90 backdrop-blur">
+        <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
+          <button onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full bg-white text-[#6b5c52] shadow-sm transition hover:text-[#2a211c]"><ArrowLeft className="h-4 w-4" /></button>
+          <span className="text-base font-extrabold text-[#2a211c]">{title}</span>
+          <button onClick={onClose} className="ml-auto rounded-full px-3 py-1.5 text-xs font-bold text-[#a2938a] hover:text-[#6b5c52]">Готово</button>
+        </div>
+      </header>
+      <div className="mx-auto w-full max-w-3xl px-4 pb-24 pt-4">{children}</div>
     </div>
   );
 }
-function FastTimer({ current, eating, now, protocol, onStart, onEnd, onSetStart, onChangeProtocol }) {
-  const [editing, setEditing] = useState(false);
-  const [startPick, setStartPick] = useState(false);
-  const [customStart, setCustomStart] = useState("");
+
+/* ---------- Hero: доба однією смугою ---------- */
+function FastHero({ current, eating, now, protocol, streak, stagesOpen, onToggleStages, onEnd, onStart, onChangeProtocol, editStart, onToggleEditStart, onSetStart, startPick, customStart, setCustomStart, onManualStart, onStartCustom, onCancelPick }) {
+  const p = current ? getProtocol(current.protocol) : protocol;
+  const targetH = current ? current.targetHrs : p.hrs;
   const elapsedMs = current ? now - current.startTs : 0;
   const elapsedH = elapsedMs / 3600000;
-  const targetH = current ? current.targetHrs : protocol.hrs;
-  const pct = current ? elapsedMs / (targetH * 3600000) : 0;
+  const leftMs = current ? Math.max(0, targetH * 3600000 - elapsedMs) : 0;
+  const pct = current ? Math.max(0, Math.min(1, elapsedMs / (targetH * 3600000))) : 0;
   const stage = stageForHours(elapsedH);
-  const projEnd = current ? new Date(current.startTs + targetH * 3600000) : null;
-  const startDate = current ? new Date(current.startTs) : null;
-  const p = current ? getProtocol(current.protocol) : protocol;
 
-  // eating window (only meaningful when no fast is running)
   const eatingActive = !current && !!eating;
   const eatEndTs = eatingActive ? eating.startTs + eating.windowHrs * 3600000 : 0;
   const eatLeftMs = eatingActive ? Math.max(0, eatEndTs - now) : 0;
   const eatOver = eatingActive && eatLeftMs <= 0;
-  const eatPct = eatingActive ? Math.max(0, Math.min(1, (now - eating.startTs) / (eating.windowHrs * 3600000))) : 0;
-  const eatEndLabel = eatingActive ? new Date(eatEndTs).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : "";
+
+  const hhmm = (ts) => new Date(ts).toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
+  const windowOpensAt = current ? hhmm(current.startTs + targetH * 3600000) : eatingActive ? hhmm(eatEndTs) : null;
+
+  // смуга доби: голодування + вікно їжі; маркер «зараз» повзе по всій смузі
+  const bandFast = targetH, bandEat = p.window || 0;
+  const bandTotal = bandFast + bandEat || 24;
+  const markerPct = current
+    ? Math.min(100, (elapsedH / bandTotal) * 100)
+    : eatingActive ? Math.min(100, ((bandFast + (now - eating.startTs) / 3600000) / bandTotal) * 100) : 0;
+
+  const title = current ? "Голодування триває" : eatingActive ? (eatOver ? "Вікно їжі закрилось" : "Вікно їжі відкрите") : "Готова почати";
+  const bigMs = current ? elapsedMs : eatingActive ? eatLeftMs : 0;
+  const bigH = Math.floor(bigMs / 3600000), bigM = Math.floor((bigMs % 3600000) / 60000);
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="rounded-full px-3 py-1 text-sm font-bold text-white" style={{ backgroundColor: protocolColor(p.level) }}>{p.label}</span>
-        <button onClick={onChangeProtocol} className="rounded-full bg-white px-3 py-1 text-sm font-medium text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50">змінити</button>
-      </div>
-
-      <FastRing
-        pct={current ? pct : eatingActive ? eatPct : 0}
-        color={current ? stage.color : eatingActive ? (eatOver ? "#f97316" : "#22c55e") : "#fb923c"}
-      >
-        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">{current ? "Голодування" : eatingActive ? (eatOver ? "Вікно закрите" : "Вікно їжі") : "Готова почати"}</div>
-        <div className="text-4xl font-extrabold tabular-nums text-slate-900">{current ? fmtHMS(elapsedMs) : eatingActive ? fmtHM(eatLeftMs) : fmtHM(elapsedMs)}</div>
-        <div className="mt-1 text-sm text-slate-400">
-          {current ? `ціль ${targetH} год · ${(pct * 100).toFixed(1)}%` : eatingActive ? (eatOver ? "час починати голодування" : `їж до ${eatEndLabel}`) : `ціль ${targetH} год`}
-        </div>
-      </FastRing>
-
-      {eatingActive && (
-        <div className={`mt-4 rounded-xl px-4 py-2 text-center text-sm font-medium ${eatOver ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"}`}>
-          {eatOver
-            ? "Вікно їжі закінчилось — час починати наступне голодування 💪"
-            : `Вікно їжі відкрите ще ${fmtHM(eatLeftMs)} · закриється о ${eatEndLabel} 🍽️`}
-        </div>
-      )}
-
-      {current ? (
-        <>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm text-slate-500">
-            <span>Старт: {startDate.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-            <span className="text-slate-300">·</span>
-            <span>Ціль: {projEnd.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-            <button onClick={() => setEditing((v) => !v)} className="text-orange-500 hover:text-orange-600"><Pencil className="h-3.5 w-3.5" /></button>
+    <section className="rounded-[28px] bg-[#fffdfa] p-5 shadow-[0_10px_30px_-18px_rgba(42,33,28,.25)]">
+      <div className="grid gap-5 sm:grid-cols-[1fr_minmax(0,300px)]">
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-[.14em] text-[#c9a789]">{title}</div>
+          <div style={FNUM} className="mt-1 text-5xl font-black leading-none tabular-nums text-[#2a211c]">
+            {bigH}<FUnit className="text-2xl font-extrabold text-[#a2938a]">г</FUnit> {bigM}<FUnit className="text-2xl font-extrabold text-[#a2938a]">хв</FUnit>
           </div>
-          {editing && (
-            <div className="mt-2 flex items-center gap-2 rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-amber-100">
-              <span className="text-xs text-slate-500">Час старту</span>
-              <input type="datetime-local" value={toLocalInput(current.startTs)} onChange={(e) => { const t = new Date(e.target.value).getTime(); if (!isNaN(t)) onSetStart(t); }} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" />
-            </div>
-          )}
-          <button onClick={onEnd} className="mt-6 rounded-2xl bg-slate-800 px-10 py-3.5 font-bold text-white shadow-lg transition hover:bg-slate-900">Завершити голодування</button>
-        </>
-      ) : (
-        <>
-          <button onClick={() => onStart(startPick && customStart ? new Date(customStart).getTime() : undefined)} className="mt-6 rounded-2xl bg-orange-500 px-12 py-3.5 font-bold text-white shadow-lg shadow-orange-500/25 transition hover:bg-orange-600">Почати голодування</button>
-          {!startPick ? (
-            <button onClick={() => { setStartPick(true); setCustomStart(toLocalInput(Date.now())); }} className="mt-3 text-sm font-medium text-orange-500 hover:text-orange-600">Почала раніше? Вказати час старту</button>
-          ) : (
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 rounded-xl bg-white px-3 py-2 shadow-sm ring-1 ring-amber-100">
-              <span className="text-xs text-slate-500">Старт о</span>
-              <input type="datetime-local" max={toLocalInput(Date.now())} value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1 text-sm" />
-              <button onClick={() => setStartPick(false)} className="text-xs font-medium text-slate-400 hover:text-slate-600">зараз</button>
-            </div>
-          )}
-        </>
-      )}
+          <p className="mt-2 text-sm leading-relaxed text-[#6b5c52]">
+            {current ? <>Лишилось <b className="text-[#d97a52]">{fmtHM(leftMs)}</b> — і о {windowOpensAt} відкриється вікно їжі 🍽️</>
+              : eatingActive ? (eatOver ? "Вікно зачинилось — можна починати наступне голодування 💪" : <>Вікно зачиниться о <b className="text-[#3fae8c]">{windowOpensAt}</b>. Почни з білка й овочів.</>)
+                : <>Протокол {p.label} — {p.hrs} год без їжі, потім вікно {p.window} год.</>}
+          </p>
 
-      {/* stage timeline */}
-      <div className="mt-8 w-full">
-        <div className="mb-2 text-sm font-semibold text-slate-600">Що відбувається в тілі</div>
-        <div className="space-y-2">
-          {FAST_STAGES.map((s) => {
-            const active = current && elapsedH >= s.from && elapsedH < s.to;
-            const past = current && elapsedH >= s.to;
-            const label = s.to >= 999 ? `${s.from}+ год` : `${s.from}–${s.to} год`;
-            return (
-              <div key={s.title} className={`flex items-center gap-3 rounded-2xl border p-3 transition ${active ? "border-transparent shadow-md" : "border-slate-100 bg-white"}`} style={active ? { backgroundColor: s.color + "18", borderColor: s.color } : {}}>
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-white" style={{ backgroundColor: past ? "#cbd5e1" : s.color }}>{past ? <Check className="h-4 w-4" /> : <span className="text-[11px] font-bold">{s.from}</span>}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2"><span className="font-bold text-slate-800">{s.title}</span><span className="text-[11px] font-medium text-slate-400">{label}</span>{active && <span className="rounded-full bg-white/70 px-2 text-[10px] font-bold" style={{ color: s.color }}>зараз</span>}</div>
-                  <div className="text-xs text-slate-500">{s.desc}</div>
-                </div>
-              </div>
-            );
-          })}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {current ? (
+              <>
+                <button onClick={onEnd} className="rounded-full bg-[#d97a52] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#e05e33]">Завершити зараз</button>
+                <button onClick={onToggleEditStart} className="inline-flex items-center gap-1.5 rounded-full bg-[#fff2ea] px-4 py-2.5 text-sm font-bold text-[#6b5c52] transition hover:bg-[#ffefe6]"><Clock className="h-3.5 w-3.5" /> Старт {hhmm(current.startTs)}</button>
+              </>
+            ) : (
+              <button onClick={onStart} className="rounded-full bg-[#d97a52] px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#e05e33]">Почати голодування</button>
+            )}
+            <button onClick={onChangeProtocol} className="inline-flex items-center gap-1.5 rounded-full bg-[#f0ecfb] px-4 py-2.5 text-sm font-bold text-[#5b4b8a] transition hover:bg-[#e6dff8]"><TrendingUp className="h-3.5 w-3.5" /> {p.label}</button>
+          </div>
+
+          {current && editStart && (
+            <div className="mt-2 inline-flex items-center gap-2 rounded-2xl bg-[#fff5ef] px-3 py-2">
+              <span className="text-xs text-[#a2938a]">Час старту</span>
+              <input type="datetime-local" value={toLocalInput(current.startTs)} onChange={(e) => { const t = new Date(e.target.value).getTime(); if (!isNaN(t)) onSetStart(t); }} className="rounded-lg border border-[#e6d5c4] bg-white px-2 py-1 text-sm" />
+            </div>
+          )}
+          {!current && (startPick ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-2xl bg-[#fff5ef] px-3 py-2">
+              <span className="text-xs text-[#a2938a]">Старт о</span>
+              <input type="datetime-local" max={toLocalInput(Date.now())} value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="rounded-lg border border-[#e6d5c4] bg-white px-2 py-1 text-sm" />
+              <button onClick={onStartCustom} className="rounded-full bg-[#d97a52] px-3 py-1 text-xs font-bold text-white">Почати</button>
+              <button onClick={onCancelPick} className="text-xs font-semibold text-[#a2938a] hover:text-[#6b5c52]">скасувати</button>
+            </div>
+          ) : (
+            <button onClick={onManualStart} className="mt-2 text-xs font-bold text-[#d97a52] hover:text-[#e05e33]">Почала раніше? Вказати час старту</button>
+          ))}
         </div>
-        <p className="mt-3 text-center text-[11px] text-slate-400">Орієнтовні етапи для розуміння процесу — не медичні твердження. Час індивідуальний.</p>
+
+        {/* день однією смугою */}
+        <div className="rounded-[22px] bg-[#fff8f2] p-4">
+          <div className="text-[10px] font-bold uppercase tracking-[.16em] text-[#c9a789]">Твоя доба</div>
+          <div className="relative mt-2 flex h-9 overflow-hidden rounded-full">
+            <div className="grid place-items-center bg-[#ffc9a8] text-[10px] font-bold text-[#8a4a2a]" style={{ width: `${(bandFast / bandTotal) * 100}%` }}>{bandFast} год без їжі</div>
+            {bandEat > 0 && <div className="grid place-items-center bg-[#a9e4cd] text-[10px] font-bold text-[#1f6b57]" style={{ width: `${(bandEat / bandTotal) * 100}%` }}>{bandEat} год</div>}
+            {(current || eatingActive) && (
+              <div className="absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-white bg-[#d97a52] shadow-sm" style={{ left: `${markerPct}%` }}>
+                <span className="absolute inset-0 animate-ping rounded-full bg-[#d97a52]/40" />
+              </div>
+            )}
+          </div>
+          <div className="mt-1.5 flex justify-between text-[10px] text-[#a2938a]">
+            <span>{current ? hhmm(current.startTs) : "старт"}</span>
+            <span className="font-bold text-[#d97a52]">зараз {hhmm(now)}</span>
+            <span>{windowOpensAt || "—"}</span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            {[
+              [current ? `${Math.round(pct * 100)}%` : eatingActive ? fmtHM(eatLeftMs) : "—", current ? "до цілі дня" : "лишилось вікна"],
+              [windowOpensAt || "—", current ? "вікно їжі" : "зачиниться"],
+              [String(streak), streak === 1 ? "день поспіль" : "дні поспіль"],
+            ].map(([v, l]) => (
+              <div key={l} className="rounded-2xl bg-white px-1 py-2">
+                <div style={FNUM} className="text-lg font-black tabular-nums text-[#d97a52]">{v}</div>
+                <div className="text-[10px] leading-tight text-[#a2938a]">{l}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-    </div>
+
+      {/* що зараз у тілі */}
+      <div className="mt-4 border-t border-[#f3e7db] pt-3">
+        <button onClick={onToggleStages} className="flex w-full items-center gap-2 text-left">
+          <span className="text-sm font-bold text-[#2a211c]">Що зараз відбувається в тілі</span>
+          <span className="hidden text-[11px] text-[#a2938a] sm:inline">орієнтовно, не медичне твердження</span>
+          <ChevronDown className={`ml-auto h-4 w-4 text-[#c9a789] transition ${stagesOpen ? "rotate-180" : ""}`} />
+        </button>
+        {stagesOpen && (
+          <>
+            <div className="mt-2 grid grid-cols-3 gap-1.5 sm:grid-cols-5">
+              {FAST_STAGES.map((s) => {
+                const active = !!current && elapsedH >= s.from && elapsedH < s.to;
+                const past = !!current && elapsedH >= s.to;
+                return (
+                  <div key={s.title} className="min-w-0 rounded-2xl px-1.5 py-2 text-center transition" style={{ backgroundColor: active ? FAST_STAGE_TINT[s.title] : past ? "#f7efe6" : "#fbf6f0" }}>
+                    <div className="text-[9px] font-bold text-[#a2938a]">{s.to >= 999 ? `${s.from}+` : `${s.from}–${s.to}`} год</div>
+                    <div className={`mt-0.5 break-words text-[11px] font-bold leading-tight ${active ? "text-[#2a211c]" : "text-[#6b5c52]"}`}>{s.title}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {current && (
+              <div className="mt-2 flex items-start gap-2 rounded-2xl px-3 py-2" style={{ backgroundColor: FAST_STAGE_TINT[stage.title] }}>
+                <span className="text-lg">🔥</span>
+                <div><div className="text-xs font-bold text-[#2a211c]">{stage.title} · {stage.to >= 999 ? `${stage.from}+` : `${stage.from}–${stage.to}`} год</div><div className="text-xs leading-relaxed text-[#6b5c52]">{stage.desc}</div></div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </section>
   );
 }
+// теплі відповідники кольорів етапів із редизайну (жовтий → лавандовий)
+const FAST_STAGE_TINT = {
+  "Ситість": "#fdf1d8", "Цукор спадає": "#ffe4d3", "Перехід на жир": "#fdf3d5",
+  "Спалювання жиру": "#e4f0fa", "Глибша автофагія": "#efe9fb",
+};
+
+/* ---------- Тиждень ---------- */
+function FastWeekRow({ week }) {
+  const done = week.filter((d) => d.met).length;
+  const withHrs = week.filter((d) => d.hrs > 0);
+  const avg = withHrs.length ? Math.round((withHrs.reduce((s, d) => s + d.hrs, 0) / withHrs.length) * 10) / 10 : 0;
+  const max = Math.max(24, ...week.map((d) => d.hrs));
+  return (
+    <section className="rounded-[24px] bg-[#fffdfa] p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-extrabold text-[#d97a52]">Тиждень</span>
+        <span className="text-[11px] text-[#a2938a]">{done} з 7 днів у цілі{avg ? ` · середнє ${avg} год` : ""}</span>
+      </div>
+      <div className="mt-3 flex items-end gap-1.5">
+        {week.map((d) => (
+          <div key={d.ds} className="flex flex-1 flex-col items-center gap-1">
+            <div className="flex h-16 w-full items-end rounded-xl bg-[#fbf3ea]">
+              <div className="w-full rounded-xl transition-all" style={{ height: `${Math.max(d.hrs ? 8 : 0, (d.hrs / max) * 100)}%`, backgroundColor: d.met ? "#a9e4cd" : d.hrs ? "#ffc9a8" : "transparent" }} title={d.hrs ? `${d.hrs} год` : "без запису"} />
+            </div>
+            <span className="text-[10px] font-semibold text-[#a2938a]">{d.label}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ---------- Трійка карток прогресу ---------- */
+function FastWeightCard({ diary, metrics, onOpen }) {
+  const weighed = diarySorted(diary).filter((r) => r.weight != null).slice(-7);
+  const pts = weighed.length > 1 ? (() => {
+    const ws = weighed.map((r) => r.weight);
+    const min = Math.min(...ws), max = Math.max(...ws), span = max - min || 1;
+    return weighed.map((r, i) => `${(i / (weighed.length - 1)) * 96 + 2},${34 - ((r.weight - min) / span) * 28}`).join(" ");
+  })() : null;
+  return (
+    <button onClick={onOpen} className="rounded-[24px] bg-[#fffdfa] p-4 text-left transition hover:shadow-sm">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-extrabold text-[#d97a52]">Вага</span>
+        {metrics.weightChange != null && <span className={`text-[11px] font-bold ${metrics.weightChange <= 0 ? "text-[#2d8a6e]" : "text-[#b07d16]"}`}>{metrics.weightChange > 0 ? "+" : ""}{metrics.weightChange} кг</span>}
+      </div>
+      <div style={FNUM} className="mt-1 text-3xl font-black tabular-nums text-[#2a211c]">{metrics.currentWeight ?? "—"} <FUnit className="text-sm font-bold text-[#a2938a]">кг</FUnit></div>
+      {pts ? (
+        <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="mt-2 h-10 w-full"><polyline fill="none" stroke="#ff9d6e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" points={pts} vectorEffect="non-scaling-stroke" /></svg>
+      ) : <div className="mt-2 h-10 rounded-xl bg-[#fbf3ea]" />}
+      <div className="mt-1 text-[10px] text-[#a2938a]">{weighed.length ? `останні ${weighed.length} записів` : "запиши вагу в щоденнику"}</div>
+    </button>
+  );
+}
+
+function FastPlanCard({ goals, metrics, plan, onOpen }) {
+  const start = goals.startWeight, target = goals.targetWeight, cur = metrics.currentWeight;
+  const ready = start != null && target != null && start > target;
+  const total = ready ? start - target : 0;
+  const lost = (ready && cur != null) ? Math.round((start - cur) * 10) / 10 : 0;
+  const pct = total > 0 ? Math.max(0, Math.min(1, lost / total)) : 0;
+  // нове: скільки днів до цілі при поточному темпі плану
+  const perWeek = plan.ok ? plan.perWeek : (ready ? total / ((goals.planMonths || 12) * 4.345) : 0);
+  const remaining = metrics.remaining;
+  const days = (perWeek > 0 && remaining != null && remaining > 0) ? Math.round(remaining / (perWeek / 7)) : null;
+  return (
+    <button onClick={onOpen} className="rounded-[24px] bg-[#eafaf4] p-4 text-left transition hover:shadow-sm">
+      <span className="text-sm font-extrabold text-[#2d8a6e]">План</span>
+      {ready ? (
+        <>
+          <div style={FNUM} className="mt-1 text-2xl font-black tabular-nums text-[#1f6b57]">−{Math.round(total)} <FUnit className="text-sm font-bold text-[#2d8a6e]">кг / {goals.planMonths || 12} міс</FUnit></div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#d3f0e4]"><div className="h-full rounded-full bg-[#3fae8c] transition-all" style={{ width: `${pct * 100}%` }} /></div>
+          <div className="mt-1.5 text-[11px] text-[#2d8a6e]">{Math.round(pct * 100)}% пройдено · скинуто {lost} кг</div>
+          {days != null && (
+            <div className="mt-2 rounded-2xl bg-white/70 px-2.5 py-1.5">
+              <div style={FNUM} className="text-sm font-black text-[#1f6b57]">≈{days} <FUnit className="text-[11px] font-bold">дні до цілі</FUnit></div>
+              {plan.ok && <div className="text-[10px] text-[#2d8a6e]">при {plan.kcal} ккал/день</div>}
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="mt-1 text-xs leading-relaxed text-[#2d8a6e]">Впиши стартову й цільову вагу — і тут зʼявиться темп, відсоток і скільки днів лишилось. Тисни, щоб заповнити.</p>
+      )}
+    </button>
+  );
+}
+
+function FastLadderCard({ goals, diary, onOpen }) {
+  const cur = getProtocol(goals.protocol);
+  const next = PROTOCOLS.find((p) => p.level === cur.level + 1);
+  const stepUpDays = goals.stepUpDays || 14;
+  const since = goals.protocolSince || goals.startDate || dateKey(Date.now());
+  const daysDone = new Set(diary.filter((r) => r.protocol === goals.protocol && r.goalMet && r.date >= since).map((r) => r.date)).size;
+  const left = Math.max(0, stepUpDays - daysDone);
+  return (
+    <button onClick={onOpen} className="rounded-[24px] bg-[#f0ecfb] p-4 text-left transition hover:shadow-sm">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-extrabold text-[#5b4b8a]">Драбина</span>
+        <span className="text-[11px] text-[#5b4b8a]/70">{daysDone} / {stepUpDays} днів</span>
+      </div>
+      <div style={FNUM} className="mt-1 text-2xl font-black text-[#3f3168]">{cur.label}</div>
+      <div className="mt-2 flex items-end gap-1">
+        {PROTOCOLS.map((p) => (
+          <div key={p.id} className="flex-1 rounded-t-md" style={{ height: `${8 + p.level * 3}px`, backgroundColor: p.level < cur.level ? "#c9bcee" : p.level === cur.level ? "#8b74d1" : "#ded4f5" }} />
+        ))}
+      </div>
+      <p className="mt-2 text-[11px] leading-relaxed text-[#5b4b8a]">
+        {next ? (left > 0 ? `Ще ~${left} дн на цьому рівні — і можна спробувати ${next.label}. Без поспіху.` : `Рівень освоєно — можна пробувати ${next.label}, коли відчуєш готовність 💛`) : "Найвищий щабель. Лишайся на комфортному рівні 💛"}
+      </p>
+    </button>
+  );
+}
+
+/* ---------- Норма дня + тренування з Fitness ---------- */
+function FastKcalCard({ plan, goals, workout, onGo, onOpenPlan }) {
+  if (!plan.ok) {
+    return (
+      <button onClick={onOpenPlan} className="block w-full rounded-[24px] bg-[#fffdfa] p-4 text-left">
+        <div className="text-sm font-extrabold text-[#d97a52]">Норма дня</div>
+        <p className="mt-1 text-xs leading-relaxed text-[#6b5c52]">Щоб порахувати калорії й БЖУ, треба вага, ціль, зріст, вік і стать. Тисни — заповнимо за хвилину.</p>
+      </button>
+    );
+  }
+  const water = plan.weightKg ? Math.round((plan.weightKg * 33) / 100) / 10 : null;
+  const macros = [
+    ["Білки", `${plan.protein} г`, "#c2506b", "#fdeaee"],
+    ["Жири", `${plan.fat} г`, "#b07d16", "#fdf4dd"],
+    ["Вуглеводи", `${plan.carbs} г`, "#2f7a94", "#e6f3fa"],
+    ["Вода", water != null ? `${water} л` : "—", "#3f6bb0", "#eaeffc"],
+  ];
+  return (
+    <section className="space-y-2">
+      <div className="rounded-[24px] bg-[#fffdfa] p-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="text-sm font-extrabold text-[#d97a52]">Норма дня</div>
+            <div className="text-[11px] text-[#a2938a]">щоб втрачати ≈{plan.perWeek.toFixed(2)} кг/тиждень</div>
+          </div>
+          <div style={FNUM} className="text-3xl font-black tabular-nums text-[#d97a52]">{plan.kcal} <FUnit className="text-sm font-bold text-[#a2938a]">ккал</FUnit></div>
+        </div>
+        <div className="mt-3 grid grid-cols-4 gap-2">
+          {macros.map(([l, v, fg, bg]) => (
+            <div key={l} className="rounded-2xl px-2 py-2 text-center" style={{ backgroundColor: bg }}>
+              <div className="text-[10px] font-semibold" style={{ color: fg }}>{l}</div>
+              <div className="text-sm font-black tabular-nums" style={{ ...FNUM, color: fg }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button onClick={() => onGo && onGo("nutrition")} className="rounded-full bg-[#fff2ea] px-3 py-1.5 text-xs font-bold text-[#d97a52] transition hover:bg-[#ffefe6]">Харчування →</button>
+          <button onClick={onOpenPlan} className="rounded-full px-3 py-1.5 text-xs font-bold text-[#a2938a] transition hover:text-[#6b5c52]">калькулятор і кроки ⌄</button>
+        </div>
+      </div>
+
+      <button onClick={() => onGo && onGo("fitness")} className="flex w-full items-center gap-3 rounded-[22px] bg-[#fff5ef] px-4 py-3 text-left transition hover:bg-[#ffefe6]">
+        <span className="text-lg">🏋️</span>
+        <div className="min-w-0 flex-1 text-xs leading-relaxed text-[#6b5c52]">
+          {workout.count > 0 ? (
+            <><b className="text-[#2a211c]">{workout.count} {workout.count === 1 ? "тренування" : "тренувань"} цього тижня з Fitness</b> — спалено ≈{workout.kcal} ккал</>
+          ) : (
+            <><b className="text-[#2a211c]">Цього тижня тренувань ще не було</b> — кожне трохи зменшує потрібний дефіцит з тарілки</>
+          )}
+        </div>
+        {workout.perDay > 0 && <span className="shrink-0 rounded-full bg-[#eafaf4] px-2.5 py-1 text-[11px] font-bold text-[#1f6b57]">−{workout.perDay} ккал/день</span>}
+      </button>
+    </section>
+  );
+}
+
+/* ---------- Щоденник: тап настрою + останні записи ---------- */
+function FastDiaryCard({ diary, onTapMood, onOpenAll, onEdit, onNew }) {
+  const rows = diarySorted(diary).reverse().slice(0, 3);
+  const today = dateKey(Date.now());
+  const todayRow = [...diary].reverse().find((r) => r.date === today);
+  const lastWeight = diarySorted(diary).filter((r) => r.weight != null).slice(-1)[0];
+  return (
+    <section className="rounded-[24px] bg-[#fffdfa] p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm font-extrabold text-[#d97a52]">Щоденник</span>
+        <button onClick={onOpenAll} className="text-[11px] font-bold text-[#a2938a] hover:text-[#6b5c52]">Всі {diary.length} записів →</button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-[#fbf6f0] px-3 py-2">
+        <span className="text-xs text-[#6b5c52]">Як почуваєшся сьогодні?</span>
+        <div className="flex gap-1">
+          {FAST_MOODS.map(([emoji, val]) => (
+            <button key={val} onClick={() => onTapMood(val)} title={`енергія ${val} з 5`}
+              className={`grid h-8 w-8 place-items-center rounded-full text-base transition ${todayRow?.energy === val ? "bg-[#ffc9a8]" : "bg-white hover:bg-[#fff2ea]"}`}>{emoji}</button>
+          ))}
+        </div>
+        {lastWeight && <span className="ml-auto inline-flex items-center gap-1 text-xs text-[#a2938a]"><Scale className="h-3.5 w-3.5" /> {lastWeight.weight} кг</span>}
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="mt-3 text-xs text-[#a2938a]">Записів ще немає — заверши голодування, і рядок зʼявиться сам.</p>
+      ) : (
+        <div className="mt-2 space-y-1">
+          {rows.map((r) => (
+            <button key={r.id} onClick={() => onEdit(r)} className="flex w-full items-center gap-2 rounded-2xl px-2 py-2 text-left transition hover:bg-[#fbf6f0]">
+              <span className="w-12 shrink-0 text-[11px] font-bold text-[#a2938a]">{WD_UA[new Date(r.date + "T00:00:00").getDay()]} {r.date.slice(5)}</span>
+              <span className="shrink-0 rounded-full bg-[#f0ecfb] px-2 py-0.5 text-[10px] font-bold text-[#5b4b8a]">{getProtocol(r.protocol).label}</span>
+              <span style={FNUM} className="shrink-0 text-sm font-black tabular-nums text-[#2a211c]">{r.actualHrs ?? "—"}<FUnit className="text-[11px] font-bold text-[#a2938a]"> год</FUnit></span>
+              {r.notes && <span className="min-w-0 flex-1 truncate text-[11px] text-[#a2938a]">{r.notes}</span>}
+              <span className="ml-auto shrink-0 text-xs">{r.goalMet ? "✓" : "·"}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <button onClick={onNew} className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-[#d97a52] hover:text-[#e05e33]"><Plus className="h-3.5 w-3.5" /> Записати вручну</button>
+    </section>
+  );
+}
+
+/* ---------- Знання: три згорнуті рядки замість окремої вкладки ---------- */
+function FastKnowledge({ open, onToggle }) {
+  const okIcon = { yes: "✅", warn: "⚠️", no: "❌" };
+  const okBg = { yes: "#eafaf4", warn: "#fdf4dd", no: "#fdeaee" };
+  return (
+    <section className="space-y-2">
+      <div className="px-1 text-sm font-extrabold text-[#d97a52]">Знання</div>
+      {FAST_KNOWLEDGE.map((k) => (
+        <div key={k.id} className="overflow-hidden rounded-[22px] bg-[#fffdfa]">
+          <button onClick={() => onToggle(k.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+            <span className="text-lg">{k.e}</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-bold text-[#2a211c]">{k.title}</div>
+              <div className="text-[11px] text-[#a2938a]">{k.sub}</div>
+            </div>
+            <ChevronDown className={`h-4 w-4 shrink-0 text-[#c9a789] transition ${open === k.id ? "rotate-180" : ""}`} />
+          </button>
+          {open === k.id && (
+            <div className="border-t border-[#f3e7db] px-4 py-3">
+              {k.id === "drinks" && (
+                <div className="space-y-1.5">
+                  {DRINKS.map((d, i) => (
+                    <div key={i} className="flex items-start gap-2 rounded-xl px-3 py-2" style={{ backgroundColor: okBg[d.ok] }}>
+                      <span>{okIcon[d.ok]}</span>
+                      <div><div className="text-sm font-semibold text-[#2a211c]">{d.t}</div><div className="text-xs text-[#6b5c52]">{d.c}</div></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {k.id === "tips" && (
+                <div className="space-y-2">
+                  {TIPS.map(([t, e], i) => (
+                    <div key={i} className="flex gap-3">
+                      <span style={FNUM} className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#fff0e6] text-sm font-black text-[#d97a52]">{i + 1}</span>
+                      <div><div className="text-sm font-semibold text-[#2a211c]">{t}</div><div className="text-xs text-[#6b5c52]">{e}</div></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {k.id === "safety" && (
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-bold text-[#c2506b]"><ShieldAlert className="h-4 w-4" /> Кому не можна (або лише під наглядом лікаря)</div>
+                    <ul className="mt-1 space-y-1">{NO_FAST.map((x, i) => <li key={i} className="flex gap-2 text-sm text-[#6b5c52]"><span className="text-[#c2506b]">•</span>{x}</li>)}</ul>
+                  </div>
+                  <div className="overflow-hidden rounded-xl">
+                    <div className="grid grid-cols-2 bg-[#fdeaee] px-3 py-1.5 text-xs font-bold text-[#c2506b]"><span>Симптом</span><span>Що робити</span></div>
+                    {SIDE_FX.map(([s, w], i) => <div key={i} className={`grid grid-cols-2 gap-2 px-3 py-2 text-sm ${i % 2 ? "bg-white" : "bg-[#fdf7f4]"}`}><span className="font-semibold text-[#2a211c]">{s}</span><span className="text-[#6b5c52]">{w}</span></div>)}
+                  </div>
+                  <p className="rounded-xl bg-[#c2506b] px-3 py-2 text-sm font-semibold text-white">❗ Негайно припини голодування і звернись по допомогу при: сильній слабкості, плутанині свідомості, серцебитті, непритомності.</p>
+                  <p className="text-xs text-[#a2938a]">Це освітній матеріал за книгами д-ра Дж. Фанга, не медична порада. Перед голодуванням порадься з лікарем.</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/* ---------- Перший запуск ---------- */
+function FastFirstRun({ goals, protocol, onPick, onStart, onManualStart, startPick, customStart, setCustomStart, onStartCustom, onGoPlan, onGoLadder, openK, setOpenK, knowledgeRef }) {
+  const steps = [
+    { n: 1, title: "Обери протокол", sub: `Зараз ${protocol.label} — можна змінити будь-коли`, done: !!goals.protocolSince, go: onGoLadder },
+    { n: 2, title: "Впиши вагу й ціль", sub: "щоб зʼявився план і графік", done: goals.startWeight != null && goals.targetWeight != null, go: onGoPlan },
+    { n: 3, title: "Додай зріст, вік і стать", sub: "щоб порахувати калорії та БЖУ", done: goals.heightCm != null && goals.age != null, go: onGoPlan },
+  ];
+  return (
+    <>
+      <section className="rounded-[28px] bg-[#fffdfa] p-6 text-center shadow-[0_10px_30px_-18px_rgba(42,33,28,.25)]">
+        <div className="text-4xl">🌱</div>
+        <h1 className="mt-2 text-xl font-extrabold text-[#2a211c]">Почнемо з мʼякого</h1>
+        <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-[#6b5c52]">16:8 — просто пропускаєш сніданок і їси з 12:00 до 20:00. Один фаст, і я почну вести твою статистику.</p>
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          {PROTOCOLS.slice(0, 3).map((p) => (
+            <button key={p.id} onClick={() => onPick(p.id)} className={`rounded-full px-4 py-2 text-sm font-bold transition ${goals.protocol === p.id ? "bg-[#d97a52] text-white" : "bg-[#fff2ea] text-[#6b5c52] hover:bg-[#ffefe6]"}`}>
+              {p.label}{goals.protocol === p.id ? " — моє" : ""}
+            </button>
+          ))}
+        </div>
+        <button onClick={onStart} className="mt-5 w-full rounded-2xl bg-[#d97a52] py-3.5 font-bold text-white shadow-sm transition hover:bg-[#e05e33] sm:w-auto sm:px-12">Почати перше голодування</button>
+        {startPick ? (
+          <div className="mt-3 inline-flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-[#fff5ef] px-3 py-2">
+            <span className="text-xs text-[#a2938a]">Старт о</span>
+            <input type="datetime-local" max={toLocalInput(Date.now())} value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="rounded-lg border border-[#e6d5c4] bg-white px-2 py-1 text-sm" />
+            <button onClick={onStartCustom} className="rounded-full bg-[#d97a52] px-3 py-1 text-xs font-bold text-white">Почати</button>
+          </div>
+        ) : (
+          <button onClick={onManualStart} className="mt-3 block w-full text-xs font-bold text-[#d97a52] hover:text-[#e05e33]">Почала раніше? Вказати час старту</button>
+        )}
+      </section>
+
+      <section className="rounded-[24px] bg-[#fffdfa] p-4">
+        <div className="text-sm font-extrabold text-[#d97a52]">Три кроки, щоб усе працювало</div>
+        <div className="mt-2 space-y-1">
+          {steps.map((s) => (
+            <button key={s.n} onClick={s.go} className="flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition hover:bg-[#fbf6f0]">
+              <span style={FNUM} className={`grid h-7 w-7 shrink-0 place-items-center rounded-full text-sm font-black ${s.done ? "bg-[#eafaf4] text-[#1f6b57]" : "bg-[#fff0e6] text-[#d97a52]"}`}>{s.done ? "✓" : s.n}</span>
+              <div className="min-w-0 flex-1"><div className="text-sm font-bold text-[#2a211c]">{s.title}</div><div className="text-[11px] text-[#a2938a]">{s.sub}</div></div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-[#c9a789]" />
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-[24px] bg-[#f0ecfb] p-4">
+        <div className="text-sm font-extrabold text-[#5b4b8a]">Драбина протоколів</div>
+        <p className="mt-1 text-xs leading-relaxed text-[#5b4b8a]">8 щаблів від 16:8 до тривалих фастів. Піднімаєшся лише коли поточний дається легко — сталість важливіша за інтенсивність.</p>
+        <div className="mt-3 flex items-end gap-1">
+          {PROTOCOLS.map((p) => <div key={p.id} className="flex-1 rounded-t-md" style={{ height: `${8 + p.level * 3}px`, backgroundColor: p.id === goals.protocol ? "#8b74d1" : "#ded4f5" }} />)}
+        </div>
+        <button onClick={onGoLadder} className="mt-3 text-xs font-bold text-[#5b4b8a] hover:text-[#3f3168]">Подивитись усі щаблі →</button>
+      </section>
+
+      <div ref={knowledgeRef} className="scroll-mt-16" />
+      <FastKnowledge open={openK} onToggle={(id) => setOpenK((v) => (v === id ? null : id))} />
+    </>
+  );
+}
+
 function toLocalInput(ts) { const d = new Date(ts - new Date().getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); }
 
 /* ---------- Protocol ladder ---------- */
@@ -12172,7 +12656,7 @@ function ProtocolLadder({ goals, diary, onSet, onSaveGoals }) {
 /* ---------- Overview: goals + metrics + charts ---------- */
 /* Цілі КБЖУ з плану схуднення (вкладка Fasting) — одна функція на два місця:
    план їх показує, а Харчування бере як денні норми, щоб не вводити те саме двічі. */
-function fastingPlanTargets(goals, diary) {
+function fastingPlanTargets(goals, diary, fitLog) {
   const g = goals || {};
   const weighed = (diary || []).filter((r) => r.weight != null).sort((a, b) => a.date.localeCompare(b.date));
   const currentW = weighed.length ? weighed[weighed.length - 1].weight : g.startWeight;
@@ -12186,17 +12670,20 @@ function fastingPlanTargets(goals, diary) {
   const bmr = Math.round(10 * w + 6.25 * h - 5 * age + (sex === "m" ? 5 : -161));
   const tdee = Math.round(bmr * (g.activity || 1.375));
   const dailyDeficit = Math.round((perWeek * 7700) / 7);
+  // Тренування з Fitness частину дефіциту вже закривають — з тарілки лишається добрати решту.
+  const workout = fastWorkoutWeek(fitLog, w);
+  const dietDeficit = Math.max(0, dailyDeficit - workout.perDay);
   const floorKcal = sex === "m" ? 1500 : 1200;
-  const kcal = Math.max(floorKcal, tdee - dailyDeficit);
+  const kcal = Math.max(floorKcal, tdee - dietDeficit);
   const refW = g.targetWeight || w;
   const protein = Math.round(1.8 * refW);
   const fat = Math.max(40, Math.round(0.8 * refW));
   const carbs = Math.max(30, Math.round((kcal - protein * 4 - fat * 9) / 4));
-  return { ok: true, kcal, protein, fat, carbs, bmr, tdee, dailyDeficit, perWeek, weightKg: w, sex, age };
+  return { ok: true, kcal, protein, fat, carbs, bmr, tdee, dailyDeficit, dietDeficit, workout, perWeek, weightKg: w, sex, age };
 }
 
 /* ---------- Fasting: gradual weight-loss plan ---------- */
-function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
+function FastPlan({ goals, diary, fitLog, onSaveGoals, onGoLog }) {
   const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
   const months = goals.planMonths || 12;
   // "Місяців" тримає свій текст, поки друкуєш — обмеження 3…24 застосовується аж коли вийдеш з поля.
@@ -12236,6 +12723,8 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
     if (milestones.length) milestones[milestones.length - 1].w = targetW;
   }
   const paceOk = perWeek > 0 && perWeek <= 1;
+  const remainingKg = (ready && currentW != null) ? Math.round((currentW - targetW) * 10) / 10 : null;
+  const daysToGoal = (perWeek > 0 && remainingKg != null && remainingKg > 0) ? Math.round(remainingKg / (perWeek / 7)) : null;
 
   // ---- КБЖУ + activity calculator (Mifflin-St Jeor BMR → TDEE → deficit) ----
   const h = goals.heightCm, age = goals.age, sex = goals.sex || "f";
@@ -12245,8 +12734,11 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
   const bmr = canKcal ? Math.round(10 * w + 6.25 * h - 5 * age + (sex === "m" ? 5 : -161)) : null;
   const tdee = bmr != null ? Math.round(bmr * activity) : null;
   const dailyDeficit = ready ? Math.round((perWeek * 7700) / 7) : 0; // 1 кг жиру ≈ 7700 ккал
+  // Тренування з Fitness за останній тиждень частину дефіциту вже покривають.
+  const workout = fastWorkoutWeek(fitLog, w);
+  const dietDeficit = Math.max(0, dailyDeficit - workout.perDay);
   const floorKcal = sex === "m" ? 1500 : 1200;
-  const rawTarget = tdee != null ? tdee - dailyDeficit : null;
+  const rawTarget = tdee != null ? tdee - dietDeficit : null;
   const kcalTarget = rawTarget != null ? Math.max(floorKcal, rawTarget) : null;
   const belowFloor = rawTarget != null && rawTarget < floorKcal;
   const refW = targetW || w; // білок/жир рахуємо від цільової ваги
@@ -12332,10 +12824,11 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
             <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">BMR ≈ {bmr}</span>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">Витрата ≈ {tdee}</span>
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">Дефіцит −{dailyDeficit}</span>
+            <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">Дефіцит −{dailyDeficit}{workout.perDay > 0 ? ` (з тарілки −${dietDeficit})` : ""}</span>
             <span className="rounded-full bg-sky-50 px-2.5 py-1 font-semibold text-sky-700">💧 вода ≈ {waterL} л</span>
           </div>
           {belowFloor && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">⚠️ Для такого темпу калорій вийшло б менше безпечного мінімуму ({floorKcal} ккал), тож я підняла до {floorKcal}. Щоб не голодувати — краще розтягнути план на більше місяців (втрата буде трохи повільніша, але здоровіша).</p>}
+          {workout.perDay > 0 && <p className="mt-3 rounded-xl bg-orange-50 px-3 py-2 text-[11px] leading-relaxed text-orange-800">🏋️ {workout.count} {workout.count === 1 ? "тренування" : "тренувань"} цього тижня з Fitness — ≈{workout.kcal} ккал спалено, тож з тарілки лишається добрати лише −{dietDeficit} ккал/день замість −{dailyDeficit}.</p>}
           <p className="mt-2 text-[11px] leading-relaxed text-slate-400">Білок високий, щоб зберегти м'язи; решта калорій — вуглеводи й жири. Овочі та клітковина — понад норму, їх не рахуємо жорстко.</p>
         </div>
       ) : ready ? (
@@ -12407,7 +12900,10 @@ function FastPlan({ goals, diary, onSaveGoals, onGoLog }) {
         <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
           <div className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">Зараз {currentW} кг · скинуто {lostSoFar} кг з {totalLoss}</span>{delta != null && <span className={`font-bold ${delta <= 0.5 ? "text-green-600" : "text-amber-600"}`}>{delta <= 0.5 ? "у графіку ✓" : `+${delta} кг до плану`}</span>}</div>
           <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-orange-50"><div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-red-400 transition-all" style={{ width: `${pctDone * 100}%` }} /></div>
-          <button onClick={onGoLog} className="mt-2 text-xs font-semibold text-orange-600">+ записати вагу сьогодні</button>
+          <div className="mt-2 flex items-center justify-between">
+            <button onClick={onGoLog} className="text-xs font-semibold text-orange-600">+ записати вагу сьогодні</button>
+            {daysToGoal != null && <span className="text-xs text-slate-500">≈<b className="text-slate-700">{daysToGoal}</b> дні до цілі{canKcal ? ` при ${kcalTarget} ккал/день` : ""}</span>}
+          </div>
         </div>
       )}
 
@@ -12661,47 +13157,6 @@ const SIDE_FX = [
   ["Дратівливість («hangry»)", "Зазвичай минає з адаптацією за 2–4 тижні."],
   ["Запор", "Більше клітковини й води у вікні їжі."],
 ];
-function FastReference() {
-  const okIcon = { yes: "✅", warn: "⚠️", no: "❌" };
-  const okColor = { yes: "bg-green-50", warn: "bg-amber-50", no: "bg-red-50" };
-  return (
-    <div className="space-y-5">
-      <h1 className="text-xl font-extrabold text-slate-900">Довідник</h1>
-
-      {/* SAFETY — prominent, first */}
-      <div className="rounded-2xl border-2 border-red-200 bg-red-50/60 p-4">
-        <div className="mb-2 flex items-center gap-2 text-red-700"><ShieldAlert className="h-5 w-5" /><h2 className="font-bold">Застереження та безпека</h2></div>
-        <div className="text-sm font-semibold text-slate-700">Кому НЕ можна голодувати (або лише під наглядом лікаря):</div>
-        <ul className="mt-1 space-y-1">{NO_FAST.map((x, i) => <li key={i} className="flex gap-2 text-sm text-slate-600"><span className="text-red-400">•</span>{x}</li>)}</ul>
-        <div className="mt-4 overflow-hidden rounded-xl ring-1 ring-red-100">
-          <div className="grid grid-cols-2 bg-red-100/70 px-3 py-1.5 text-xs font-bold text-red-700"><span>Симптом</span><span>Що робити</span></div>
-          {SIDE_FX.map(([s, w], i) => <div key={i} className={`grid grid-cols-2 gap-2 px-3 py-2 text-sm ${i % 2 ? "bg-white" : "bg-red-50/40"}`}><span className="font-semibold text-slate-700">{s}</span><span className="text-slate-600">{w}</span></div>)}
-        </div>
-        <p className="mt-3 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white">❗ Негайно припини голодування і звернись по допомогу при: сильній слабкості, плутанині свідомості, серцебитті, непритомності.</p>
-        <p className="mt-2 text-xs text-slate-500">Це освітній матеріал за книгами д-ра Дж. Фанга, не медична порада. Перед голодуванням порадься з лікарем.</p>
-      </div>
-
-      {/* Drinks */}
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
-        <div className="mb-2 flex items-center gap-2 text-slate-700"><GlassWater className="h-5 w-5 text-sky-500" /><h2 className="font-bold">Що можна пити під час голодування</h2></div>
-        <div className="space-y-1.5">{DRINKS.map((d, i) => (
-          <div key={i} className={`flex items-start gap-2 rounded-xl px-3 py-2 ${okColor[d.ok]}`}>
-            <span>{okIcon[d.ok]}</span><div><div className="text-sm font-semibold text-slate-800">{d.t}</div><div className="text-xs text-slate-500">{d.c}</div></div>
-          </div>
-        ))}</div>
-      </div>
-
-      {/* Tips */}
-      <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-amber-100">
-        <div className="mb-2 flex items-center gap-2 text-slate-700"><Coffee className="h-5 w-5 text-amber-600" /><h2 className="font-bold">10 порад Фанга, як витримати голодування</h2></div>
-        <div className="space-y-2">{TIPS.map(([t, e], i) => (
-          <div key={i} className="flex gap-3"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-amber-100 text-sm font-bold text-amber-700">{i + 1}</span><div><div className="text-sm font-semibold text-slate-800">{t}</div><div className="text-xs text-slate-500">{e}</div></div></div>
-        ))}</div>
-      </div>
-    </div>
-  );
-}
-
 /* ================================================================== */
 /* MANAGEMENT — "Manage It!" book notes reader                        */
 /* ================================================================== */
