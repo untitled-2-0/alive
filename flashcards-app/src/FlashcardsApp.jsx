@@ -8160,6 +8160,13 @@ function CalmSection({ name, onRename }) {
 
 
 /* ---------- Decatastrophizing journal ---------- */
+// «Чи буду я ок через тиждень/місяць/рік» зберігається як мапа прапорців —
+// у перегляді запису показуємо її списком, інакше відповідь просто зникає.
+function okList(ok) {
+  if (!ok) return "";
+  return [["week", "тиждень"], ["month", "місяць"], ["year", "рік"]].filter(([k]) => ok[k]).map(([, l]) => l).join(", ");
+}
+
 function DecatJournal({ entries = [], onExit, onSave, onDelete }) {
   const startRef = useRef(Date.now());
   const empty = {
@@ -8280,7 +8287,7 @@ function DecatJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {[["Чи траплялось раніше", e.happenedBefore], ["Як часто буває насправді", e.frequency], ["Найгірший сценарій", e.worst && `${e.worst}${e.worstChance !== "" ? ` (шанс ${e.worstChance}%)` : ""}`], ["Найкращий сценарій", e.best], ["Найімовірніший сценарій", e.likely && `${e.likely}${e.likelyChance !== "" ? ` (шанс ${e.likelyChance}%)` : ""}`], ["Як впораюсь", e.cope], ["Слова подруги", e.friend], ["Що хочу почути", e.reassure], ["Як почуваюся тепер", e.after]]
+                    {[["Що турбує", e.worry], ["Наскільки жахливим здавалось", e.awfulBefore !== "" ? `${e.awfulBefore}%` : ""], ["Чи траплялось раніше", e.happenedBefore], ["Як часто буває насправді", e.frequency], ["Найгірший сценарій", e.worst && `${e.worst}${e.worstChance !== "" ? ` (шанс ${e.worstChance}%)` : ""}`], ["Буду ок після найгіршого через", okList(e.worstOk)], ["Найкращий сценарій", e.best], ["Найімовірніший сценарій", e.likely && `${e.likely}${e.likelyChance !== "" ? ` (шанс ${e.likelyChance}%)` : ""}`], ["Буду ок після ймовірного через", okList(e.likelyOk)], ["Як впораюсь", e.cope], ["Слова подруги", e.friend], ["Що хочу почути", e.reassure], ["Як почуваюся тепер", e.after], ["Наскільки жахливим здається тепер", e.awfulAfter !== "" ? `${e.awfulAfter}%` : ""]]
                       .filter(([, v]) => v && String(v).trim())
                       .map(([lbl, v]) => (
                         <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
@@ -8387,7 +8394,7 @@ function InnerRulesJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {[["Порушення", e.infraction], ["Звідки правило", e.origin], ["Допомагає", e.pros], ["Шкодить", e.cons], ["Нова версія правила", e.newRule]]
+                    {[["Правило", e.rule], ["Порушення", e.infraction], ["Звідки правило", e.origin], ["Допомагає", e.pros], ["Шкодить", e.cons], ["Вердикт", verdictLabel(e.verdict)], ["Нова версія правила", e.newRule]]
                       .filter(([, v]) => v && String(v).trim())
                       .map(([lbl, v]) => (
                         <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
@@ -8555,6 +8562,7 @@ function DibsJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {e.belief && <div><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Переконання</span><div className="whitespace-pre-wrap">{e.belief}</div></div>}
                     {(e.slots || []).map((s, i) => (
                       <div key={i}>
                         {s.q && <div className="text-xs font-semibold text-amber-600">{s.q}</div>}
@@ -8663,7 +8671,7 @@ function DtrJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {[["Ситуація", e.situation], ["Емоції", e.emotion && `${e.emotion}${e.intensityBefore !== "" ? ` (${e.intensityBefore}%${e.intensityAfter !== "" ? ` → ${e.intensityAfter}%` : ""})` : ""}`], ["Альтернативна думка", e.alternative], ["Що вийшло", e.outcome]]
+                    {[["Ситуація", e.situation], ["Автоматична думка", e.thought && `${e.thought}${e.beliefBefore !== "" ? ` (віра ${e.beliefBefore}%${e.beliefAfter !== "" ? ` → ${e.beliefAfter}%` : ""})` : ""}`], ["Емоції", e.emotion && `${e.emotion}${e.intensityBefore !== "" ? ` (${e.intensityBefore}%${e.intensityAfter !== "" ? ` → ${e.intensityAfter}%` : ""})` : ""}`], ["Спотворення", e.distortion], ["Альтернативна думка", e.alternative], ["Що вийшло", e.outcome]]
                       .filter(([, v]) => v && String(v).trim())
                       .map(([lbl, v]) => (
                         <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
@@ -8906,7 +8914,7 @@ function RuminationJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {[["Пора дня", e.timeOfDay], ["Місце", e.place], ["Заняття", e.activity]]
+                    {[["Думка", e.thought], ["Пора дня", e.timeOfDay], ["Місце", e.place], ["Заняття", e.activity]]
                       .filter(([, v]) => v && v.trim())
                       .map(([lbl, v]) => (
                         <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
@@ -9059,6 +9067,7 @@ function IfThenJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                    {e.scenario && <div><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ситуація</span><div className="whitespace-pre-wrap">{e.scenario}</div></div>}
                     {(e.pairs || []).map((s, i) => (
                       <div key={i} className="rounded-xl bg-slate-50 p-2">
                         <div><span className="font-bold text-indigo-600">Якщо</span> {s.cond}</div>
@@ -9129,7 +9138,7 @@ function ProblemSolvingJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {[["Мета", e.goal], ["Що пробувала", e.tried], ["Що вийшло", e.outcome]]
+                    {[["Проблема", e.problem], ["Мета", e.goal], ["Що пробувала", e.tried], ["Що вийшло", e.outcome]]
                       .filter(([, v]) => v && v.trim())
                       .map(([lbl, v]) => (
                         <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
@@ -9202,7 +9211,7 @@ function FactsJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {[["Хто", e.who], ["Де", e.where], ["Коли", e.when], ["Чому", e.why], ["Моя реакція", e.response]]
+                    {[["Що сталося", e.what], ["Хто", e.who], ["Де", e.where], ["Коли", e.when], ["Чому", e.why], ["Моя реакція", e.response]]
                       .filter(([, v]) => v && v.trim())
                       .map(([lbl, v]) => (
                         <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
@@ -9291,7 +9300,7 @@ function ImageryExposureJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {[["Думки і пориви", e.observe], ["Почуття", e.feelings], ["Як воно минало", e.sitNotes]]
+                    {[["Спогад або образ", e.memory], ["Дистрес до", e.distressBefore !== "" ? `${e.distressBefore}%` : ""], ["Думки і пориви", e.observe], ["Почуття", e.feelings], ["Як воно минало", e.sitNotes], ["Дистрес після", e.distressAfter !== "" ? `${e.distressAfter}%` : ""]]
                       .filter(([, v]) => v && v.trim())
                       .map(([lbl, v]) => (
                         <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
@@ -9387,7 +9396,11 @@ function InteroExposureJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {e.notes && <div className="whitespace-pre-wrap">{e.notes}</div>}
+                    {[["Вправа", e.exercise], ["Тривога", e.anxiety !== "" ? `${e.anxiety}%` : ""], ["Нотатки", e.notes]]
+                      .filter(([, v]) => v && String(v).trim())
+                      .map(([lbl, v]) => (
+                        <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                      ))}
                     <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
                   </div>
                 )}
@@ -9456,7 +9469,7 @@ function EventVisJournal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {[["Місце", e.place], ["Звуки", e.sounds], ["Люди", e.people], ["Хід події", e.playthrough], ["Успіх", e.success]]
+                    {[["Подія", e.event], ["Місце", e.place], ["Звуки", e.sounds], ["Люди", e.people], ["Хід події", e.playthrough], ["Успіх", e.success]]
                       .filter(([, v]) => v && v.trim())
                       .map(([lbl, v]) => (
                         <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
@@ -9621,7 +9634,7 @@ function Eval9Journal({ entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {[["Ситуація", e.situation], ["Емоція", e.emotion && `${e.emotion}${e.emotionPct !== "" ? ` (${e.emotionPct}%${e.reEmotionPct !== "" ? ` → ${e.reEmotionPct}%` : ""})` : ""}`], ["Докази за", e.evFor], ["Докази проти", e.evAgainst], ["Альтернатива", e.alternative && `${e.alternative}${e.altPct !== "" ? ` (віра ${e.altPct}%)` : ""}`], ["Що далі", e.next]]
+                    {[["Ситуація", e.situation], ["Думка", e.thought && `${e.thought}${e.beliefPct !== "" ? ` (віра ${e.beliefPct}%${e.reBeliefPct !== "" ? ` → ${e.reBeliefPct}%` : ""})` : ""}`], ["Емоція", e.emotion && `${e.emotion}${e.emotionPct !== "" ? ` (${e.emotionPct}%${e.reEmotionPct !== "" ? ` → ${e.reEmotionPct}%` : ""})` : ""}`], ["Докази за", e.evFor], ["Докази проти", e.evAgainst], ["Альтернатива", e.alternative && `${e.alternative}${e.altPct !== "" ? ` (віра ${e.altPct}%)` : ""}`], ["Що далі", e.next]]
                       .filter(([, v]) => v && String(v).trim())
                       .map(([lbl, v]) => (
                         <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
@@ -9707,7 +9720,7 @@ function SimpleJournal({ spec, entries = [], onExit, onSave, onDelete }) {
                 </button>
                 {openId === e.id && (
                   <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
-                    {spec.fields.filter((fl) => fl.k !== spec.titleKey && e[fl.k] && String(e[fl.k]).trim())
+                    {spec.fields.filter((fl) => e[fl.k] && String(e[fl.k]).trim())
                       .map((fl) => (
                         <div key={fl.k}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{fl.label}</span><div className="whitespace-pre-wrap">{e[fl.k]}{fl.type === "pct" ? "%" : ""}</div></div>
                       ))}
@@ -9794,7 +9807,15 @@ function FocusPlanJournal({ entries = [], onExit, onSave, onDelete }) {
         <button onClick={save} disabled={!f.task.trim()} className="w-full rounded-2xl bg-teal-700 py-3 font-bold text-white shadow-lg transition hover:bg-teal-800 disabled:opacity-40">Зберегти план</button>
       </div>
 
-      {entries.length > 0 && <div className="mt-6"><div className="mb-2 text-sm font-bold text-slate-600">Мої плани</div><div className="space-y-2">{entries.map((e) => <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100"><button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left"><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-700">{e.task}</span><span className="text-xs text-slate-400">{e.date}</span></span><ChevronDown className={`h-4 w-4 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} /></button>{openId === e.id && <div className="mt-3 border-t border-slate-100 pt-3 text-sm text-slate-600"><div className="space-y-1">{(e.parts || []).filter((x) => x.task).map((x, i) => <div key={i}>{i + 1}. {x.task}{x.time ? ` — ${x.time}` : ""}</div>)}</div>{e.outcome && <p className="mt-3 whitespace-pre-wrap"><b>Результат:</b> {e.outcome}</p>}<button onClick={() => onDelete(e.id)} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-rose-400"><Trash2 className="h-3.5 w-3.5" /> Видалити план</button></div>}</div>)}</div></div>}
+      {entries.length > 0 && <div className="mt-6"><div className="mb-2 text-sm font-bold text-slate-600">Мої плани</div><div className="space-y-2">{entries.map((e) => <div key={e.id} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-slate-100"><button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left"><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-slate-700">{e.task}</span><span className="text-xs text-slate-400">{e.date}</span></span><ChevronDown className={`h-4 w-4 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} /></button>{openId === e.id && <div className="mt-3 space-y-3 border-t border-slate-100 pt-3 text-sm text-slate-600">
+                  <div><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Завдання</span><div className="whitespace-pre-wrap">{e.task}</div></div>
+                  {(e.parts || []).some((x) => x.task) && <div><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Частини завдання</span><div className="space-y-1">{(e.parts || []).filter((x) => x.task).map((x, i) => <div key={i}>{i + 1}. {x.task}{x.time ? ` — ${x.time}` : ""}</div>)}</div></div>}
+                  {(e.schedule || []).some((x) => x.when || x.reminder) && <div><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Розклад</span><div className="space-y-1">{(e.schedule || []).filter((x) => x.when || x.reminder).map((x, i) => <div key={i}>{x.when}{x.reminder ? ` · нагадування: ${x.reminder}` : ""}</div>)}</div></div>}
+                  {[["Прибрати відволікання", e.distractions], ["План на неминучі відволікання", e.unavoidable], ["Матеріали й усе необхідне", e.materials], ["Фізична підготовка", e.physical], ["Результат", e.outcome]]
+                    .filter(([, v]) => v && String(v).trim())
+                    .map(([lbl, v]) => <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>)}
+                  <button onClick={() => onDelete(e.id)} className="inline-flex items-center gap-1 text-xs font-semibold text-rose-400"><Trash2 className="h-3.5 w-3.5" /> Видалити план</button>
+                </div>}</div>)}</div></div>}
     </div>
   );
 }
@@ -9819,10 +9840,26 @@ function AdhdTipsView({ checked = [], onExit, onChange }) {
 function ProductiveWorryJournal({ entries = [], onExit, onSave, onDelete }) {
   const empty = () => Array.from({ length: 5 }, () => ({ worry: "", next: "" }));
   const [rows, setRows] = useState(empty);
+  const [openId, setOpenId] = useState(null);
   const startRef = useRef(Date.now());
   const update = (i, k, v) => setRows((p) => p.map((r, n) => n === i ? { ...r, [k]: v } : r));
   const save = () => { const filled = rows.filter((r) => r.worry.trim() || r.next.trim()); if (!filled.length) return; onSave({ id: ruid("pw"), date: dateKey(Date.now()), ts: Date.now(), rows: filled }, (Date.now() - startRef.current) / 1000); setRows(empty()); startRef.current = Date.now(); };
-  return <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6"><CalmHeader title="Продуктивне хвилювання" onExit={onExit} /><div className="mb-5 space-y-2 text-sm leading-relaxed text-slate-500"><p>Хвилювання часто схоже на бігову доріжку: думки біжать, але нікуди не приводять.</p><p>Запиши найважливіші хвилювання. Для кожного визнач <b className="text-slate-700">лише один наступний крок і коли ти його зробиш</b> — не намагайся розв’язати всю проблему одразу. Потім дозволь собі відкласти хвилювання до часу дії.</p></div><div className="space-y-3">{rows.map((r, i) => <div key={i} className="overflow-hidden rounded-2xl border-2 border-indigo-200 bg-white shadow-sm"><div className="grid grid-cols-[7rem_1fr] border-b border-indigo-200"><label className="bg-indigo-700 px-3 py-3 text-sm font-bold text-white">Хвилювання</label><textarea value={r.worry} onChange={(e) => update(i, "worry", e.target.value)} rows={2} placeholder="Що зараз найбільше непокоїть?" className="resize-none px-3 py-3 text-sm outline-none" /></div><div className="grid grid-cols-[7rem_1fr]"><label className="bg-indigo-50 px-3 py-3 text-sm font-bold text-indigo-800">Наступний крок</label><textarea value={r.next} onChange={(e) => update(i, "next", e.target.value)} rows={2} placeholder="Що конкретно зроблю і коли?" className="resize-none px-3 py-3 text-sm outline-none" /></div></div>)}</div><button onClick={save} disabled={!rows.some((r) => r.worry.trim() || r.next.trim())} className="mt-4 w-full rounded-2xl bg-indigo-700 py-3 font-bold text-white shadow-lg disabled:opacity-40">Зберегти</button>{entries.length > 0 && <div className="mt-6"><div className="mb-2 text-sm font-bold text-slate-600">Мої записи</div>{entries.map((e) => <div key={e.id} className="mb-2 rounded-2xl bg-white p-3 text-sm shadow-sm ring-1 ring-slate-100"><div className="flex items-center justify-between"><b className="text-slate-700">{e.rows?.[0]?.worry || "Хвилювання"}</b><button onClick={() => onDelete(e.id)} className="text-rose-400"><Trash2 className="h-4 w-4" /></button></div><div className="mt-1 text-xs text-slate-400">{e.date} · {e.rows?.length || 0} пунктів</div></div>)}</div>}</div>;
+  return <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-6"><CalmHeader title="Продуктивне хвилювання" onExit={onExit} /><div className="mb-5 space-y-2 text-sm leading-relaxed text-slate-500"><p>Хвилювання часто схоже на бігову доріжку: думки біжать, але нікуди не приводять.</p><p>Запиши найважливіші хвилювання. Для кожного визнач <b className="text-slate-700">лише один наступний крок і коли ти його зробиш</b> — не намагайся розв’язати всю проблему одразу. Потім дозволь собі відкласти хвилювання до часу дії.</p></div><div className="space-y-3">{rows.map((r, i) => <div key={i} className="overflow-hidden rounded-2xl border-2 border-indigo-200 bg-white shadow-sm"><div className="grid grid-cols-[7rem_1fr] border-b border-indigo-200"><label className="bg-indigo-700 px-3 py-3 text-sm font-bold text-white">Хвилювання</label><textarea value={r.worry} onChange={(e) => update(i, "worry", e.target.value)} rows={2} placeholder="Що зараз найбільше непокоїть?" className="resize-none px-3 py-3 text-sm outline-none" /></div><div className="grid grid-cols-[7rem_1fr]"><label className="bg-indigo-50 px-3 py-3 text-sm font-bold text-indigo-800">Наступний крок</label><textarea value={r.next} onChange={(e) => update(i, "next", e.target.value)} rows={2} placeholder="Що конкретно зроблю і коли?" className="resize-none px-3 py-3 text-sm outline-none" /></div></div>)}</div><button onClick={save} disabled={!rows.some((r) => r.worry.trim() || r.next.trim())} className="mt-4 w-full rounded-2xl bg-indigo-700 py-3 font-bold text-white shadow-lg disabled:opacity-40">Зберегти</button>{entries.length > 0 && <div className="mt-6"><div className="mb-2 text-sm font-bold text-slate-600">Мої записи</div>{entries.map((e) => <div key={e.id} className="mb-2 rounded-2xl bg-white p-3 text-sm shadow-sm ring-1 ring-slate-100">
+      <button onClick={() => setOpenId(openId === e.id ? null : e.id)} className="flex w-full items-center gap-2 text-left">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-semibold text-slate-700">{e.rows?.[0]?.worry || "Хвилювання"}</span>
+          <span className="text-xs text-slate-400">{e.date} · {e.rows?.length || 0} пунктів</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-300 transition ${openId === e.id ? "rotate-180" : ""}`} />
+      </button>
+      {openId === e.id && <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-slate-600">
+        {(e.rows || []).map((r, i) => <div key={i} className="rounded-xl bg-slate-50 p-2">
+          <div><span className="text-xs font-semibold uppercase tracking-wide text-indigo-500">Хвилювання</span><div className="whitespace-pre-wrap">{r.worry}</div></div>
+          {r.next && <div className="mt-1"><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Наступний крок</span><div className="whitespace-pre-wrap">{r.next}</div></div>}
+        </div>)}
+        <button onClick={() => onDelete(e.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-rose-400 hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /> Видалити запис</button>
+      </div>}
+    </div>)}</div>}</div>;
 }
 
 function AvoidanceCycleView({ onExit, onGo }) {
@@ -11405,6 +11442,7 @@ function ThoughtGuide() {
 
 function ThoughtRecord({ thoughts, onExit, onSave, onDelete }) {
   const [open, setOpen] = useState(false);
+  const [openId, setOpenId] = useState(null);
   const [f, setF] = useState({ situation: "", thought: "", emotion: "", intensity: 60, forEv: "", against: "", balanced: "" });
   const [guideOpen, setGuideOpen] = useState(false);
   const startRef = useRef(Date.now());
@@ -11451,8 +11489,22 @@ function ThoughtRecord({ thoughts, onExit, onSave, onDelete }) {
           {thoughts.map((t) => (
             <div key={t.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-pink-50">
               <div className="mb-1 flex items-center justify-between"><span className="text-xs font-medium text-slate-400">{t.date}{t.emotion ? ` · ${t.emotion} ${t.intensity}%` : ""}</span><button onClick={() => onDelete(t.id)} className="text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button></div>
-              {t.thought && <div className="font-semibold text-slate-800">“{t.thought}”</div>}
-              {t.balanced && <div className="mt-1 rounded-lg bg-pink-50 px-3 py-2 text-sm text-pink-800">↪ {t.balanced}</div>}
+              <button onClick={() => setOpenId(openId === t.id ? null : t.id)} className="flex w-full items-start gap-2 text-left">
+                <span className="min-w-0 flex-1">
+                  {t.thought && <span className="block font-semibold text-slate-800">“{t.thought}”</span>}
+                  {t.balanced && <span className="mt-1 block rounded-lg bg-pink-50 px-3 py-2 text-sm text-pink-800">↪ {t.balanced}</span>}
+                </span>
+                <ChevronDown className={`mt-1 h-4 w-4 shrink-0 text-slate-300 transition ${openId === t.id ? "rotate-180" : ""}`} />
+              </button>
+              {openId === t.id && (
+                <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 text-sm text-slate-600">
+                  {[["Ситуація", t.situation], ["Автоматична думка", t.thought], ["Емоція", t.emotion && `${t.emotion} · ${t.intensity}%`], ["Докази за", t.forEv], ["Докази проти", t.against], ["Врівноважена думка", t.balanced]]
+                    .filter(([, v]) => v && String(v).trim())
+                    .map(([lbl, v]) => (
+                      <div key={lbl}><span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{lbl}</span><div className="whitespace-pre-wrap">{v}</div></div>
+                    ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
