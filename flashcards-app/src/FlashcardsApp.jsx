@@ -22,6 +22,7 @@ import {
   Wrench, Star, Users, Sparkles as SparklesIcon, Scale as ScaleIcon, ArrowLeftRight, Home,
   HandHeart, ShoppingCart, Wallet, ShoppingBasket, Search,
   Package, Lock, HelpCircle, Stethoscope, TestTube2, Minus, ChevronUp,
+  Move, PartyPopper, Hand, Gift,
 } from "lucide-react";
 import lottie from "lottie-web";
 import {
@@ -57,16 +58,16 @@ const dateKey = (ms) => {
 const clampEF = (ef) => Math.max(1.3, ef);
 
 function formatDelta(ms) {
-  if (ms <= 0) return "now";
+  if (ms <= 0) return "зараз";
   if (ms < DAY) {
     const m = Math.round(ms / MIN);
-    if (m < 60) return `${m}m`;
-    return `${Math.round(m / 60)}h`;
+    if (m < 60) return `${m}хв`;
+    return `${Math.round(m / 60)}г`;
   }
   const days = Math.round(ms / DAY);
-  if (days < 30) return `${days}d`;
-  if (days < 365) return `${Math.round(days / 30)}mo`;
-  return `${(days / 365).toFixed(1)}y`;
+  if (days < 30) return `${days}д`;
+  if (days < 365) return `${Math.round(days / 30)}міс`;
+  return `${(days / 365).toFixed(1)}р`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -174,60 +175,70 @@ function cardScheduleText(card, now = Date.now()) {
 /* ------------------------------------------------------------------ */
 // Ordered stages from short (hot) to long (cool). `max` is in days.
 const INTERVAL_STAGES = [
-  { id: "learning", label: "Learning", max: 0, dot: "#e11d48", bg: "bg-red-100", text: "text-red-700" },
-  { id: "1d", label: "1 day", max: 1, dot: "#f97316", bg: "bg-orange-100", text: "text-orange-700" },
-  { id: "3d", label: "3 days", max: 3, dot: "#f59e0b", bg: "bg-amber-100", text: "text-amber-700" },
-  { id: "1w", label: "1 week", max: 7, dot: "#eab308", bg: "bg-yellow-100", text: "text-yellow-700" },
-  { id: "2w", label: "2 weeks", max: 14, dot: "#84cc16", bg: "bg-lime-100", text: "text-lime-700" },
-  { id: "1mo", label: "1 month", max: 30, dot: "#22c55e", bg: "bg-green-100", text: "text-green-700" },
-  { id: "3mo", label: "3 months", max: 90, dot: "#14b8a6", bg: "bg-teal-100", text: "text-teal-700" },
-  { id: "long", label: "Long-term", max: Infinity, dot: "#2563eb", bg: "bg-blue-100", text: "text-blue-700" },
+  { id: "learning", label: "Вчу", max: 0, dot: "#e11d48", bg: "bg-red-100", text: "text-red-700" },
+  { id: "1d", label: "1 день", max: 1, dot: "#f97316", bg: "bg-orange-100", text: "text-orange-700" },
+  { id: "3d", label: "3 дні", max: 3, dot: "#f59e0b", bg: "bg-amber-100", text: "text-amber-700" },
+  { id: "1w", label: "1 тиждень", max: 7, dot: "#eab308", bg: "bg-yellow-100", text: "text-yellow-700" },
+  { id: "2w", label: "2 тижні", max: 14, dot: "#84cc16", bg: "bg-lime-100", text: "text-lime-700" },
+  { id: "1mo", label: "1 місяць", max: 30, dot: "#22c55e", bg: "bg-green-100", text: "text-green-700" },
+  { id: "3mo", label: "3 місяці", max: 90, dot: "#14b8a6", bg: "bg-teal-100", text: "text-teal-700" },
+  { id: "long", label: "Надовго", max: Infinity, dot: "#2563eb", bg: "bg-blue-100", text: "text-blue-700" },
 ];
 
 function stageForCard(card) {
-  if (card.state === "new") return { id: "new", label: "New", max: 0, dot: "#94a3b8", bg: "bg-slate-100", text: "text-slate-600" };
+  if (card.state === "new") return { id: "new", label: "Нове", max: 0, dot: "#94a3b8", bg: "bg-slate-100", text: "text-slate-600" };
   if (card.state === "learning") return INTERVAL_STAGES[0];
   const d = card.interval || 0;
   for (const s of INTERVAL_STAGES) if (d <= s.max) return s;
   return INTERVAL_STAGES[INTERVAL_STAGES.length - 1];
 }
 
-// human label for a card's interval, e.g. "3d", "2w", "Learning"
+// human label for a card's interval, e.g. "3д", "2т", "Вчу"
 function intervalLabel(card) {
-  if (card.state === "new") return "New";
-  if (card.state === "learning") return "Learning";
+  if (card.state === "new") return "Нове";
+  if (card.state === "learning") return "Вчу";
   return formatDelta((card.interval || 1) * DAY);
 }
 
-// "in 3d", "tomorrow", "today", "2h" — relative next-due
+// "через 3д", "завтра", "зараз", "2г" — relative next-due
 function dueLabel(card, now = Date.now()) {
   const diff = card.due - now;
-  if (diff <= 0) return "due now";
+  if (diff <= 0) return "зараз";
   if (diff < DAY) {
     const h = Math.round(diff / (60 * MIN));
-    return h <= 1 ? "< 1h" : `in ${h}h`;
+    return h <= 1 ? "< 1г" : `через ${h}г`;
   }
   const days = Math.round(diff / DAY);
-  if (days === 1) return "tomorrow";
-  if (days < 30) return `in ${days}d`;
-  if (days < 365) return `in ${Math.round(days / 30)}mo`;
-  return `in ${(days / 365).toFixed(1)}y`;
+  if (days === 1) return "завтра";
+  if (days < 30) return `через ${days}д`;
+  if (days < 365) return `через ${Math.round(days / 30)}міс`;
+  return `через ${(days / 365).toFixed(1)}р`;
 }
 
 const SCHED_GOALS = {
-  longterm: { id: "longterm", label: "Long-term retention", short: "Long-term", icon: Layers3, desc: "Standard SM-2 — intervals grow into months and years." },
-  deadline: { id: "deadline", label: "Short-term / deadline", short: "Deadline", icon: CalendarClock, desc: "Compress intervals to fit before a target date, cycling each card several times." },
+  longterm: { id: "longterm", label: "Довготривале запамʼятовування", short: "Надовго", icon: Layers3, desc: "Стандартний SM-2 — інтервали ростуть до місяців і років." },
+  deadline: { id: "deadline", label: "Короткостроково / до дедлайну", short: "Дедлайн", icon: CalendarClock, desc: "Стискає інтервали, щоб устигнути до цільової дати, прокручуючи кожну картку кілька разів." },
 };
 
 function daysUntil(ms, now = Date.now()) {
   return Math.ceil((ms - now) / DAY);
 }
 
+// Українська плюралізація: 1 картка · 2–4 картки · 5+ карток (з винятком 11–14).
+function uaN(n, one, few, many) {
+  const a = Math.abs(n) % 100;
+  const b = a % 10;
+  if (a > 10 && a < 20) return many;
+  if (b === 1) return one;
+  if (b > 1 && b < 5) return few;
+  return many;
+}
+
 const GRADES = [
-  { key: "again", label: "Again", hint: "1", cls: "bg-red-600 hover:bg-red-700", ring: "ring-red-300" },
-  { key: "hard", label: "Hard", hint: "2", cls: "bg-amber-500 hover:bg-amber-600", ring: "ring-amber-300" },
-  { key: "good", label: "Good", hint: "3", cls: "bg-green-600 hover:bg-green-700", ring: "ring-green-300" },
-  { key: "easy", label: "Easy", hint: "4", cls: "bg-blue-600 hover:bg-blue-700", ring: "ring-blue-300" },
+  { key: "again", label: "Ще раз", hint: "1", cls: "bg-red-600 hover:bg-red-700", ring: "ring-red-300" },
+  { key: "hard", label: "Важко", hint: "2", cls: "bg-amber-500 hover:bg-amber-600", ring: "ring-amber-300" },
+  { key: "good", label: "Добре", hint: "3", cls: "bg-green-600 hover:bg-green-700", ring: "ring-green-300" },
+  { key: "easy", label: "Легко", hint: "4", cls: "bg-blue-600 hover:bg-blue-700", ring: "ring-blue-300" },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -248,8 +259,8 @@ const DECK_COLORS = [
 const getColor = (id) => DECK_COLORS.find((c) => c.id === id) || DECK_COLORS[0];
 
 const TOPIC_PRESETS = [
-  "Languages", "Biology", "History", "Geography", "Science", "Medicine",
-  "Law", "Business", "Technology", "Math", "Art", "Music", "Exam prep", "Other",
+  "Мови", "Біологія", "Історія", "Географія", "Наука", "Медицина",
+  "Право", "Бізнес", "Технології", "Математика", "Мистецтво", "Музика", "Підготовка до іспиту", "Інше",
 ];
 
 const DECK_EMOJIS = [
@@ -258,12 +269,12 @@ const DECK_EMOJIS = [
 ];
 
 const STUDY_MODES = [
-  { id: "due", label: "Due today", icon: Target, desc: "Cards the schedule says are ready, plus new ones up to your daily limit." },
-  { id: "custom", label: "A set number", icon: Layers3, desc: "Study a fixed number of cards, due ones first." },
-  { id: "all", label: "All cards", icon: BookOpen, desc: "Every card in scope, scheduling as normal." },
-  { id: "new", label: "Only new", icon: Sparkles, desc: "Cards you haven't started learning yet." },
-  { id: "review", label: "Only review", icon: RotateCcw, desc: "Cards you've already started — drill them ahead of time." },
-  { id: "cram", label: "Cram", icon: Zap, desc: "Ignore the schedule and drill. Won't change your due dates." },
+  { id: "due", label: "На сьогодні", icon: Target, desc: "Картки, які за графіком уже готові, плюс нові — до твого денного ліміту." },
+  { id: "custom", label: "Задана кількість", icon: Layers3, desc: "Вивчи фіксовану кількість карток, спершу ті, що чекають." },
+  { id: "all", label: "Усі картки", icon: BookOpen, desc: "Кожна картка в обраному діапазоні, графік як завжди." },
+  { id: "new", label: "Лише нові", icon: Sparkles, desc: "Картки, які ще не почала вчити." },
+  { id: "review", label: "Лише повторення", icon: RotateCcw, desc: "Картки, які вже почала вчити — прожени їх наперед." },
+  { id: "cram", label: "Повторення без графіку", icon: Zap, desc: "Ігнорує графік і просто дриль. Дати повторень не зміняться." },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -1010,7 +1021,7 @@ const MOODS = [
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAYS_MON = [1, 2, 3, 4, 5, 6, 0]; // Mon-first order of getDay() values
-const WD_LETTER = { 0: "S", 1: "M", 2: "T", 3: "W", 4: "T", 5: "F", 6: "S" };
+const WD_LETTER = { 0: "Нд", 1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб" };
 
 /* ---- persistence ---- */
 async function loadRoutineData() {
@@ -3288,7 +3299,7 @@ export default function FlashcardsApp() {
       const next = decks.map((d) => (d.id === deckId ? { ...d, ...patch } : d));
       setDecks(next);
       await persistIndex(next);
-      flash("Deck updated");
+      flash("Колоду оновлено");
     },
     [decks, persistIndex, flash]
   );
@@ -3337,7 +3348,7 @@ export default function FlashcardsApp() {
       await persistIndex(next);
       await store.remove(`cards:${deckId}`);
       if (deckDetailId === deckId) { setDeckDetailId(null); setView("home"); }
-      flash("Deck deleted");
+      flash("Колоду видалено");
     },
     [decks, cardsByDeck, persistIndex, flash, deckDetailId]
   );
@@ -3376,7 +3387,7 @@ export default function FlashcardsApp() {
       const next = groups.filter((g) => g.id !== id);
       setGroups(next);
       await persistGroups(next);
-      flash("Group deleted — its decks were kept");
+      flash("Групу видалено — її колоди залишились");
     },
     [decks, groups, persistIndex, persistGroups, flash]
   );
@@ -3426,7 +3437,7 @@ export default function FlashcardsApp() {
       const deckCards = (cardsByDeck[deckId] || []).filter((c) => c.id !== cardId);
       setCardsByDeck((m) => ({ ...m, [deckId]: deckCards }));
       await persistDeckCards(deckId, deckCards);
-      flash("Card deleted");
+      flash("Картку видалено");
     },
     [cardsByDeck, persistDeckCards, flash]
   );
@@ -3524,11 +3535,11 @@ export default function FlashcardsApp() {
 
   const scopeName = useCallback(
     (scope) => {
-      if (scope === "all") return "All decks";
+      if (scope === "all") return "Усі колоди";
       if (typeof scope === "string" && scope.startsWith("group:")) {
-        return groups.find((g) => g.id === scope.slice(6))?.name || "Group";
+        return groups.find((g) => g.id === scope.slice(6))?.name || "Група";
       }
-      return decks.find((d) => d.id === scope)?.name || "Deck";
+      return decks.find((d) => d.id === scope)?.name || "Колода";
     },
     [decks, groups]
   );
@@ -3583,7 +3594,7 @@ export default function FlashcardsApp() {
     setFinanceName("Finance");
     setBooksName("Книги");
     setFitnessName("Fitness");
-    flash("All data reset");
+    flash("Усі дані скинуто");
     window.dispatchEvent(new CustomEvent("routine-reset"));
     window.dispatchEvent(new CustomEvent("calm-reset"));
     window.dispatchEvent(new CustomEvent("fasting-reset"));
@@ -3647,7 +3658,7 @@ export default function FlashcardsApp() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    flash("Backup downloaded");
+    flash("Резервну копію завантажено");
   }, [decks, groups, cardsByDeck, stats, flash]);
 
   const loadSample = useCallback(async () => {
@@ -3703,7 +3714,7 @@ export default function FlashcardsApp() {
   const practiceLanguageReview = useCallback(async () => {
     const deck = decks.find((d) => d.name === "Languages review");
     if (!deck || !(cardsByDeck[deck.id] || []).length) {
-      flash("No weak language words yet");
+      flash("Поки немає слів для повторення");
       return;
     }
     changeSection("studying");
@@ -3715,7 +3726,7 @@ export default function FlashcardsApp() {
       const deckIds = scopeToDeckIds(config.deckScope);
       const queue = buildSessionQueue(deckIds, config.mode, config.count);
       if (!queue.length) {
-        flash("No cards match that mode right now");
+        flash("Під цей режим зараз немає карток");
         return;
       }
       const modeLabel = STUDY_MODES.find((m) => m.id === config.mode)?.label || "Study";
@@ -3901,32 +3912,34 @@ export default function FlashcardsApp() {
           <BooksSection name={booksName} onRename={renameBooks} />
         ) : (
         <>
-      {/* studying top bar */}
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4">
-          <button
-            onClick={() => { setView("home"); setSession(null); }}
-            className="mr-auto flex items-center gap-2 font-semibold tracking-tight text-slate-900"
-          >
-            <span className="text-base">Studying</span>
-            {totalDue > 0 && view === "home" && (
-              <CountPill n={totalDue} cls="bg-rose-100 text-rose-700 ml-1" />
-            )}
-          </button>
+      {/* studying top bar — hidden during a study session so the card stack owns the header */}
+      {view !== "study" && (
+        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
+          <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-2 px-4">
+            <button
+              onClick={() => { setView("home"); setSession(null); }}
+              className="mr-auto flex items-center gap-2 font-semibold tracking-tight text-slate-900"
+            >
+              <span className="text-base">Навчання</span>
+              {totalDue > 0 && view === "home" && (
+                <CountPill n={totalDue} cls="bg-rose-100 text-rose-700 ml-1" />
+              )}
+            </button>
 
-          <NavButton active={view === "home"} onClick={() => { setView("home"); setSession(null); }} icon={Layers}>
-            Decks
-          </NavButton>
-          <NavButton active={view === "stats"} onClick={() => setView("stats")} icon={BarChart3}>
-            Stats
-          </NavButton>
-          <NavButton active={view === "import"} onClick={() => setView("import")} icon={Upload}>
-            Import
-          </NavButton>
-        </div>
-      </header>
+            <NavButton active={view === "home"} onClick={() => { setView("home"); setSession(null); }} icon={Layers}>
+              Колоди
+            </NavButton>
+            <NavButton active={view === "stats"} onClick={() => setView("stats")} icon={BarChart3}>
+              Статистика
+            </NavButton>
+            <NavButton active={view === "import"} onClick={() => setView("import")} icon={Upload}>
+              Імпорт
+            </NavButton>
+          </div>
+        </header>
+      )}
 
-      <main className="mx-auto w-full max-w-5xl px-4 py-6">
+      <main className={`mx-auto w-full max-w-5xl ${view === "study" ? "px-4 py-4" : "px-4 py-6"}`}>
         {view === "home" && (
           <HomeView
             decks={decks}
@@ -3951,6 +3964,7 @@ export default function FlashcardsApp() {
             onSample={loadSample}
             onLoadEnglish={importEnglishDecks}
             loadingEnglish={loadingEnglish}
+            onOpenStats={() => setView("stats")}
           />
         )}
         {view === "deck" && detailDeck && (
@@ -4004,6 +4018,7 @@ export default function FlashcardsApp() {
             deck={currentDeck}
             finished={sessionFinished}
             previews={gradePreviews}
+            stats={stats}
             onFlip={() => setSession((s) => ({ ...s, flipped: true }))}
             onAnswer={answer}
             onExit={() => { setView("home"); setSession(null); }}
@@ -4146,7 +4161,7 @@ function NavButton({ active, onClick, icon: Icon, children }) {
 function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmName, fastingName, mgmtName, toolkitName, budgetName, inventoryName, financeName, booksName, fitnessName, cloud, onSyncNow }) {
   const items = [
     { id: "review", label: "Огляд", icon: Sunrise, badge: 0 },
-    { id: "studying", label: "Studying", icon: GraduationCap, badge: studyingDue },
+    { id: "studying", label: "Навчання", icon: GraduationCap, badge: studyingDue },
     { id: "languages", label: "Languages", icon: Compass, badge: 0 },
     { id: "routine", label: "My Routine", icon: Sun, badge: 0 },
     { id: "calm", label: calmName || "Спокій", icon: Leaf, badge: 0 },
@@ -4404,11 +4419,17 @@ function AnalysesSection() {
 /* ------------------------------------------------------------------ */
 /* Home view                                                           */
 /* ------------------------------------------------------------------ */
+// Великі цифри (due-count, mastery %, стрік) — Mulish; кириличні слова поруч
+// із ними явно повертаємо на Manrope, бо в Mulish немає кириличних гліфів.
+const SNUM = { fontFamily: "'Mulish', ui-sans-serif, system-ui, sans-serif" };
+const SBODY = { fontFamily: "'Manrope', ui-sans-serif, system-ui, sans-serif" };
+const SUnit = ({ children, className = "" }) => <span style={SBODY} className={className}>{children}</span>;
+
 function HomeView({
   decks, groups, summary, groupSummary, totalDue, stats,
   onStudy, onStudyAll, onStudyGroup, onOpenDeck, onDelete, onEdit, onMoveDeck,
   onNewDeck, onNewGroup, onEditGroup, onDeleteGroup, onToggleGroup, onImport, onSample,
-  onLoadEnglish, loadingEnglish,
+  onLoadEnglish, loadingEnglish, onOpenStats,
 }) {
   const streak = computeStreak(stats.history);
   const studiedToday = stats.history?.[dateKey(Date.now())]?.studied || 0;
@@ -4421,6 +4442,7 @@ function HomeView({
     for (const d of decks) { const s = summary[d.id]; if (!s) continue; total += s.total || 0; learned += s.learned || 0; fresh += s.newTotal || 0; }
     return { total, learned, fresh, young: Math.max(0, total - learned - fresh), remaining: total - learned };
   }, [decks, summary]);
+  const masteryPct = mastery.total > 0 ? Math.round((mastery.learned / mastery.total) * 100) : 0;
 
   const dropProps = (target) => ({
     onDragOver: (e) => { if (dragId) { e.preventDefault(); setOverTarget(target); } },
@@ -4438,10 +4460,10 @@ function HomeView({
         <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-rose-600 text-white">
           <Brain className="h-8 w-8" />
         </div>
-        <h1 className="mt-5 text-2xl font-bold text-slate-900">Study anything, remembered.</h1>
-        <p className="mt-2 text-slate-500">
-          Build a deck, import a spreadsheet, or paste your cards. Recall schedules each one with
-          spaced repetition so reviews land right before you'd forget.
+        <h1 style={SNUM} className="mt-5 text-2xl font-extrabold text-[#2c2226]">Вчи що завгодно — і памʼятай</h1>
+        <p className="mt-2 leading-relaxed text-[#6e5860]">
+          Створи колоду, заімпортуй таблицю або встав картки. Recall сам розкладе повторення так,
+          щоб вони траплялись точно перед тим, як забудеш.
         </p>
         <div className="mt-6 flex flex-col items-center gap-3">
           {onLoadEnglish && (
@@ -4450,15 +4472,15 @@ function HomeView({
             </button>
           )}
           <div className="flex gap-3">
-            <button onClick={onNewDeck} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700">
-              <Plus className="h-4 w-4" /> New deck
+            <button onClick={onNewDeck} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-rose-700">
+              <Plus className="h-4 w-4" /> Нова колода
             </button>
-            <button onClick={onImport} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
-              <Upload className="h-4 w-4" /> Import
+            <button onClick={onImport} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
+              <Upload className="h-4 w-4" /> Імпортувати
             </button>
           </div>
-          <button onClick={onSample} className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-rose-600">
-            <Sparkles className="h-4 w-4" /> or load a sample deck
+          <button onClick={onSample} className="inline-flex items-center gap-2 text-sm font-semibold text-[#c2265a] hover:text-[#a11b49]">
+            <Sparkles className="h-4 w-4" /> або завантаж приклад колоди
           </button>
         </div>
       </div>
@@ -4476,57 +4498,51 @@ function HomeView({
   );
 
   return (
-    <div className="space-y-6">
-      {/* summary strip */}
-      <div className="flex flex-wrap gap-3">
-        <StatTile icon={Target} label="Due today" value={totalDue} tint={totalDue ? "text-rose-600" : "text-slate-400"} sub={totalDue ? "cards waiting" : "all caught up"} />
-        <StatTile icon={Check} label="Studied today" value={studiedToday} tint="text-slate-700" sub="reviews done" />
-        <StatTile icon={Flame} label="Streak" value={streak} tint={streak ? "text-orange-500" : "text-slate-400"} sub={streak === 1 ? "day" : "days"} />
-        <StatTile icon={Layers} label="Decks" value={decks.length} tint="text-slate-700" />
-      </div>
-
-      {/* learned vs remaining */}
-      {mastery.total > 0 && (
-        <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-semibold text-slate-700">Вивчено {mastery.learned.toLocaleString()} з {mastery.total.toLocaleString()} карток</span>
-            <span className="font-bold text-green-600 tabular-nums">{Math.round((mastery.learned / mastery.total) * 100)}%</span>
+    <div className="space-y-5">
+      {/* hero: due count + mastery ring + streak/studied chips + CTA */}
+      <div className="rounded-[26px] p-5" style={{ background: "linear-gradient(150deg,#ffe4e6,#fff7f5 70%)", animation: "sc-rise .5s ease both" }}>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wide text-[#c28494]">На сьогодні</div>
+            <div style={SNUM} className="text-[46px] font-extrabold leading-none tracking-tight text-[#c2265a]">{totalDue.toLocaleString()}</div>
+            <div className="mt-1 text-sm text-[#6e5860]">{totalDue ? "карток чекають на повторення" : "усе повторено — так тримати 💛"}</div>
           </div>
-          <div className="mt-2 flex h-3 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full bg-green-500 transition-all" style={{ width: `${(mastery.learned / mastery.total) * 100}%` }} />
-            <div className="h-full bg-amber-400 transition-all" style={{ width: `${(mastery.young / mastery.total) * 100}%` }} />
-            <div className="h-full bg-slate-300 transition-all" style={{ width: `${(mastery.fresh / mastery.total) * 100}%` }} />
+          {mastery.total > 0 && (
+            <ProgressRing pct={masteryPct / 100} size={88} stroke={9} color="#22c55e" track="#ffd9df">
+              <span style={SNUM} className="text-lg font-extrabold text-[#2c2226]">{masteryPct}%</span>
+              <span className="text-[9px] text-[#9b7680]">вивчено</span>
+            </ProgressRing>
+          )}
+        </div>
+        <div className="mt-4 flex gap-2">
+          <div className="flex flex-1 items-center gap-2 rounded-2xl bg-white px-3 py-2.5">
+            <span className="text-lg" style={{ animation: "sc-flamePulse 2.2s ease-in-out infinite", display: "inline-block" }}>🔥</span>
+            <div><div style={SNUM} className="text-[17px] font-extrabold leading-none text-[#2c2226]">{streak}</div><div className="text-[10px] text-[#9b7680]">{streak === 1 ? "день стріку" : "днів стріку"}</div></div>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
-            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> вивчено {mastery.learned.toLocaleString()}</span>
-            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-400" /> вчу {mastery.young.toLocaleString()}</span>
-            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-300" /> ще не починала {mastery.fresh.toLocaleString()}</span>
-            <span className="ml-auto font-semibold text-slate-600">залишилось {mastery.remaining.toLocaleString()}</span>
+          <div className="flex flex-1 items-center gap-2 rounded-2xl bg-white px-3 py-2.5">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-green-500" />
+            <div><div style={SNUM} className="text-[17px] font-extrabold leading-none text-[#2c2226]">{studiedToday}</div><div className="text-[10px] text-[#9b7680]">вивчено сьогодні</div></div>
           </div>
         </div>
-      )}
-
-      {/* actions */}
-      <div className="flex flex-wrap items-center gap-2">
-        <button onClick={onStudyAll} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700">
-          <Play className="h-4 w-4" /> Study
-        </button>
-        <button onClick={onNewDeck} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-          <Plus className="h-4 w-4" /> New deck
-        </button>
-        <button onClick={onNewGroup} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-          <FolderPlus className="h-4 w-4" /> New group
-        </button>
-        <button onClick={onImport} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-          <Upload className="h-4 w-4" /> Import
+        <button onClick={onStudyAll} className="mt-3.5 block w-full rounded-2xl bg-rose-600 py-3.5 text-center text-[15px] font-extrabold text-white shadow-[0_10px_22px_-8px_rgba(225,29,72,.5)] transition hover:bg-rose-700">
+          Почати вивчення
         </button>
       </div>
 
-      {groups.length > 0 && (
-        <p className="flex items-center gap-1.5 text-xs text-slate-400">
-          <GripVertical className="h-3.5 w-3.5" /> Tip: drag a deck onto a group to move it — or use the folder button on a deck.
-        </p>
-      )}
+      {/* actions */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm font-extrabold text-[#2c2226]">Мої колоди</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={onNewGroup} title="Нова група" className="grid h-9 w-9 place-items-center rounded-full bg-white text-[#7a6069] shadow-sm transition hover:text-rose-600"><FolderPlus className="h-4 w-4" /></button>
+          <button onClick={onNewDeck} title="Нова колода" className="grid h-9 w-9 place-items-center rounded-full bg-white text-[#7a6069] shadow-sm transition hover:text-rose-600"><Plus className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} /></button>
+          <button onClick={onImport} className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
+            <Upload className="h-3.5 w-3.5" /> Імпортувати
+          </button>
+          {onOpenStats && (
+            <button onClick={onOpenStats} title="Статистика" className="grid h-9 w-9 place-items-center rounded-full bg-white text-[#7a6069] shadow-sm transition hover:text-rose-600"><BarChart3 className="h-4 w-4" /></button>
+          )}
+        </div>
+      </div>
 
       {/* group folders */}
       <div className="space-y-3">
@@ -4549,25 +4565,25 @@ function HomeView({
 
       {/* ungrouped decks */}
       {(ungrouped.length > 0 || (dragId && groups.length > 0)) && (
-        <div {...dropProps("ungrouped")} className={`rounded-xl transition ${overTarget === "ungrouped" ? "ring-2 ring-rose-300 ring-offset-2" : ""}`}>
+        <div {...dropProps("ungrouped")} className={`rounded-2xl transition ${overTarget === "ungrouped" ? "ring-2 ring-rose-300 ring-offset-2" : ""}`}>
           {groups.length > 0 && (
-            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              <Layers className="h-3.5 w-3.5" /> Ungrouped <span className="text-slate-300">· {ungrouped.length}</span>
+            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#9b7680]">
+              <Layers className="h-3.5 w-3.5" /> Без групи <span className="text-[#c9a9b1]">· {ungrouped.length}</span>
             </h3>
           )}
           {ungrouped.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2">{ungrouped.map(deckCard)}</div>
+            <div className="space-y-2">{ungrouped.map(deckCard)}</div>
           ) : (
-            <p className="rounded-xl border border-dashed border-slate-300 py-4 text-center text-sm text-slate-400">Drop here to remove from a group</p>
+            <p className="rounded-2xl border border-dashed border-slate-300 py-4 text-center text-sm text-slate-400">Перетягни сюди, щоб прибрати з групи</p>
           )}
         </div>
       )}
 
-      <div className="flex items-center gap-4 pt-2 text-xs text-slate-400">
-        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-blue-400" /> new</span>
-        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-400" /> learning</span>
-        <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-400" /> review</span>
-      </div>
+      {groups.length > 0 && (
+        <p className="flex items-center gap-1.5 text-[11px] text-[#b593a1]">
+          <Move className="h-3 w-3" /> перетягни колоду на групу, щоб перемістити
+        </p>
+      )}
     </div>
   );
 }
@@ -4577,39 +4593,37 @@ function GroupFolder({ group, rollup, decks, renderDeck, onStudyGroup, onEditGro
   const r = rollup || { due: 0, total: 0, deckCount: decks.length };
   const open = !group.collapsed;
   return (
-    <div {...dropProps} className={`overflow-hidden rounded-xl border bg-white shadow-sm transition ${highlight ? "border-rose-400 ring-2 ring-rose-200" : "border-slate-200"}`}>
-      <div className="group flex items-center gap-2 px-3 py-2.5">
+    <div {...dropProps} className={`overflow-hidden rounded-[20px] bg-white transition ${highlight ? "ring-2 ring-rose-300" : ""}`}>
+      <div className="group flex items-center gap-2.5 px-3.5 py-3">
         <button onClick={() => onToggle(group.id)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-          <ChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
-          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-base ${color.bg} ${color.text}`}>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-[#c9a9b1] transition-transform ${open ? "" : "-rotate-90"}`} />
+          <span className={`grid h-8.5 w-8.5 shrink-0 place-items-center rounded-[10px] text-base ${color.bg} ${color.text}`} style={{ width: 34, height: 34 }}>
             {group.emoji ? <span>{group.emoji}</span> : (open ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />)}
           </span>
           <span className="min-w-0">
-            <span className="block truncate font-semibold text-slate-800">{group.name}</span>
-            <span className="block text-xs text-slate-400">{r.deckCount} deck{r.deckCount === 1 ? "" : "s"} · {r.total} cards</span>
+            <span className="block truncate text-sm font-bold text-[#2c2226]">{group.name}</span>
+            <span className="block text-[11px] text-[#9b7680]">{r.deckCount} {uaN(r.deckCount, "колода", "колоди", "колод")}</span>
           </span>
         </button>
         {r.due > 0 && (
-          <button onClick={() => onStudyGroup(group.id)} className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-rose-700">
-            <Play className="h-3.5 w-3.5" /> {r.due}
+          <button onClick={() => onStudyGroup(group.id)} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-rose-600 px-3 py-1.5 text-sm font-extrabold text-white transition hover:bg-rose-700">
+            {r.due}
           </button>
         )}
-        <button onClick={() => onEditGroup(group)} className="rounded-md p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600" title="Edit group">
+        <button onClick={() => onEditGroup(group)} className="rounded-md p-1.5 text-slate-300 opacity-0 transition hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100" title="Редагувати групу">
           <Pencil className="h-4 w-4" />
         </button>
         <button
-          onClick={() => { if (confirm(`Delete group “${group.name}”? Its decks are kept and moved to Ungrouped.`)) onDeleteGroup(group.id); }}
-          className="rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500" title="Delete group"
+          onClick={() => { if (confirm(`Видалити групу «${group.name}»? Її колоди залишаться й перейдуть до «Без групи».`)) onDeleteGroup(group.id); }}
+          className="rounded-md p-1.5 text-slate-300 opacity-0 transition hover:bg-red-50 hover:text-red-500 group-hover:opacity-100" title="Видалити групу"
         >
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
       {open && (
-        <div className="border-t border-slate-100 bg-slate-50/60 p-3">
-          {decks.length ? (
-            <div className="grid gap-3 sm:grid-cols-2">{decks.map(renderDeck)}</div>
-          ) : (
-            <p className="px-1 py-4 text-center text-sm text-slate-400">Empty — drag a deck here, or use a deck's folder button to move it in.</p>
+        <div className="space-y-2 px-3 pb-3">
+          {decks.length ? decks.map(renderDeck) : (
+            <p className="rounded-2xl bg-[#fdf3f4] px-3 py-4 text-center text-sm text-[#9b7680]">Порожньо — перетягни сюди колоду або скористайся кнопкою переміщення на колоді.</p>
           )}
         </div>
       )}
@@ -4622,60 +4636,59 @@ function DeckCard({ deck, s, groups = [], onOpen, onStudy, onEdit, onDelete, onM
   const color = getColor(deck.color);
   const isDeadline = deck.goal === "deadline" && deck.deadline;
   const dleft = isDeadline ? daysUntil(deck.deadline) : null;
+  const pct = sum.total ? Math.round(((sum.learned || 0) / sum.total) * 100) : 0;
   const [menu, setMenu] = useState(false);
   return (
     <div
       draggable
       onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", deck.id); onDragStart?.(); }}
       onDragEnd={() => onDragEnd?.()}
-      className={`group relative flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-rose-200 hover:shadow ${dragging ? "opacity-40" : ""}`}
+      className={`group relative flex items-center gap-3 rounded-2xl bg-[#fdf3f4] px-3.5 py-2.5 transition ${dragging ? "opacity-40" : ""}`}
     >
       <button onClick={() => onOpen(deck.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg ${color.bg} ${color.text}`}>
-          {deck.emoji ? <span>{deck.emoji}</span> : <GraduationCap className="h-5 w-5" />}
-        </div>
+        {/* two-layer stacked-card icon: a peeking tile behind the front one */}
+        <span className="relative block h-[34px] w-[38px] shrink-0">
+          <span className="absolute left-1 top-1 h-[30px] w-[34px] rounded-lg opacity-60" style={{ backgroundColor: color.dot }} />
+          <span className={`absolute left-0 top-0 grid h-[30px] w-[34px] place-items-center rounded-lg text-sm ${color.bg} ${color.text}`}>
+            {deck.emoji ? <span>{deck.emoji}</span> : <GraduationCap className="h-4 w-4" />}
+          </span>
+        </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="truncate font-semibold text-slate-800">{deck.name}</span>
+            <span className="truncate text-sm font-bold text-[#2c2226]">{deck.name}</span>
             {isDeadline && (
               <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700">
-                <CalendarClock className="h-3 w-3" />{dleft <= 0 ? "due" : `${dleft}d`}
+                <CalendarClock className="h-3 w-3" />{dleft <= 0 ? "дедлайн" : `${dleft}д`}
               </span>
             )}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
-            <CountPill n={sum.newDue} cls="bg-blue-100 text-blue-700" />
-            <CountPill n={sum.learn} cls="bg-red-100 text-red-700" />
-            <CountPill n={sum.review} cls="bg-green-100 text-green-700" />
-            <span className="text-slate-400">{sum.total} card{sum.total === 1 ? "" : "s"}</span>
-          </div>
-          {sum.total > 0 && (
-            <div className="mt-1.5 flex items-center gap-2">
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-green-500" style={{ width: `${((sum.learned || 0) / sum.total) * 100}%` }} /></div>
-              <span className="shrink-0 text-[10px] font-medium tabular-nums text-slate-400">вивчено {sum.learned || 0}/{sum.total}</span>
+          {sum.total > 0 ? (
+            <div className="mt-1 flex items-center gap-1.5">
+              <div className="h-[5px] flex-1 overflow-hidden rounded-full bg-[#f3dde1]"><div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${pct}%` }} /></div>
+              <span className="shrink-0 text-[10px] font-medium tabular-nums text-[#9b7680]">{sum.learned || 0}/{sum.total}</span>
             </div>
+          ) : (
+            <div className="mt-1 text-[11px] text-[#9b7680]">порожня колода</div>
           )}
         </div>
       </button>
       <div className="flex shrink-0 items-center gap-1">
-        {sum.due > 0 ? (
-          <button onClick={() => onStudy(deck.id)} className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-rose-700" title="Study">
-            <Play className="h-3.5 w-3.5" /> {sum.due}
+        {sum.due > 0 && (
+          <button onClick={() => onStudy(deck.id)} className="rounded-full bg-rose-600 px-2.5 py-1 text-[11px] font-extrabold text-white transition hover:bg-rose-700" title="Вивчати">
+            {sum.due}
           </button>
-        ) : (
-          <button onClick={() => onStudy(deck.id)} className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-500 transition hover:bg-slate-200" title="Study">study</button>
         )}
         {onMove && groups.length > 0 && (
-          <button onClick={() => setMenu((v) => !v)} className="rounded-md p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 sm:opacity-0 sm:group-hover:opacity-100" title="Move to group">
+          <button onClick={() => setMenu((v) => !v)} className="rounded-md p-1.5 text-slate-300 opacity-0 transition hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100" title="Перемістити в групу">
             <Folder className="h-4 w-4" />
           </button>
         )}
-        <button onClick={() => onEdit(deck)} className="rounded-md p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 sm:opacity-0 sm:group-hover:opacity-100" title="Edit deck">
+        <button onClick={() => onEdit(deck)} className="rounded-md p-1.5 text-slate-300 opacity-0 transition hover:bg-slate-100 hover:text-slate-600 group-hover:opacity-100" title="Редагувати колоду">
           <Pencil className="h-4 w-4" />
         </button>
         <button
-          onClick={() => { if (confirm(`Delete deck “${deck.name}” and its ${sum.total} cards?`)) onDelete(deck.id); }}
-          className="rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100" title="Delete deck"
+          onClick={() => { if (confirm(`Видалити колоду «${deck.name}» і всі її ${sum.total} карток?`)) onDelete(deck.id); }}
+          className="rounded-md p-1.5 text-slate-300 opacity-0 transition hover:bg-red-50 hover:text-red-500 group-hover:opacity-100" title="Видалити колоду"
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -4684,11 +4697,11 @@ function DeckCard({ deck, s, groups = [], onOpen, onStudy, onEdit, onDelete, onM
       {menu && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setMenu(false)} />
-          <div className="absolute right-2 top-14 z-20 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
-            <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Move to group</div>
+          <div className="absolute right-2 top-12 z-20 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
+            <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Перемістити в групу</div>
             {deck.groupId && (
               <button onClick={() => { onMove(deck.id, ""); setMenu(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50">
-                <X className="h-4 w-4 text-slate-400" /> Remove from group
+                <X className="h-4 w-4 text-slate-400" /> Прибрати з групи
               </button>
             )}
             {groups.map((g) => (
@@ -4719,6 +4732,10 @@ function StageBadge({ card, showDue = true }) {
   );
 }
 
+// Короткі підписи для тісних пігулок таймлайну — довгі варіанти лишаються в
+// INTERVAL_STAGES.label для решти інтерфейсу (бейджі, легенда розбивки).
+const STAGE_SHORT = { learning: "Вчу", "1d": "1д", "3d": "3д", "1w": "1т", "2w": "2т", "1mo": "1міс", "3mo": "3міс", long: "3міс+" };
+
 // The Learning → 1d → 3d → 1w → 2w → 1mo → 3mo+ scale, active stage highlighted.
 function IntervalTimeline({ activeStageId, className = "" }) {
   return (
@@ -4732,7 +4749,7 @@ function IntervalTimeline({ activeStageId, className = "" }) {
               className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold transition ${active ? "text-white" : "text-slate-400"}`}
               style={active ? { backgroundColor: s.dot } : { backgroundColor: "#f1f5f9" }}
             >
-              {s.id === "learning" ? "Learn" : s.id === "long" ? "3mo+" : s.label.replace(" day", "d").replace(" days", "d").replace(" week", "w").replace(" weeks", "w").replace(" month", "mo").replace(" months", "mo")}
+              {STAGE_SHORT[s.id] || s.label}
             </span>
           </div>
         );
@@ -4743,7 +4760,7 @@ function IntervalTimeline({ activeStageId, className = "" }) {
 
 // Horizontal stacked breakdown of how many cards sit at each interval stage.
 function StageBreakdown({ stages, total }) {
-  const order = [{ id: "new", label: "New", dot: "#94a3b8" }, ...INTERVAL_STAGES];
+  const order = [{ id: "new", label: "Нове", dot: "#94a3b8" }, ...INTERVAL_STAGES];
   const present = order.filter((s) => (stages[s.id] || 0) > 0);
   if (!total) return null;
   return (
@@ -4757,7 +4774,7 @@ function StageBreakdown({ stages, total }) {
         {present.map((s) => (
           <span key={s.id} className="inline-flex items-center gap-1 text-[11px] text-slate-500">
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: s.dot }} />
-            {s.id === "learning" ? "Learning" : s.label} <span className="font-semibold tabular-nums text-slate-700">{stages[s.id]}</span>
+            {s.label} <span className="font-semibold tabular-nums text-slate-700">{stages[s.id]}</span>
           </span>
         ))}
       </div>
@@ -4772,7 +4789,7 @@ function SpeakerButton({ text, lang, size = "sm", onFallback }) {
     <button
       onClick={(e) => { e.stopPropagation(); const r = speak(text, lang); if (!r.ok && onFallback) onFallback(); }}
       className={`grid ${dim} shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-rose-100 hover:text-rose-600`}
-      title="Read aloud (R)"
+      title="Прослухати (R)"
     >
       <Volume2 className={size === "lg" ? "h-4.5 w-4.5" : "h-4 w-4"} style={{ width: size === "lg" ? 18 : 15, height: size === "lg" ? 18 : 15 }} />
     </button>
@@ -4782,7 +4799,7 @@ function SpeakerButton({ text, lang, size = "sm", onFallback }) {
 /* ------------------------------------------------------------------ */
 /* Study view                                                          */
 /* ------------------------------------------------------------------ */
-function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, onExit }) {
+function StudyView({ session, card, deck, finished, previews, stats, onFlip, onAnswer, onExit }) {
   const progress = session.total ? Math.round(((session.total - session.queue.length) / session.total) * 100) : 100;
   const lang = card?.lang || deck?.language || "";
   const [imgs, setImgs] = useState({ front: null, back: null });
@@ -4856,19 +4873,32 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
 
   if (finished || !card) {
     const acc = session.done ? Math.round((session.correct / session.done) * 100) : 0;
+    const streak = stats ? computeStreak(stats.history) : 0;
     return (
-      <div className="mx-auto max-w-md py-16 text-center">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-green-100 text-green-600">
-          <Check className="h-8 w-8" />
+      <div style={SBODY} className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center py-16 text-center">
+        <div className="grid h-[84px] w-[84px] place-items-center rounded-[26px] bg-[#dcfce7]" style={{ animation: "sc-pop .4s ease both" }}>
+          <PartyPopper className="h-[38px] w-[38px] text-[#16a34a]" />
         </div>
-        <h2 className="mt-5 text-2xl font-bold text-slate-900">Session complete</h2>
-        <p className="mt-1 text-slate-500">Nice work on {session.title}{session.cram ? " — no due dates changed." : "."}</p>
+        <h2 style={SNUM} className="mt-5 text-2xl font-extrabold text-[#2c2226]">Сесію завершено! 🎉</h2>
+        <p className="mt-1.5 leading-relaxed text-[#6e5860]">Круто попрацювала над «{session.title}»{session.cram ? " — дати повторень не змінилися." : "."} Так тримати!</p>
         <div className="mt-6 flex justify-center gap-3">
-          <StatTile icon={Check} label="Reviewed" value={session.done} />
-          <StatTile icon={Target} label="Recalled" value={`${acc}%`} tint="text-green-600" />
+          <div className="rounded-[20px] bg-white px-5 py-4 text-center shadow-sm ring-1 ring-rose-50">
+            <div style={SNUM} className="text-2xl font-extrabold text-[#2c2226]">{session.done}</div>
+            <div className="text-[11px] text-[#9b7680]">повторено</div>
+          </div>
+          <div className="rounded-[20px] bg-white px-5 py-4 text-center shadow-sm ring-1 ring-rose-50">
+            <div style={SNUM} className="text-2xl font-extrabold text-[#16a34a]">{acc}%</div>
+            <div className="text-[11px] text-[#9b7680]">пригадано</div>
+          </div>
+          {stats && (
+            <div className="rounded-[20px] bg-white px-5 py-4 text-center shadow-sm ring-1 ring-rose-50">
+              <div style={SNUM} className="text-2xl font-extrabold text-[#e11d48]">{streak} 🔥</div>
+              <div className="text-[11px] text-[#9b7680]">{uaN(streak, "день стріку", "дні стріку", "днів стріку")}</div>
+            </div>
+          )}
         </div>
-        <button onClick={onExit} className="mt-8 inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white transition hover:bg-rose-700">
-          <ArrowLeft className="h-4 w-4" /> Back to decks
+        <button onClick={onExit} className="mt-7 inline-flex items-center gap-2 rounded-2xl bg-rose-600 px-8 py-3.5 font-extrabold text-white shadow-[0_10px_22px_-8px_rgba(225,29,72,.5)] transition hover:bg-rose-700">
+          До колод
         </button>
       </div>
     );
@@ -4882,122 +4912,118 @@ function StudyView({ session, card, deck, finished, previews, onFlip, onAnswer, 
   const backImg = rev ? imgs.front : imgs.back;
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div style={SBODY} className="mx-auto max-w-lg">
       {/* header row */}
-      <div className="mb-4 flex items-center gap-3">
-        <button onClick={onExit} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="End session">
-          <X className="h-5 w-5" />
+      <div className="flex items-center gap-2.5">
+        <button onClick={onExit} className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-[#7a6069] shadow-sm transition hover:text-rose-600" title="Завершити сесію">
+          <X className="h-4 w-4" />
         </button>
-        <div className="flex-1">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <span className="flex items-center gap-2 font-medium">
-              {session.title}
-              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${session.cram ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}>
-                {session.cram ? "Cram" : session.subtitle}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2 text-[11px] text-[#9b7680]">
+            <span className="flex min-w-0 items-center gap-1.5 font-bold">
+              <span className="truncate">{session.title}</span>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${session.cram ? "bg-amber-100 text-amber-700" : "bg-[#f3dde1] text-[#9b7680]"}`}>
+                {session.cram ? "Повторення" : session.subtitle}
               </span>
             </span>
-            <span className="tabular-nums">{session.total - session.queue.length} / {session.total}</span>
+            <span style={SNUM} className="shrink-0 tabular-nums">{session.total - session.queue.length} / {session.total}</span>
           </div>
-          <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200">
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#f3dde1]">
             <div className="h-full rounded-full bg-rose-600 transition-all duration-300" style={{ width: `${progress}%` }} />
           </div>
         </div>
       </div>
 
-      {/* card (div, not button — it contains speaker buttons) */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={session.flipped ? undefined : onFlip}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        style={{ transform: drag ? `translateX(${drag}px) rotate(${drag / 22}deg)` : undefined, transition: dragging ? "none" : "transform .25s ease", touchAction: "pan-y" }}
-        className={`relative flex min-h-[300px] w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm ${session.flipped ? "" : "cursor-pointer"}`}
-      >
-        {/* swipe hint overlay (mobile) */}
-        {session.flipped && drag !== 0 && (
-          <div className={`pointer-events-none absolute inset-0 flex items-center justify-center ${drag > 0 ? "bg-green-500/10" : "bg-red-500/10"}`} style={{ opacity: Math.min(1, Math.abs(drag) / 85) }}>
-            <span className={`rounded-full px-4 py-2 text-lg font-extrabold text-white shadow ${drag > 0 ? "bg-green-500" : "bg-red-500"}`}>{drag > 0 ? "Знаю ✓" : "Ще раз"}</span>
-          </div>
-        )}
-        {card.tags && (
-          <span className="mb-3 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-500">{card.tags}</span>
-        )}
-        {frontImg && (
-          <img
-            src={frontImg}
-            alt=""
-            onClick={(e) => { e.stopPropagation(); setLightbox(frontImg); }}
-            className="mb-4 max-h-56 w-auto cursor-zoom-in rounded-lg border border-slate-200 object-contain"
-          />
-        )}
-        <div className="flex items-center gap-2">
-          <div className="text-2xl font-semibold leading-snug text-slate-900" style={{ textWrap: "balance" }}>
-            {frontText}
-          </div>
-          <SpeakerButton text={frontText} lang={lang} onFallback={() => setVoiceHint(true)} />
-        </div>
-
-        {session.flipped ? (
-          <>
-            <div className="my-6 h-px w-24 bg-slate-200" />
-            {backImg && (
-              <img
-                src={backImg}
-                alt=""
-                onClick={(e) => { e.stopPropagation(); setLightbox(backImg); }}
-                className="mb-4 max-h-56 w-auto cursor-zoom-in rounded-lg border border-slate-200 object-contain"
-              />
-            )}
-            <div className="flex items-center gap-2">
-              <div className="text-2xl font-medium text-rose-700" style={{ textWrap: "balance" }}>{backText}</div>
-              <SpeakerButton text={backText} lang={lang} onFallback={() => setVoiceHint(true)} />
+      {/* card stack: 2 decorative peeking cards behind the live one */}
+      <div className="relative mt-4" style={{ minHeight: 380 }}>
+        <div className="pointer-events-none absolute inset-[24px_10px_40px] rounded-[26px] bg-[#ffe4e6]" style={{ transform: "scale(.94) translateY(10px)" }} />
+        <div className="pointer-events-none absolute inset-[12px_4px_24px] rounded-[26px] bg-[#fff0f1]" style={{ transform: "scale(.97) translateY(5px)" }} />
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={session.flipped ? undefined : onFlip}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          style={{ transform: drag ? `translateX(${drag}px) rotate(${drag / 22}deg)` : undefined, transition: dragging ? "none" : "transform .25s ease", touchAction: "pan-y", animation: "sc-pop .3s ease both" }}
+          className={`relative flex min-h-[380px] w-full flex-col items-center justify-center overflow-y-auto rounded-[26px] bg-white p-7 text-center shadow-[0_20px_40px_-18px_rgba(44,34,38,.3)] ${session.flipped ? "" : "cursor-pointer"}`}
+        >
+          {/* swipe hint overlay (mobile) — only while actively dragging a flipped card */}
+          {session.flipped && drag !== 0 && (
+            <div className={`pointer-events-none absolute inset-0 flex items-center justify-center rounded-[26px] ${drag > 0 ? "bg-green-500/10" : "bg-red-500/10"}`} style={{ opacity: Math.min(1, Math.abs(drag) / 85) }}>
+              <span className={`rounded-full px-4 py-2 text-lg font-extrabold text-white shadow ${drag > 0 ? "bg-green-500" : "bg-red-500"}`}>{drag > 0 ? "Знаю ✓" : "Ще раз"}</span>
             </div>
-            {card.notes && <div className="mt-4 max-w-md text-sm text-slate-500">{card.notes}</div>}
-          </>
-        ) : (
-          <div className="mt-8 inline-flex items-center gap-2 text-sm text-slate-400">
-            <Keyboard className="h-4 w-4" /> tap or press <kbd className="rounded border border-slate-300 bg-slate-50 px-1.5 py-0.5 text-xs">Space</kbd> to flip
-          </div>
-        )}
+          )}
+
+          {session.flipped ? (
+            <>
+              {card.tags && <span className="mb-1 rounded-full bg-[#fdf3f4] px-3 py-1 text-[11px] font-bold text-[#9b7680]">{card.tags}</span>}
+              {frontImg && (
+                <img src={frontImg} alt="" onClick={(e) => { e.stopPropagation(); setLightbox(frontImg); }} className="mb-3 max-h-40 w-auto cursor-zoom-in rounded-lg border border-slate-200 object-contain" />
+              )}
+              <div className="text-lg font-semibold text-[#94838a]" style={{ textWrap: "balance" }}>{frontText}</div>
+              <div className="my-4 h-px w-[90px] bg-[#f3dde1]" />
+              {backImg && (
+                <img src={backImg} alt="" onClick={(e) => { e.stopPropagation(); setLightbox(backImg); }} className="mb-3 max-h-52 w-auto cursor-zoom-in rounded-lg border border-slate-200 object-contain" />
+              )}
+              <div className="text-[26px] font-extrabold leading-tight text-[#c2265a]" style={{ textWrap: "balance" }}>{backText}</div>
+              <div className="mt-3"><SpeakerButton size="lg" text={backText} lang={lang} onFallback={() => setVoiceHint(true)} /></div>
+              {card.notes && <div className="mt-3 max-w-md text-sm text-[#6e5860]">{card.notes}</div>}
+              {!session.cram && (
+                <span className={`mt-4 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${stageForCard(card).bg} ${stageForCard(card).text}`}>
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: stageForCard(card).dot }} /> {intervalLabel(card)} · {dueLabel(card)}
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              {card.tags && <span className="mb-1 rounded-full bg-[#fdf3f4] px-3 py-1 text-[11px] font-bold text-[#9b7680]">{card.tags}</span>}
+              {frontImg && (
+                <img src={frontImg} alt="" onClick={(e) => { e.stopPropagation(); setLightbox(frontImg); }} className="mb-4 max-h-56 w-auto cursor-zoom-in rounded-lg border border-slate-200 object-contain" />
+              )}
+              <div className="text-[30px] font-extrabold leading-[1.25] text-[#2c2226]" style={{ textWrap: "balance" }}>{frontText}</div>
+              <div className="mt-3.5"><SpeakerButton size="lg" text={frontText} lang={lang} onFallback={() => setVoiceHint(true)} /></div>
+              <div className="mt-6 inline-flex items-center gap-2 text-xs text-[#c9a9b1]">
+                <Hand className="h-3.5 w-3.5" /> торкнись або смикни картку
+              </div>
+            </>
+          )}
+
+          {/* always-visible swipe-direction legend */}
+          <div className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 -rotate-[8deg] rounded-2xl bg-slate-400/[.14] px-3.5 py-2 text-xs font-extrabold text-slate-400 opacity-50">← ЩЕ РАЗ</div>
+          <div className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 rotate-[8deg] rounded-2xl bg-green-500/[.14] px-3.5 py-2 text-xs font-extrabold text-[#16a34a] opacity-50">ЗНАЮ →</div>
+        </div>
       </div>
 
-      {/* current interval + fallback voice hint */}
-      <div className="mt-3 flex items-center justify-between gap-2">
-        {session.flipped && !session.cram ? <StageBadge card={card} /> : <span />}
-        {voiceHint && ttsSupported() && (
-          <span className="text-[11px] text-slate-400">No {lang || "matching"} voice installed — using the default.</span>
-        )}
-      </div>
-
-      {/* mobile swipe hint */}
-      {session.flipped && (
-        <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 sm:hidden">← свайп «Ще раз» · «Знаю» свайп →</div>
+      {voiceHint && ttsSupported() && (
+        <p className="mt-2 text-center text-[11px] text-[#c9a9b1]">Немає голосу для «{lang || "цієї мови"}» — використовую типовий.</p>
       )}
+      <p className="mt-3 text-center text-[11px] text-[#b593a1]">
+        {session.flipped ? "← свайп «ще раз» · «знаю» свайп →" : "Пробіл — перевернути · 1–4 — оцінка"}
+      </p>
 
       {/* rating buttons */}
       {session.flipped && (
-        <div className="mt-2 grid grid-cols-4 gap-2">
+        <div className="mt-3 grid grid-cols-4 gap-2">
           {GRADES.map((g) => (
             <button
               key={g.key}
               onClick={() => onAnswer(g.key)}
-              className={`flex flex-col items-center gap-1 rounded-xl px-2 py-3 font-semibold text-white shadow-sm transition ${g.cls}`}
+              className={`flex flex-col items-center gap-0.5 rounded-2xl px-1.5 py-3 font-extrabold text-white shadow-sm transition ${g.cls}`}
             >
-              <span>{g.label}</span>
-              <span className="text-[11px] font-normal text-white/80 tabular-nums">
-                {session.cram ? (g.key === "again" || g.key === "hard" ? "again" : "done") : previews[g.key]}
+              <span className="text-[13px]">{g.label}</span>
+              <span className="text-[10px] font-normal text-white/85 tabular-nums">
+                {session.cram ? (g.key === "again" || g.key === "hard" ? "ще раз" : "готово") : previews[g.key]}
               </span>
-              <span className="mt-0.5 rounded bg-white/20 px-1.5 text-[10px]">{g.hint}</span>
+              <span className="mt-0.5 rounded bg-white/20 px-1.5 text-[9px] font-bold">{g.hint}</span>
             </button>
           ))}
         </div>
       )}
 
-      <div className="mt-4 flex items-center justify-center gap-4 text-xs text-slate-400">
-        <span>Space = flip</span><span>1–4 = rate</span>
-        {ttsSupported() && <span>R = replay audio</span>}
+      <div className="mt-3 flex items-center justify-center gap-4 text-xs text-slate-400">
+        <span>Пробіл — перевернути</span><span>1–4 — оцінка</span>
+        {ttsSupported() && <span>R — повтор звуку</span>}
       </div>
 
       {/* image lightbox */}
@@ -5037,32 +5063,32 @@ function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds
         <button onClick={onCancel} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-xl font-bold text-slate-900">Study setup</h1>
+        <h1 className="text-xl font-bold text-slate-900">Налаштування сесії</h1>
       </div>
 
       {/* deck scope */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Study from</label>
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Вчити з</label>
         <div className="relative">
           <select
             value={setup.deckScope}
             onChange={(e) => onChange({ deckScope: e.target.value })}
             className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2.5 pr-9 text-sm font-medium focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
           >
-            <option value="all">All decks — {cardsIn(decks.map((d) => d.id)).toLocaleString()} cards</option>
+            <option value="all">Усі колоди — {cardsIn(decks.map((d) => d.id)).toLocaleString()} карток</option>
             {groups.length > 0 && (
-              <optgroup label="Groups">
+              <optgroup label="Групи">
                 {groups.map((g) => (
                   <option key={g.id} value={`group:${g.id}`}>
-                    {g.emoji ? `${g.emoji} ` : "📁 "}{g.name} — {cardsIn(decks.filter((d) => d.groupId === g.id).map((d) => d.id)).toLocaleString()} cards
+                    {g.emoji ? `${g.emoji} ` : "📁 "}{g.name} — {cardsIn(decks.filter((d) => d.groupId === g.id).map((d) => d.id)).toLocaleString()} карток
                   </option>
                 ))}
               </optgroup>
             )}
-            <optgroup label="Decks">
+            <optgroup label="Колоди">
               {decks.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.emoji ? `${d.emoji} ` : ""}{d.name} — {(summary[d.id]?.total || 0).toLocaleString()} cards
+                  {d.emoji ? `${d.emoji} ` : ""}{d.name} — {(summary[d.id]?.total || 0).toLocaleString()} карток
                 </option>
               ))}
             </optgroup>
@@ -5073,7 +5099,7 @@ function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds
 
       {/* mode */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">How much do you want to study?</label>
+        <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-400">Скільки хочеш вивчити?</label>
         <div className="grid gap-2.5 sm:grid-cols-2">
           {STUDY_MODES.map((m) => {
             const Icon = m.icon;
@@ -5106,7 +5132,7 @@ function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds
       {/* custom count */}
       {setup.mode === "custom" && (
         <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
-          <label className="text-sm font-medium text-slate-700">How many cards?</label>
+          <label className="text-sm font-medium text-slate-700">Скільки карток?</label>
           <input
             type="number"
             min={1}
@@ -5115,7 +5141,7 @@ function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds
             onChange={(e) => onChange({ count: Math.max(1, Math.min(9999, Number(e.target.value) || 1)) })}
             className="w-24 rounded-lg border border-slate-300 px-3 py-1.5 text-right text-sm tabular-nums focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
           />
-          <span className="text-xs text-slate-400">due cards come first</span>
+          <span className="text-xs text-slate-400">спершу ті, що чекають</span>
         </div>
       )}
 
@@ -5138,11 +5164,11 @@ function SetupView({ decks, groups, summary, setup, countForMode, scopeToDeckIds
           disabled={!startCount}
           className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-6 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          <Play className="h-4 w-4" /> Start · {startCount.toLocaleString()} card{startCount === 1 ? "" : "s"}
+          <Play className="h-4 w-4" /> Почати · {startCount.toLocaleString()} {uaN(startCount, "картка", "картки", "карток")}
         </button>
         {!startCount && (
           <span className="text-sm text-slate-400">
-            {totalInScope ? "No cards match this mode right now." : "This deck has no cards yet."}
+            {totalInScope ? "Під цей режим зараз немає карток." : "У цій колоді ще немає карток."}
           </span>
         )}
       </div>
@@ -5194,7 +5220,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">{deck ? "Edit deck" : "New deck"}</h2>
+          <h2 className="text-lg font-bold text-slate-900">{deck ? "Редагувати колоду" : "Нова колода"}</h2>
           <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
             <X className="h-5 w-5" />
           </button>
@@ -5206,30 +5232,30 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
             {emoji ? <span>{emoji}</span> : <GraduationCap className="h-5 w-5" />}
           </div>
           <div className="min-w-0">
-            <div className="truncate font-semibold text-slate-800">{name.trim() || "Untitled deck"}</div>
-            <div className="truncate text-xs text-slate-400">{topic.trim() || "No topic"}{description.trim() ? ` · ${description.trim()}` : ""}</div>
+            <div className="truncate font-semibold text-slate-800">{name.trim() || "Колода без назви"}</div>
+            <div className="truncate text-xs text-slate-400">{topic.trim() || "Без теми"}{description.trim() ? ` · ${description.trim()}` : ""}</div>
           </div>
         </div>
 
         <div className="space-y-4">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Name <span className="text-red-500">*</span></span>
+            <span className="mb-1 block text-xs font-medium text-slate-500">Назва <span className="text-red-500">*</span></span>
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Spanish verbs"
+              placeholder="напр. Іспанські дієслова"
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
             />
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Topic / category</span>
+            <span className="mb-1 block text-xs font-medium text-slate-500">Тема / категорія</span>
             <input
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               list="topic-options"
-              placeholder="Type or pick — e.g. Languages"
+              placeholder="Впиши або обери — напр. Мови"
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
             />
             <datalist id="topic-options">
@@ -5238,18 +5264,18 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Description (optional)</span>
+            <span className="mb-1 block text-xs font-medium text-slate-500">Опис (необовʼязково)</span>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              placeholder="What's in this deck?"
+              placeholder="Що в цій колоді?"
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
             />
           </label>
 
           <div>
-            <span className="mb-1.5 block text-xs font-medium text-slate-500">Color</span>
+            <span className="mb-1.5 block text-xs font-medium text-slate-500">Колір</span>
             <div className="flex flex-wrap gap-2">
               {DECK_COLORS.map((c) => (
                 <button
@@ -5264,12 +5290,12 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
           </div>
 
           <div>
-            <span className="mb-1.5 block text-xs font-medium text-slate-500">Icon (optional)</span>
+            <span className="mb-1.5 block text-xs font-medium text-slate-500">Іконка (необовʼязково)</span>
             <div className="flex flex-wrap gap-1.5">
               <button
                 onClick={() => setEmoji("")}
                 className={`grid h-9 w-9 place-items-center rounded-lg border text-slate-400 transition ${emoji === "" ? "border-rose-500 bg-rose-50" : "border-slate-200 hover:bg-slate-50"}`}
-                title="No icon"
+                title="Без іконки"
               >
                 <GraduationCap className="h-4 w-4" />
               </button>
@@ -5288,10 +5314,10 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
           {/* group + audio language */}
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-500">Group</span>
+              <span className="mb-1 block text-xs font-medium text-slate-500">Група</span>
               <div className="relative">
                 <select value={groupId} onChange={(e) => setGroupId(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100">
-                  <option value="">No group (ungrouped)</option>
+                  <option value="">Без групи</option>
                   {groups.map((g) => (
                     <option key={g.id} value={g.id}>{g.emoji ? `${g.emoji} ` : ""}{g.name}</option>
                   ))}
@@ -5300,7 +5326,7 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
               </div>
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs font-medium text-slate-500">Audio language (TTS)</span>
+              <span className="mb-1 block text-xs font-medium text-slate-500">Мова озвучення (TTS)</span>
               <div className="relative">
                 <select value={language} onChange={(e) => setLanguage(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100">
                   {DECK_LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
@@ -5312,14 +5338,14 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
 
           <label className="flex items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
             <span className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Volume2 className="h-4 w-4 text-slate-400" /> Auto-play audio when a card is shown
+              <Volume2 className="h-4 w-4 text-slate-400" /> Озвучувати картку автоматично
             </span>
             <input type="checkbox" checked={autoPlay} onChange={(e) => setAutoPlay(e.target.checked)} className="h-4 w-4 accent-rose-600" />
           </label>
 
           {/* scheduling goal */}
           <div>
-            <span className="mb-1.5 block text-xs font-medium text-slate-500">Scheduling goal</span>
+            <span className="mb-1.5 block text-xs font-medium text-slate-500">Ціль планування</span>
             <div className="grid gap-2 sm:grid-cols-2">
               {Object.values(SCHED_GOALS).map((g) => {
                 const Icon = g.icon;
@@ -5343,11 +5369,11 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
             </div>
             {goal === "deadline" && (
               <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2.5">
-                <label className="text-sm font-medium text-orange-800">Target date</label>
+                <label className="text-sm font-medium text-orange-800">Цільова дата</label>
                 <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} className="rounded-lg border border-orange-200 bg-white px-3 py-1.5 text-sm focus:border-orange-400 focus:outline-none" />
                 {dleft != null && (
                   <span className="text-xs font-semibold text-orange-700">
-                    {dleft <= 0 ? "date has passed" : `${dleft} day${dleft === 1 ? "" : "s"} left`}
+                    {dleft <= 0 ? "дата вже минула" : `лишилось ${dleft} ${uaN(dleft, "день", "дні", "днів")}`}
                   </span>
                 )}
               </div>
@@ -5357,14 +5383,14 @@ function DeckEditor({ deck, groups = [], topics, onClose, onSave }) {
 
         <div className="mt-6 flex items-center justify-end gap-3">
           <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">
-            Cancel
+            Скасувати
           </button>
           <button
             onClick={save}
             disabled={!name.trim()}
             className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            <Check className="h-4 w-4" /> {deck ? "Save changes" : "Create deck"}
+            <Check className="h-4 w-4" /> {deck ? "Зберегти зміни" : "Створити колоду"}
           </button>
         </div>
       </div>
@@ -5385,7 +5411,7 @@ function GroupEditor({ group, onClose, onSave }) {
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">{group ? "Edit group" : "New group"}</h2>
+          <h2 className="text-lg font-bold text-slate-900">{group ? "Редагувати групу" : "Нова група"}</h2>
           <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
         </div>
 
@@ -5393,16 +5419,16 @@ function GroupEditor({ group, onClose, onSave }) {
           <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg text-lg ${getColor(color).bg} ${getColor(color).text}`}>
             {emoji ? <span>{emoji}</span> : <Folder className="h-5 w-5" />}
           </div>
-          <div className="truncate font-semibold text-slate-800">{name.trim() || "Untitled group"}</div>
+          <div className="truncate font-semibold text-slate-800">{name.trim() || "Група без назви"}</div>
         </div>
 
         <div className="space-y-4">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">Name <span className="text-red-500">*</span></span>
-            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Languages" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
+            <span className="mb-1 block text-xs font-medium text-slate-500">Назва <span className="text-red-500">*</span></span>
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="напр. Мови" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100" />
           </label>
           <div>
-            <span className="mb-1.5 block text-xs font-medium text-slate-500">Color</span>
+            <span className="mb-1.5 block text-xs font-medium text-slate-500">Колір</span>
             <div className="flex flex-wrap gap-2">
               {DECK_COLORS.map((c) => (
                 <button key={c.id} onClick={() => setColor(c.id)} className={`h-7 w-7 rounded-full transition ${color === c.id ? "ring-2 ring-slate-900 ring-offset-2" : ""}`} style={{ backgroundColor: c.dot }} title={c.id} />
@@ -5410,7 +5436,7 @@ function GroupEditor({ group, onClose, onSave }) {
             </div>
           </div>
           <div>
-            <span className="mb-1.5 block text-xs font-medium text-slate-500">Icon (optional)</span>
+            <span className="mb-1.5 block text-xs font-medium text-slate-500">Іконка (необовʼязково)</span>
             <div className="flex flex-wrap gap-1.5">
               <button onClick={() => setEmoji("")} className={`grid h-9 w-9 place-items-center rounded-lg border text-slate-400 transition ${emoji === "" ? "border-rose-500 bg-rose-50" : "border-slate-200 hover:bg-slate-50"}`}><Folder className="h-4 w-4" /></button>
               {DECK_EMOJIS.map((e) => (
@@ -5421,9 +5447,9 @@ function GroupEditor({ group, onClose, onSave }) {
         </div>
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Cancel</button>
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Скасувати</button>
           <button onClick={save} disabled={!name.trim()} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300">
-            <Check className="h-4 w-4" /> {group ? "Save changes" : "Create group"}
+            <Check className="h-4 w-4" /> {group ? "Зберегти зміни" : "Створити групу"}
           </button>
         </div>
       </div>
@@ -5481,21 +5507,21 @@ function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onA
             <span className="truncate">{deck.name}</span>
           </h1>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-            <span>{cards.length} cards</span>
+            <span>{cards.length} {uaN(cards.length, "картка", "картки", "карток")}</span>
             {deck.topic && <span className="inline-flex items-center gap-1"><Tag className="h-3 w-3" />{deck.topic}</span>}
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${isDeadline ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>
               <goal.icon className="h-3 w-3" /> {goal.short}
-              {isDeadline && (dleft <= 0 ? " · date passed" : ` · ${dleft}d left`)}
+              {isDeadline && (dleft <= 0 ? " · дата минула" : ` · лишилось ${dleft}д`)}
             </span>
             {ttsSupported() && lang && <span className="inline-flex items-center gap-1"><Volume2 className="h-3 w-3" />{DECK_LANGUAGES.find((l) => l.code === lang)?.label || lang}</span>}
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
           <button onClick={onEditDeck} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-            <Settings className="h-4 w-4" /> <span className="hidden sm:inline">Settings</span>
+            <Settings className="h-4 w-4" /> <span className="hidden sm:inline">Налаштування</span>
           </button>
           <button onClick={onStudy} disabled={!cards.length} className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:bg-slate-300">
-            <Play className="h-4 w-4" /> Study
+            <Play className="h-4 w-4" /> Вивчати
           </button>
         </div>
       </div>
@@ -5505,15 +5531,15 @@ function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onA
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
             <Timer className="h-4 w-4 text-slate-400" />
-            <h2 className="text-sm font-semibold text-slate-700">Where your cards sit</h2>
+            <h2 className="text-sm font-semibold text-slate-700">Де зараз твої картки</h2>
           </div>
           <StageBreakdown stages={s.stages || {}} total={cards.length} />
           <div className="mt-4">
             <IntervalTimeline activeStageId={null} />
             <p className="mt-1.5 text-[11px] text-slate-400">
               {isDeadline
-                ? `Deadline mode: intervals are capped to fit before your target date${dleft > 0 ? `, ${dleft} days away` : ""}.`
-                : "Long-term mode: intervals keep growing — short (red) to long (blue)."}
+                ? `Режим «Дедлайн»: інтервали стискаються, щоб устигнути до цільової дати${dleft > 0 ? ` — лишилось ${dleft} дн` : ""}.`
+                : "Довготривалий режим: інтервали ростуть — від коротких (червоний) до довгих (синій)."}
             </p>
           </div>
         </div>
@@ -5522,25 +5548,25 @@ function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onA
       {/* card list */}
       <div>
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h2 className="mr-auto text-sm font-semibold uppercase tracking-wide text-slate-400">Cards</h2>
+          <h2 className="mr-auto text-sm font-semibold uppercase tracking-wide text-slate-400">Картки</h2>
           <div className="relative">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search…"
+              placeholder="Пошук…"
               className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100 sm:w-56"
             />
           </div>
           <button onClick={onAddCard} className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-rose-700">
-            <Plus className="h-4 w-4" /> Add card
+            <Plus className="h-4 w-4" /> Додати картку
           </button>
         </div>
 
         {cards.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white py-12 text-center text-slate-500">
-            <p className="font-medium">No cards yet</p>
+            <p className="font-medium">Карток ще немає</p>
             <button onClick={onAddCard} className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700">
-              <Plus className="h-4 w-4" /> Add your first card
+              <Plus className="h-4 w-4" /> Додати першу картку
             </button>
           </div>
         ) : (
@@ -5549,23 +5575,23 @@ function DeckDetailView({ deck, cards, summary, onBack, onStudy, onEditDeck, onA
               <div key={c.id} className="group flex items-center gap-3 px-4 py-2.5">
                 {(c.imgFront || c.imgBack) && <ImageIcon className="h-4 w-4 shrink-0 text-slate-300" />}
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-slate-800">{c.front || <span className="italic text-slate-400">(image)</span>}</div>
+                  <div className="truncate text-sm font-medium text-slate-800">{c.front || <span className="italic text-slate-400">(зображення)</span>}</div>
                   <div className="truncate text-xs text-slate-400">{c.back}</div>
                   <CardScheduleLine card={c} />
                 </div>
                 <StageBadge card={c} />
                 <SpeakerButton text={c.front} lang={c.lang || lang} />
-                <button onClick={() => onEditCard(c)} className="rounded-md p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 sm:opacity-0 sm:group-hover:opacity-100" title="Edit card">
+                <button onClick={() => onEditCard(c)} className="rounded-md p-1.5 text-slate-300 transition hover:bg-slate-100 hover:text-slate-600 sm:opacity-0 sm:group-hover:opacity-100" title="Редагувати картку">
                   <Pencil className="h-4 w-4" />
                 </button>
-                <button onClick={() => { if (confirm("Delete this card?")) onDeleteCard(c.id); }} className="rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100" title="Delete card">
+                <button onClick={() => { if (confirm("Видалити цю картку?")) onDeleteCard(c.id); }} className="rounded-md p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100" title="Видалити картку">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             ))}
             {filtered.length > shown.length && (
               <div className="px-4 py-2.5 text-center text-xs text-slate-400">
-                Showing first {shown.length.toLocaleString()} of {filtered.length.toLocaleString()} — search to narrow down.
+                Показано перші {shown.length.toLocaleString()} з {filtered.length.toLocaleString()} — уточни пошук, щоб звузити.
               </div>
             )}
           </div>
@@ -5611,7 +5637,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
       setImg((m) => ({ ...m, [side]: dataUrl }));
       setDirty((d) => ({ ...d, [side]: true }));
     } catch (e) {
-      setErr(e.message || "Couldn't process that image.");
+      setErr(e.message || "Не вдалося обробити зображення.");
     } finally {
       setBusy(false);
     }
@@ -5629,7 +5655,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
 
   const save = () => {
     if (!front.trim() && !img.front && !back.trim() && !img.back) {
-      setErr("Add some text or an image first.");
+      setErr("Спершу додай текст або зображення.");
       return;
     }
     const images = {
@@ -5649,7 +5675,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
       {img[side] ? (
         <div className="relative">
           <img src={img[side]} alt="" className="mx-auto max-h-40 w-auto rounded object-contain" />
-          <button onClick={() => removeSide(side)} className="absolute right-1 top-1 rounded-full bg-slate-900/70 p-1 text-white hover:bg-slate-900" title="Remove image">
+          <button onClick={() => removeSide(side)} className="absolute right-1 top-1 rounded-full bg-slate-900/70 p-1 text-white hover:bg-slate-900" title="Прибрати зображення">
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -5661,10 +5687,10 @@ function CardEditor({ deck, card, onClose, onSave }) {
               onClick={() => (side === "front" ? frontFile : backFile).current?.click()}
               className="font-medium text-rose-600 hover:text-rose-700"
             >
-              Upload
+              Завантажити
             </button>
             <span className="text-slate-300">·</span>
-            <span className="text-slate-400">click, then paste (⌘/Ctrl+V)</span>
+            <span className="text-slate-400">клікни, потім встав (⌘/Ctrl+V)</span>
           </div>
         </div>
       )}
@@ -5677,7 +5703,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()} onPaste={onPaste}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">{card ? "Edit card" : "New card"}</h2>
+          <h2 className="text-lg font-bold text-slate-900">{card ? "Редагувати картку" : "Нова картка"}</h2>
           <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
         </div>
 
@@ -5687,14 +5713,14 @@ function CardEditor({ deck, card, onClose, onSave }) {
           {["front", "back"].map((side) => (
             <div key={side} className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{side}</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{side === "front" ? "Лицьова" : "Зворот"}</span>
                 <SpeakerButton text={side === "front" ? front : back} lang={effLang} />
               </div>
               <textarea
                 value={side === "front" ? front : back}
                 onChange={(e) => (side === "front" ? setFront : setBack)(e.target.value)}
                 rows={3}
-                placeholder={side === "front" ? "Question / prompt" : "Answer"}
+                placeholder={side === "front" ? "Питання / підказка" : "Відповідь"}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
               />
               <ImageSlot side={side} />
@@ -5703,20 +5729,20 @@ function CardEditor({ deck, card, onClose, onSave }) {
         </div>
 
         <label className="mt-4 block">
-          <span className="mb-1 block text-xs font-medium text-slate-500">Audio language override (optional)</span>
+          <span className="mb-1 block text-xs font-medium text-slate-500">Мова озвучення — перевизначити (необовʼязково)</span>
           <div className="relative sm:w-64">
             <select value={lang} onChange={(e) => setLang(e.target.value)} className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100">
-              {LANGUAGES.map((l) => <option key={l.code || "default"} value={l.code}>{l.code ? l.label : `Deck default (${DECK_LANGUAGES.find((x) => x.code === deck?.language)?.label || deck?.language || "—"})`}</option>)}
+              {LANGUAGES.map((l) => <option key={l.code || "default"} value={l.code}>{l.code ? l.label : `За замовчуванням колоди (${DECK_LANGUAGES.find((x) => x.code === deck?.language)?.label || deck?.language || "—"})`}</option>)}
             </select>
             <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           </div>
         </label>
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          {busy && <span className="mr-auto text-xs text-slate-400">Processing image…</span>}
-          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Cancel</button>
+          {busy && <span className="mr-auto text-xs text-slate-400">Обробляю зображення…</span>}
+          <button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Скасувати</button>
           <button onClick={save} disabled={busy} className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:bg-slate-300">
-            <Check className="h-4 w-4" /> {card ? "Save card" : "Add card"}
+            <Check className="h-4 w-4" /> {card ? "Зберегти картку" : "Додати картку"}
           </button>
         </div>
       </div>
@@ -5754,11 +5780,11 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
         skipEmptyLines: true,
         complete: (res) => {
           const headers = (res.meta.fields || []).filter(Boolean);
-          if (!headers.length) return setError("Couldn't find any columns in that CSV.");
+          if (!headers.length) return setError("Не знайшла жодної колонки в цьому CSV.");
           setParsed({ headers, rows: res.data, source: file.name });
           setMapping(autoMapColumns(headers));
         },
-        error: (err) => setError(`CSV error: ${err.message}`),
+        error: (err) => setError(`Помилка CSV: ${err.message}`),
       });
     } else {
       const reader = new FileReader();
@@ -5775,7 +5801,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
             const { cards } = extractSheetCards(rowsAoA);
             if (cards.length) found.push({ name: sn, deckName: cleanDeckName(sn), cards, include: true });
           }
-          if (!found.length) return setError("Couldn't find any Front/Back data in that file.");
+          if (!found.length) return setError("Не знайшла даних Front/Back у цьому файлі.");
 
           // more than one usable sheet -> per-sheet import picker
           if (found.length > 1) {
@@ -5797,7 +5823,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
             setMapping(autoMapColumns(headers));
           }
         } catch (err) {
-          setError(`Couldn't read that file: ${err.message}`);
+          setError(`Не вдалося прочитати файл: ${err.message}`);
         }
       };
       reader.readAsArrayBuffer(file);
@@ -5821,7 +5847,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
   }, [parsed, mapping]);
 
   const targetDeck = decks.find((d) => d.id === target.deckId);
-  const targetLabel = target.deckId ? targetDeck?.name : (target.name.trim() || "New deck");
+  const targetLabel = target.deckId ? targetDeck?.name : (target.name.trim() || "Нова колода");
 
   const commitFile = () => {
     if (!parsed || !mapping.front) return;
@@ -5832,12 +5858,12 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
       for (const r of parsed.rows) {
         const front = String(r[mapping.front] ?? "").trim();
         if (!front) continue;
-        const dn = String(r[mapping.deck] ?? "").trim() || target.name.trim() || "Imported";
+        const dn = String(r[mapping.deck] ?? "").trim() || target.name.trim() || "Імпортовані";
         (groups[dn] ||= []).push(
           makeCard(front, mapping.back ? r[mapping.back] : "", mapping.tags ? r[mapping.tags] : "", mapping.notes ? r[mapping.notes] : "")
         );
       }
-      if (!Object.keys(groups).length) return setError("No rows had a Front value.");
+      if (!Object.keys(groups).length) return setError("Жоден рядок не мав значення Front.");
       return onImport(groups);
     }
 
@@ -5850,7 +5876,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
     }
     if (!cards.length) return setError("No rows had a Front value.");
     if (target.deckId) onImport({ [targetDeck.name]: cards }, { targetDeckId: target.deckId });
-    else onImport({ [target.name.trim() || "Imported"]: cards });
+    else onImport({ [target.name.trim() || "Імпортовані"]: cards });
   };
 
   const includedSheets = sheets ? sheets.filter((s) => s.include) : [];
@@ -5866,7 +5892,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
       const dn = (s.deckName || "").trim() || s.name;
       (groups[dn] ||= []).push(...s.cards.map(([f, b]) => makeCard(f, b)));
     }
-    if (!Object.keys(groups).length) return setError("Select at least one sheet to import.");
+    if (!includedSheets.length) return setError("Обери хоча б один аркуш для імпорту.");
     onImport(groups);
   };
 
@@ -5882,9 +5908,9 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
       const back = (parts[1] || "").trim();
       if (front) cards.push(makeCard(front, back));
     }
-    if (!cards.length) return setError("Type at least one line as  Front | Back");
+    if (!cards.length) return setError("Впиши хоча б один рядок у форматі  Front | Back");
     if (target.deckId) onImport({ [targetDeck.name]: cards }, { targetDeckId: target.deckId });
-    else onImport({ [target.name.trim() || "Pasted cards"]: cards });
+    else onImport({ [target.name.trim() || "Вставлені картки"]: cards });
   };
 
   return (
@@ -5893,7 +5919,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
         <button onClick={onCancel} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700">
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-xl font-bold text-slate-900">Import cards</h1>
+        <h1 className="text-xl font-bold text-slate-900">Імпорт карток</h1>
       </div>
 
       {onLoadEnglish && (
@@ -5911,8 +5937,8 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
 
       {/* mode toggle */}
       <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
-        <ModeTab active={mode === "file"} onClick={() => { setMode("file"); setError(""); }} icon={FileSpreadsheet}>Spreadsheet</ModeTab>
-        <ModeTab active={mode === "paste"} onClick={() => { setMode("paste"); setError(""); }} icon={ClipboardPaste}>Paste text</ModeTab>
+        <ModeTab active={mode === "file"} onClick={() => { setMode("file"); setError(""); }} icon={FileSpreadsheet}>Таблиця</ModeTab>
+        <ModeTab active={mode === "paste"} onClick={() => { setMode("paste"); setError(""); }} icon={ClipboardPaste}>Вставити текст</ModeTab>
       </div>
 
       {error && (
@@ -5928,8 +5954,8 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
             className="flex w-full flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-white py-12 text-slate-500 transition hover:border-rose-400 hover:text-rose-600"
           >
             <Upload className="h-8 w-8" />
-            <span className="font-medium">Choose a .xlsx, .xls or .csv file</span>
-            <span className="text-xs text-slate-400">Columns: Front, Back, and optional Deck, Tags, Notes — every sheet becomes a deck</span>
+            <span className="font-medium">Обери файл .xlsx, .xls або .csv</span>
+            <span className="text-xs text-slate-400">Колонки: Front, Back, і необовʼязково Deck, Tags, Notes — кожен аркуш стає колодою</span>
           </button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFile} className="hidden" />
         </div>
@@ -5941,7 +5967,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
             <span className="flex items-center gap-2 text-slate-600">
               <FileSpreadsheet className="h-4 w-4 text-green-600" />
               <span className="font-medium">{sourceName}</span>
-              <span className="text-slate-400">· {sheets.length} sheet{sheets.length === 1 ? "" : "s"} with cards</span>
+              <span className="text-slate-400">· {sheets.length} {uaN(sheets.length, "аркуш", "аркуші", "аркушів")} з картками</span>
             </span>
             <button onClick={resetFile} className="text-slate-400 hover:text-slate-700">
               <X className="h-4 w-4" />
@@ -5949,10 +5975,10 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
           </div>
 
           <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-500">Each sheet imports as its own deck. Untick any you don't want, or rename them.</p>
+            <p className="text-sm text-slate-500">Кожен аркуш стає окремою колодою. Знімай позначку з непотрібних або перейменовуй їх.</p>
             <div className="flex shrink-0 gap-3 text-xs font-medium">
-              <button onClick={() => setAllSheets(true)} className="text-rose-600 hover:text-rose-700">All</button>
-              <button onClick={() => setAllSheets(false)} className="text-slate-400 hover:text-slate-600">None</button>
+              <button onClick={() => setAllSheets(true)} className="text-rose-600 hover:text-rose-700">Усі</button>
+              <button onClick={() => setAllSheets(false)} className="text-slate-400 hover:text-slate-600">Жодного</button>
             </div>
           </div>
 
@@ -5974,7 +6000,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
                   className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-slate-800 hover:border-slate-200 focus:border-rose-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-100"
                 />
                 <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold tabular-nums text-slate-500">
-                  {s.cards.length} cards
+                  {s.cards.length} {uaN(s.cards.length, "картка", "картки", "карток")}
                 </span>
               </div>
             ))}
@@ -5986,11 +6012,11 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
               disabled={!includedCount}
               className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              <Check className="h-4 w-4" /> Import {includedCount.toLocaleString()} card{includedCount === 1 ? "" : "s"}
-              <span className="opacity-80">· {includedSheets.length} deck{includedSheets.length === 1 ? "" : "s"}</span>
+              <Check className="h-4 w-4" /> Імпортувати {includedCount.toLocaleString()} {uaN(includedCount, "картку", "картки", "карток")}
+              <span className="opacity-80">· {includedSheets.length} {uaN(includedSheets.length, "колода", "колоди", "колод")}</span>
             </button>
             <button onClick={resetFile} className="text-sm font-medium text-slate-500 hover:text-slate-800">
-              Choose another file
+              Обрати інший файл
             </button>
           </div>
         </div>
@@ -6002,7 +6028,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
             <span className="flex items-center gap-2 text-slate-600">
               <FileSpreadsheet className="h-4 w-4 text-green-600" />
               <span className="font-medium">{parsed.source}</span>
-              <span className="text-slate-400">· {parsed.rows.length} rows</span>
+              <span className="text-slate-400">· {parsed.rows.length} рядків</span>
             </span>
             <button onClick={() => { setParsed(null); setError(""); }} className="text-slate-400 hover:text-slate-700">
               <X className="h-4 w-4" />
@@ -6011,14 +6037,14 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
 
           {/* column mapping */}
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-slate-700">Map your columns</h3>
+            <h3 className="mb-2 text-sm font-semibold text-slate-700">Зістав свої колонки</h3>
             <div className="grid gap-3 sm:grid-cols-2">
               {[
-                { field: "front", label: "Front", required: true },
-                { field: "back", label: "Back", required: false },
-                { field: "deck", label: "Deck (optional)", required: false },
-                { field: "tags", label: "Tags (optional)", required: false },
-                { field: "notes", label: "Notes (optional)", required: false },
+                { field: "front", label: "Лицьова", required: true },
+                { field: "back", label: "Зворот", required: false },
+                { field: "deck", label: "Колода (необовʼязково)", required: false },
+                { field: "tags", label: "Теги (необовʼязково)", required: false },
+                { field: "notes", label: "Нотатки (необовʼязково)", required: false },
               ].map(({ field, label, required }) => (
                 <label key={field} className="block">
                   <span className="mb-1 block text-xs font-medium text-slate-500">
@@ -6029,7 +6055,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
                     onChange={(e) => setMapping((m) => ({ ...m, [field]: e.target.value }))}
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
                   >
-                    <option value="">— none —</option>
+                    <option value="">— нічого —</option>
                     {parsed.headers.map((h) => (
                       <option key={h} value={h}>{h}</option>
                     ))}
@@ -6040,25 +6066,25 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
           </div>
 
           {!mapping.deck ? (
-            <DeckTargetPicker decks={decks} target={target} onChange={setTarget} defaultName="Imported" />
+            <DeckTargetPicker decks={decks} target={target} onChange={setTarget} defaultName="Імпортовані" />
           ) : (
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-              Rows are split into decks by the “{mapping.deck}” column. Matching existing decks get the new cards appended.
+              Рядки розділяються на колоди за колонкою «{mapping.deck}». Для наявних колод нові картки лише додаються.
             </p>
           )}
 
           {/* preview */}
           {previewCards.length > 0 && (
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-slate-700">Preview</h3>
+              <h3 className="mb-2 text-sm font-semibold text-slate-700">Перегляд</h3>
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
                     <tr>
-                      <th className="px-3 py-2 font-medium">Front</th>
-                      <th className="px-3 py-2 font-medium">Back</th>
-                      {mapping.deck && <th className="px-3 py-2 font-medium">Deck</th>}
-                      {mapping.tags && <th className="px-3 py-2 font-medium">Tags</th>}
+                      <th className="px-3 py-2 font-medium">Лицьова</th>
+                      <th className="px-3 py-2 font-medium">Зворот</th>
+                      {mapping.deck && <th className="px-3 py-2 font-medium">Колода</th>}
+                      {mapping.tags && <th className="px-3 py-2 font-medium">Теги</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -6082,10 +6108,10 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
               disabled={!mapping.front || !validCount}
               className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              <Check className="h-4 w-4" /> Import {validCount} card{validCount === 1 ? "" : "s"}
+              <Check className="h-4 w-4" /> Імпортувати {validCount} {uaN(validCount, "картку", "картки", "карток")}
             </button>
             <button onClick={() => { setParsed(null); setError(""); }} className="text-sm font-medium text-slate-500 hover:text-slate-800">
-              Choose another file
+              Обрати інший файл
             </button>
           </div>
         </div>
@@ -6093,10 +6119,10 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
 
       {mode === "paste" && (
         <div className="space-y-4">
-          <DeckTargetPicker decks={decks} target={target} onChange={setTarget} defaultName="Pasted cards" />
+          <DeckTargetPicker decks={decks} target={target} onChange={setTarget} defaultName="Вставлені картки" />
           <div>
             <label className="mb-1 block text-xs font-medium text-slate-500">
-              One card per line — <span className="font-mono">Front | Back</span> (also accepts tab or comma)
+              По одній картці на рядок — <span className="font-mono">Лицьова | Зворот</span> (приймає й таб чи кому)
             </label>
             <textarea
               value={pasteText}
@@ -6111,7 +6137,7 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
             disabled={!pasteText.trim()}
             className="inline-flex items-center gap-2 rounded-lg bg-rose-600 px-5 py-2.5 font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            <Check className="h-4 w-4" /> Add cards
+            <Check className="h-4 w-4" /> Додати картки
           </button>
         </div>
       )}
@@ -6136,7 +6162,7 @@ function ModeTab({ active, onClick, icon: Icon, children }) {
 function DeckTargetPicker({ decks, target, onChange, defaultName }) {
   return (
     <div className="space-y-2">
-      <label className="block text-xs font-medium text-slate-500">Add cards to</label>
+      <label className="block text-xs font-medium text-slate-500">Додати картки в</label>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative sm:w-64">
           <select
@@ -6144,7 +6170,7 @@ function DeckTargetPicker({ decks, target, onChange, defaultName }) {
             onChange={(e) => onChange({ ...target, deckId: e.target.value })}
             className="w-full appearance-none rounded-lg border border-slate-300 bg-white px-3 py-2 pr-9 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
           >
-            <option value="">➕ Create a new deck…</option>
+            <option value="">➕ Створити нову колоду…</option>
             {decks.length > 0 && <option disabled>──────────</option>}
             {decks.map((d) => (
               <option key={d.id} value={d.id}>{d.emoji ? `${d.emoji} ` : ""}{d.name}</option>
@@ -6156,13 +6182,13 @@ function DeckTargetPicker({ decks, target, onChange, defaultName }) {
           <input
             value={target.name}
             onChange={(e) => onChange({ ...target, name: e.target.value })}
-            placeholder={defaultName || "New deck name"}
+            placeholder={defaultName || "Назва нової колоди"}
             className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
           />
         )}
       </div>
       {target.deckId && (
-        <p className="text-xs text-slate-400">New cards will be appended — nothing already in the deck is removed.</p>
+        <p className="text-xs text-slate-400">Нові картки лише додадуться — нічого з наявних у колоді не видаляється.</p>
       )}
     </div>
   );
@@ -6188,7 +6214,7 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
     const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
     const buckets = Array.from({ length: 14 }, (_, i) => {
       const day = new Date(startOfToday.getTime() + i * DAY);
-      return { label: i === 0 ? "Today" : day.toLocaleDateString(undefined, { weekday: "short", day: "numeric" }), count: 0, i };
+      return { label: i === 0 ? "Сьогодні" : day.toLocaleDateString("uk-UA", { weekday: "short", day: "numeric" }), count: 0, i };
     });
     for (const arr of Object.values(cardsByDeck)) {
       for (const c of arr) {
@@ -6208,7 +6234,7 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
       const ms = now - (6 - i) * DAY;
       const d = new Date(ms);
       return {
-        label: d.toLocaleDateString(undefined, { weekday: "short" }),
+        label: d.toLocaleDateString("uk-UA", { weekday: "short" }),
         studied: stats.history?.[dateKey(ms)]?.studied || 0,
       };
     });
@@ -6218,23 +6244,23 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-slate-900">Your progress</h1>
+      <h1 className="text-xl font-bold text-slate-900">Твій прогрес</h1>
 
       <div className="flex flex-wrap gap-3">
-        <StatTile icon={Check} label="Studied today" value={studiedToday} tint="text-rose-600" />
-        <StatTile icon={Flame} label="Streak" value={streak} tint={streak ? "text-orange-500" : "text-slate-400"} sub={streak === 1 ? "day" : "days"} />
-        <StatTile icon={Target} label="Retention" value={retention == null ? "—" : `${retention}%`} tint="text-green-600" sub="last 30 days" />
-        <StatTile icon={Inbox} label="Due now" value={totalDue} tint={totalDue ? "text-slate-700" : "text-slate-400"} />
-        <StatTile icon={Layers} label="Total cards" value={totalCards} tint="text-slate-700" />
+        <StatTile icon={Check} label="Вивчено сьогодні" value={studiedToday} tint="text-rose-600" />
+        <StatTile icon={Flame} label="Стрік" value={streak} tint={streak ? "text-orange-500" : "text-slate-400"} sub={streak === 1 ? "день" : "днів"} />
+        <StatTile icon={Target} label="Утримання" value={retention == null ? "—" : `${retention}%`} tint="text-green-600" sub="за 30 днів" />
+        <StatTile icon={Inbox} label="Чекають зараз" value={totalDue} tint={totalDue ? "text-slate-700" : "text-slate-400"} />
+        <StatTile icon={Layers} label="Усього карток" value={totalCards} tint="text-slate-700" />
       </div>
 
       {/* upcoming chart */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-1 flex items-center gap-2">
           <Clock className="h-4 w-4 text-slate-400" />
-          <h2 className="text-sm font-semibold text-slate-700">Upcoming reviews · next 14 days</h2>
+          <h2 className="text-sm font-semibold text-slate-700">Майбутні повторення · наступні 14 днів</h2>
         </div>
-        <p className="mb-4 text-xs text-slate-400">When your review cards are next scheduled to come back.</p>
+        <p className="mb-4 text-xs text-slate-400">Коли твої картки на повторення знову зʼявляться.</p>
         <div className="h-56 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={upcoming} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -6259,7 +6285,7 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
       {/* last 7 days */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <BarChart3 className="h-4 w-4 text-slate-400" /> Cards studied · last 7 days
+          <BarChart3 className="h-4 w-4 text-slate-400" /> Вивчено карток · останні 7 днів
         </h2>
         <div className="flex items-end justify-between gap-2" style={{ height: 120 }}>
           {last7.map((d, i) => {
@@ -6271,7 +6297,7 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
                   <div
                     className="w-full rounded-t bg-rose-500 transition-all"
                     style={{ height: `${d.studied ? Math.max(6, h) : 0}%`, minHeight: d.studied ? 6 : 0 }}
-                    title={`${d.studied} cards`}
+                    title={`${d.studied} ${uaN(d.studied, "картка", "картки", "карток")}`}
                   />
                 </div>
                 <span className="text-[11px] font-medium tabular-nums text-slate-600">{d.studied || ""}</span>
@@ -6287,11 +6313,11 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
 
       {/* settings + data */}
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="mb-4 text-sm font-semibold text-slate-700">Settings & data</h2>
+        <h2 className="mb-4 text-sm font-semibold text-slate-700">Налаштування й дані</h2>
         <label className="flex items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <span>
-            <span className="block text-sm font-medium text-slate-700">New cards per day</span>
-            <span className="block text-xs text-slate-400">How many brand-new cards to introduce daily.</span>
+            <span className="block text-sm font-medium text-slate-700">Нових карток на день</span>
+            <span className="block text-xs text-slate-400">Скільки цілком нових карток вводити щодня.</span>
           </span>
           <input
             type="number" min={0} max={999} value={newPerDay}
@@ -6301,13 +6327,13 @@ function StatsView({ stats, decks, cardsByDeck, totalDue, onExport, onReset, onC
         </label>
         <div className="mt-4 flex flex-wrap gap-3">
           <button onClick={onExport} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-slate-50">
-            <Download className="h-4 w-4" /> Export backup (JSON)
+            <Download className="h-4 w-4" /> Завантажити резервну копію (JSON)
           </button>
           <button
-            onClick={() => { if (confirm("Reset ALL data — decks, cards, stats AND your routine/habits? This cannot be undone.")) onReset(); }}
+            onClick={() => { if (confirm("Скинути УСІ дані — колоди, картки, статистику Й твою рутину/звички? Це незворотно.")) onReset(); }}
             className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50"
           >
-            <RotateCcw className="h-4 w-4" /> Reset everything
+            <RotateCcw className="h-4 w-4" /> Скинути все
           </button>
         </div>
       </div>
@@ -6431,20 +6457,15 @@ const prettyDate = (ds) => new Date(ds + "T00:00:00").toLocaleDateString(undefin
 function GamifyBar({ xp, onRewards }) {
   const lp = levelProgress(xp);
   return (
-    <button onClick={onRewards} className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/80 p-3 text-left shadow-sm ring-1 ring-red-100 transition hover:ring-red-200">
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-pink-400 to-fuchsia-400 text-white shadow-sm">
-        <span className="text-xs font-black leading-none">LVL</span>
-      </span>
+    <button onClick={onRewards} className="mt-4 flex w-full items-center gap-3 rounded-[20px] p-3.5 text-left text-white shadow-sm transition hover:brightness-105" style={{ background: "linear-gradient(135deg,#ff9db4,#ff7a8f)" }}>
+      <ProgressRing pct={lp.pct} size={44} stroke={5} color="#fff" track="rgba(255,255,255,.3)">
+        <span style={SNUM} className="text-[11px] font-extrabold">{Math.round(lp.pct * 100)}%</span>
+      </ProgressRing>
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between">
-          <span className="text-sm font-extrabold text-slate-800">Рівень {lp.lvl}</span>
-          <span className="text-[11px] font-semibold tabular-nums text-slate-400">{xp} XP</span>
-        </div>
-        <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-pink-100">
-          <div className="h-full rounded-full bg-gradient-to-r from-pink-400 to-fuchsia-400 transition-all" style={{ width: `${lp.pct * 100}%` }} />
-        </div>
-        <div className="mt-0.5 text-[10px] text-slate-400">{lp.next - xp} XP до рівня {lp.lvl + 1} · нагороди 🎁</div>
+        <div className="text-sm font-extrabold">Рівень {lp.lvl} · {xp} XP</div>
+        <div className="text-[11px] text-white/90">ще {lp.next - xp} XP до {lp.lvl + 1}-го рівня</div>
       </div>
+      <span className="grid h-8.5 w-8.5 shrink-0 place-items-center rounded-xl bg-white/25" style={{ width: 34, height: 34 }}><Gift className="h-4 w-4" /></span>
     </button>
   );
 }
@@ -6853,14 +6874,14 @@ function RoutineSection({ onGo }) {
     if (willComplete) maybeCelebrate(nextCompletions);
   }, [tasks, completions, selDate, commitDoc, maybeCelebrate]);
 
-  const setMood = useCallback(async (score) => { await saveMoods({ ...moods, [today]: score }); setMoodOpen(false); flash("Mood saved"); }, [moods, today, saveMoods, flash]);
+  const setMood = useCallback(async (score) => { await saveMoods({ ...moods, [today]: score }); setMoodOpen(false); flash("Настрій збережено"); }, [moods, today, saveMoods, flash]);
 
   const saveTask = useCallback(async (meta, id) => {
     if (id) await saveTasks(tasks.map((t) => (t.id === id ? { ...t, ...meta } : t)));
     else await saveTasks([...tasks, { id: ruid("t"), created: Date.now(), ...meta }]);
-    flash(id ? "Task saved" : "Task added");
+    flash(id ? "Задачу збережено" : "Задачу додано");
   }, [tasks, saveTasks, flash]);
-  const deleteTask = useCallback(async (id) => { await saveTasks(tasks.filter((t) => t.id !== id)); flash("Task deleted"); }, [tasks, saveTasks, flash]);
+  const deleteTask = useCallback(async (id) => { await saveTasks(tasks.filter((t) => t.id !== id)); flash("Задачу видалено"); }, [tasks, saveTasks, flash]);
 
   const addCategory = useCallback(async (name, color) => { await saveCategories([...categories, { id: ruid("cat"), name: name.trim(), color }]); }, [categories, saveCategories]);
   const renameCategory = useCallback(async (id, name) => { await saveCategories(categories.map((c) => (c.id === id ? { ...c, name } : c))); }, [categories, saveCategories]);
@@ -6954,7 +6975,7 @@ function RoutineSection({ onGo }) {
   const savePomoSettings = useCallback((s) => { setPomoSettings(s); store.set(RKEYS.pomo, s); }, []);
 
   if (loading) {
-    return <div className="flex flex-1 items-center justify-center text-pink-400"><div className="flex flex-col items-center gap-3"><Sun className="h-8 w-8 animate-pulse" /><span className="text-sm">Loading your routine…</span></div></div>;
+    return <div className="flex flex-1 items-center justify-center text-pink-400"><div className="flex flex-col items-center gap-3"><Sun className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантажую твою рутину…</span></div></div>;
   }
 
   const detailTask = detailId ? tasks.find((t) => t.id === detailId) : null;
@@ -6977,16 +6998,19 @@ function RoutineSection({ onGo }) {
               onOpen={(practiceId) => openCalmPractice(practiceId, onGo)}
             />
           )}
-          {/* header */}
+          {/* header — streak + XP merged into one capsule, per redesign */}
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-extrabold text-slate-900">{isToday ? "Today" : prettyDate(selDate).split(",")[0]}</h1>
+              <h1 className="text-2xl font-extrabold text-slate-900">{isToday ? "Сьогодні" : prettyDate(selDate).split(",")[0]}</h1>
               <p className="text-xs font-medium text-slate-400">{prettyDate(selDate)}</p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-red-100">
-                <span className="text-lg">🔥</span>
-                <span className="text-sm font-bold tabular-nums text-orange-500">{streak.current}</span>
+              <div className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 shadow-sm ring-1 ring-red-100">
+                <span className="text-sm" style={{ animation: "sc-flamePulse 2.2s ease-in-out infinite", display: "inline-block" }}>🔥</span>
+                <span className="text-sm font-bold tabular-nums text-pink-600">{streak.current}</span>
+                <span className="h-3 w-px bg-red-100" />
+                <span className="text-xs">✨</span>
+                <span className="text-sm font-bold tabular-nums text-amber-600">Рв.{levelProgress(xp).lvl}</span>
               </div>
               <div className="relative">
                 <button onClick={() => setMenuOpen((v) => !v)} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-red-100 hover:text-slate-700"><Menu className="h-4 w-4" /></button>
@@ -6995,8 +7019,8 @@ function RoutineSection({ onGo }) {
                   <div className="absolute right-0 top-11 z-20 w-48 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg">
                     <button onClick={() => { setRview("wellbeing"); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><Smile className="h-4 w-4 text-slate-400" /> Настрій і вдячність</button>
                     <button onClick={() => { setRview("meds"); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><HeartPulse className="h-4 w-4 text-slate-400" /> Ліки й самопочуття</button>
-                    <button onClick={() => { setRview("stats"); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><BarChart3 className="h-4 w-4 text-slate-400" /> Stats & profile</button>
-                    <button onClick={() => { setCatManager(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><Tag className="h-4 w-4 text-slate-400" /> Manage categories</button>
+                    <button onClick={() => { setRview("stats"); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><BarChart3 className="h-4 w-4 text-slate-400" /> Профіль і статистика</button>
+                    <button onClick={() => { setCatManager(true); setMenuOpen(false); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"><Tag className="h-4 w-4 text-slate-400" /> Керувати категоріями</button>
                   </div>
                 </>)}
               </div>
@@ -7012,20 +7036,26 @@ function RoutineSection({ onGo }) {
           {/* daily challenges */}
           {isToday && <ChallengesCard challenges={challenges} ctx={chCtx} chDoc={doc.ch || {}} onDismiss={dismissChallenge} />}
 
-          {/* quick actions */}
+          {/* quick actions — Колесо dropped per redesign; 2 хв now auto-picks the next open task */}
           {isToday && dayTasks.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <button onClick={() => notDone.length ? setWheelOpen(true) : flash("Усе на сьогодні закрито 🎉")} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-red-100 hover:ring-red-200">🎡 Колесо</button>
-              <button onClick={() => setFocusOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-red-100 hover:ring-red-200">🎯 Зараз</button>
-              <button onClick={() => setRecapOpen(true)} className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-red-100 hover:ring-red-200">🌙 Підсумок</button>
-              {dayTotalMin > 0 && <span className="ml-auto text-xs font-semibold text-slate-400">Сьогодні ≈ {fmtEst(dayTotalMin)}</span>}
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => { const t = notDone[0]; if (t) setPomo({ task: t, mode: "2min" }); else flash("Усе на сьогодні закрито 🎉"); }} className="flex flex-1 flex-col items-center gap-1 rounded-2xl bg-white px-1.5 py-2.5 shadow-sm ring-1 ring-red-100 transition hover:ring-red-200">
+                <span className="text-[17px]">💪</span><span className="text-[11px] font-bold text-slate-600">2 хв</span>
+              </button>
+              <button onClick={() => setFocusOpen(true)} className="flex flex-1 flex-col items-center gap-1 rounded-2xl bg-white px-1.5 py-2.5 shadow-sm ring-1 ring-red-100 transition hover:ring-red-200">
+                <span className="text-[17px]">🎯</span><span className="text-[11px] font-bold text-slate-600">Фокус</span>
+              </button>
+              <button onClick={() => setRecapOpen(true)} className="flex flex-1 flex-col items-center gap-1 rounded-2xl bg-white px-1.5 py-2.5 shadow-sm ring-1 ring-red-100 transition hover:ring-red-200">
+                <span className="text-[17px]">🌙</span><span className="text-[11px] font-bold text-slate-600">Підсумок</span>
+              </button>
             </div>
           )}
           {isToday && dayTasks.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               {[["quick", "⚡ Швидкі перемоги"], ["low", "🟢 Мало енергії"]].map(([k, label]) => (
                 <button key={k} onClick={() => setEnergyFilter((f) => (f === k ? null : k))} className={`rounded-full px-3 py-1.5 text-xs font-semibold ring-1 transition ${energyFilter === k ? "bg-pink-500 text-white ring-pink-500" : "bg-white text-slate-500 ring-slate-200 hover:ring-pink-200"}`}>{label}</button>
               ))}
+              {dayTotalMin > 0 && <span className="ml-auto text-xs font-semibold text-slate-400">Сьогодні ≈ {fmtEst(dayTotalMin)}</span>}
             </div>
           )}
 
@@ -7034,23 +7064,23 @@ function RoutineSection({ onGo }) {
             <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/80 p-3 shadow-sm ring-1 ring-red-100">
               <span className="text-2xl">🌸</span>
               <div className="flex-1">
-                <div className="text-sm font-semibold text-slate-800">How is your day?</div>
-                <div className="text-xs text-slate-400">Take a second to check in.</div>
+                <div className="text-sm font-semibold text-slate-800">Як настрій?</div>
+                <div className="text-xs text-slate-400">Приділи секунду собі.</div>
               </div>
-              <button onClick={() => setMoodOpen(true)} className="rounded-full bg-pink-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-pink-600">Check in</button>
+              <button onClick={() => setMoodOpen(true)} className="rounded-full bg-pink-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-pink-600">Відмітити</button>
               <button onClick={() => setBannerDismissed(true)} className="rounded-full p-1 text-slate-300 hover:text-slate-500"><X className="h-4 w-4" /></button>
             </div>
           )}
           {isToday && moods[today] != null && (
             <button onClick={() => setMoodOpen(true)} className="mt-4 flex w-full items-center gap-3 rounded-2xl bg-white/80 p-3 text-left shadow-sm ring-1 ring-red-100">
               <span className="text-2xl">{MOODS.find((m) => m.score === moods[today])?.emoji}</span>
-              <div className="flex-1"><div className="text-sm font-semibold text-slate-800">Feeling {MOODS.find((m) => m.score === moods[today])?.label.toLowerCase()}</div><div className="text-xs text-slate-400">Tap to change</div></div>
+              <div className="flex-1"><div className="text-sm font-semibold text-slate-800">Настрій: {MOODS.find((m) => m.score === moods[today])?.label.toLowerCase()}</div><div className="text-xs text-slate-400">Торкнись, щоб змінити</div></div>
             </button>
           )}
 
-          {/* category chips */}
+          {/* category chips — always colored, not just when selected */}
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Chip active={selCat === "all"} onClick={() => setSelCat("all")}>All</Chip>
+            <Chip active={selCat === "all"} onClick={() => setSelCat("all")}>Усі</Chip>
             {categories.map((c) => (
               <Chip key={c.id} active={selCat === c.id} color={c.color} onClick={() => setSelCat(c.id)}>{c.name}</Chip>
             ))}
@@ -7061,7 +7091,7 @@ function RoutineSection({ onGo }) {
           {dayTasks.length > 0 && (
             <div className="mt-4 flex items-center gap-3 rounded-2xl bg-white/70 p-3 ring-1 ring-red-100">
               <ProgressRing pct={dayPct} size={44} stroke={5}><span className="text-[11px] font-bold text-pink-600">{Math.round(dayPct * 100)}%</span></ProgressRing>
-              <div className="text-sm font-medium text-slate-600">{dayDone} of {dayTasks.length} done{dayPct >= 1 ? " — all clear! 🎉" : ""}</div>
+              <div className="text-sm font-medium text-slate-600">{dayDone} з {dayTasks.length} зроблено{dayPct >= 1 ? " — усе готово! 🎉" : ""}</div>
             </div>
           )}
 
@@ -7071,7 +7101,7 @@ function RoutineSection({ onGo }) {
           {/* task list */}
           <div className="mt-4 space-y-2.5">
             {dayTasks.length === 0 ? (
-              <div className="rounded-2xl bg-white/70 py-12 text-center text-sm text-slate-400">Nothing here yet — tap the + to add a task.</div>
+              <div className="rounded-2xl bg-white/70 py-12 text-center text-sm text-slate-400">Тут поки порожньо — натисни +, щоб додати задачу</div>
             ) : shownTasks.length === 0 ? (
               <div className="rounded-2xl bg-white/70 py-10 text-center text-sm text-slate-400">Нема справ під цей фільтр. <button onClick={() => setEnergyFilter(null)} className="font-semibold text-pink-500 underline">Показати всі</button></div>
             ) : shownTasks.map((t) => (
@@ -7084,7 +7114,7 @@ function RoutineSection({ onGo }) {
       )}
 
       {rview === "stats" && (
-        <RoutineStats tasks={tasks} completions={completions} moods={moods} streak={streak} best={Math.max(streakMeta.best || 0, streak.best)} onBack={() => setRview("today")} />
+        <RoutineStats tasks={tasks} completions={completions} moods={moods} streak={streak} best={Math.max(streakMeta.best || 0, streak.best)} xp={xp} rewards={rewards} onManageRewards={() => setRewardsOpen(true)} onBack={() => setRview("today")} />
       )}
       {rview === "wellbeing" && <WellbeingView onExit={() => setRview("today")} moods={moods} onMood={setMood} />}
       {rview === "meds" && <MedsView onExit={() => setRview("today")} />}
@@ -7119,7 +7149,7 @@ function RoutineSection({ onGo }) {
           timer={timer?.taskId === detailTask.id ? timer : null}
           onClose={() => setDetailId(null)}
           onEdit={() => { setTaskEditor({ task: detailTask }); setDetailId(null); }}
-          onDelete={() => { if (confirm("Delete this task?")) { deleteTask(detailTask.id); setDetailId(null); } }}
+          onDelete={() => { if (confirm("Видалити цю задачу?")) { deleteTask(detailTask.id); setDetailId(null); } }}
           onToggle={() => toggleTask(detailTask.id)}
           onToggleSub={(sid) => toggleSubtask(detailTask.id, sid)}
           onStartTimer={() => startTimer(detailTask)} onStopTimer={() => stopTimer(true)}
@@ -7157,12 +7187,16 @@ function RoutineSection({ onGo }) {
   );
 }
 
+// Категорійні чипи лишаються кольоровими в стані спокою (не лише коли активні) —
+// той самий колір, що й задачі цієї категорії, просто блідіший, доки чип не обрано.
 function Chip({ active, color, onClick, children }) {
   const p = color ? getPastel(color) : null;
+  const restBg = p ? p.chip : "#f0d3d8";
+  const restFg = p ? p.ink : "#2c2224";
   return (
     <button onClick={onClick}
-      className={`rounded-full px-3.5 py-1.5 text-sm font-semibold transition ${active ? "text-white shadow-sm" : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"}`}
-      style={active ? { backgroundColor: p ? p.dot : "#ec4899" } : {}}>
+      className="rounded-full px-3.5 py-1.5 text-sm font-semibold shadow-sm transition"
+      style={active ? { backgroundColor: p ? p.dot : "#ec4899", color: "#fff" } : { backgroundColor: restBg, color: restFg }}>
       {children}
     </button>
   );
@@ -7201,11 +7235,11 @@ function TaskCard({ task, done, doc, timer, onToggle, onOpen, onStartTimer, onSt
         {task.image ? <img src={task.image} alt="" loading="lazy" className="h-full w-full object-cover" /> : (task.emoji || "⭐")}
       </button>
       <button onClick={onOpen} className="min-w-0 flex-1 text-left">
-        <div className="text-[11px] font-semibold" style={{ color: p.ink }}>{task.time || "Anytime"}</div>
+        <div className="text-[11px] font-semibold" style={{ color: p.ink }}>{task.time || "Будь-коли"}</div>
         <div className={`truncate font-bold ${done ? "text-slate-400 line-through" : "text-slate-800"}`}>{task.title}</div>
         <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px]" style={{ color: p.ink }}>
-          {timed && <span className="font-semibold">Goal: {Math.floor(goalSecs / 60)}/{task.goal.minutes} min</span>}
-          {task.subtasks?.length > 0 && <span className="font-semibold">{subDone}/{task.subtasks.length} steps</span>}
+          {timed && <span className="font-semibold">Ціль: {Math.floor(goalSecs / 60)}/{task.goal.minutes} хв</span>}
+          {task.subtasks?.length > 0 && <span className="font-semibold">{subDone}/{task.subtasks.length} кроків</span>}
           {task.estMin > 0 && <span className="font-semibold opacity-80">≈ {fmtEst(task.estMin)}</span>}
           {task.energy && ENERGY[task.energy] && <span className="opacity-80">{ENERGY[task.energy].emoji}</span>}
           {task.reminder && <span className="inline-flex items-center gap-0.5 opacity-70"><Clock className="h-3 w-3" />{task.reminder}</span>}
@@ -7217,10 +7251,10 @@ function TaskCard({ task, done, doc, timer, onToggle, onOpen, onStartTimer, onSt
         timer ? (
           <button onClick={onStopTimer} className="grid h-9 w-16 shrink-0 place-items-center rounded-full bg-white/80 text-xs font-bold tabular-nums" style={{ color: p.ink }}>{fmt(timer.target - timer.elapsed)}</button>
         ) : (
-          <button onClick={onStartTimer} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/80" style={{ color: p.ink }} title="Start timer"><Play className="h-4 w-4" /></button>
+          <button onClick={onStartTimer} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/80" style={{ color: p.ink }} title="Запустити таймер"><Play className="h-4 w-4" /></button>
         )
       )}
-      <button onClick={onToggle} title="Done" className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 transition-all ${done ? "scale-100 border-transparent text-white" : "border-current bg-white/40"}`} style={done ? { backgroundColor: p.dot } : { color: p.dot }}>
+      <button onClick={onToggle} title="Готово" className={`grid h-8 w-8 shrink-0 place-items-center rounded-full border-2 transition-all ${done ? "scale-100 border-transparent text-white" : "border-current bg-white/40"}`} style={done ? { backgroundColor: p.dot } : { color: p.dot }}>
         <Check className={`h-4 w-4 transition-transform ${done ? "scale-100" : "scale-0"}`} />
       </button>
     </div>
@@ -7279,16 +7313,16 @@ function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onT
             <ProgressRing pct={Math.min(1, goalSecs / (task.goal.minutes * 60))} size={52} stroke={6} color={p.dot} track="#ffffff88">
               <span className="text-[10px] font-bold" style={{ color: p.ink }}>{Math.floor(goalSecs / 60)}m</span>
             </ProgressRing>
-            <div className="flex-1"><div className="font-bold text-slate-800">Goal: {Math.floor(goalSecs / 60)}/{task.goal.minutes} minutes</div><div className="text-xs text-slate-500">{timer ? `Running — ${fmt(timer.target - timer.elapsed)} left` : "Tap play to start a timer"}</div></div>
+            <div className="flex-1"><div className="font-bold text-slate-800">Ціль: {Math.floor(goalSecs / 60)}/{task.goal.minutes} хв</div><div className="text-xs text-slate-500">{timer ? `Триває — лишилось ${fmt(timer.target - timer.elapsed)}` : "Натисни play, щоб запустити таймер"}</div></div>
             {!done && (timer
-              ? <button onClick={onStopTimer} className="rounded-full bg-white px-4 py-2 text-sm font-bold" style={{ color: p.ink }}>Pause</button>
+              ? <button onClick={onStopTimer} className="rounded-full bg-white px-4 py-2 text-sm font-bold" style={{ color: p.ink }}>Пауза</button>
               : <button onClick={onStartTimer} className="grid h-11 w-11 place-items-center rounded-full text-white" style={{ backgroundColor: p.dot }}><Play className="h-5 w-5" /></button>)}
           </div>
         )}
 
         {task.subtasks?.length > 0 && (
           <div className="mb-3">
-            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Steps</div>
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400">Кроки</div>
             <div className="space-y-1">
               {task.subtasks.map((s) => {
                 const sd = !!doc.subtasks?.[task.id]?.[s.id];
@@ -7305,9 +7339,9 @@ function TaskDetail({ task, doc, category, timer, onClose, onEdit, onDelete, onT
 
         <div className="mt-4 flex items-center gap-2">
           <button onClick={onToggle} className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 font-bold text-white transition ${done ? "bg-slate-400" : ""}`} style={done ? {} : { backgroundColor: p.dot }}>
-            {done ? <><RotateCcw className="h-4 w-4" /> Mark not done</> : <><Check className="h-4 w-4" /> Mark done</>}
+            {done ? <><RotateCcw className="h-4 w-4" /> Позначити невиконаним</> : <><Check className="h-4 w-4" /> Позначити виконаним</>}
           </button>
-          <button onClick={onEdit} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Edit Task</button>
+          <button onClick={onEdit} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Редагувати</button>
           <button onClick={onDelete} className="rounded-xl border border-red-200 px-3 py-2.5 text-red-500 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
         </div>
       </div>
@@ -7359,7 +7393,7 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[94vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-900">{task ? "Edit task" : "New task"}</h2>
+          <h2 className="text-lg font-bold text-slate-900">{task ? "Редагувати задачу" : "Нова задача"}</h2>
           <button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button>
         </div>
 
@@ -7367,10 +7401,10 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
         <div className="mb-3 flex items-center gap-3">
           <span className="relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-2xl text-3xl" style={{ backgroundColor: p.card }}>
             {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : emoji}
-            {image && <button onClick={() => setImage("")} title="Remove photo" className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-slate-900/60 text-white"><X className="h-3 w-3" /></button>}
+            {image && <button onClick={() => setImage("")} title="Прибрати фото" className="absolute right-0.5 top-0.5 grid h-5 w-5 place-items-center rounded-full bg-slate-900/60 text-white"><X className="h-3 w-3" /></button>}
           </span>
           <div className="flex-1">
-            <input value={title} onChange={(e) => setTitle(e.target.value.slice(0, 50))} placeholder="Task name" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100" />
+            <input value={title} onChange={(e) => setTitle(e.target.value.slice(0, 50))} placeholder="Назва задачі" className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100" />
             <div className="mt-0.5 text-right text-[10px] text-slate-400">{title.length}/50</div>
           </div>
         </div>
@@ -7382,14 +7416,14 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
 
         {/* color */}
         <div className="mb-3">
-          <div className="mb-1.5 text-xs font-medium text-slate-500">Color</div>
+          <div className="mb-1.5 text-xs font-medium text-slate-500">Колір</div>
           <div className="flex gap-2">
             {PASTELS.map((c) => <button key={c.id} onClick={() => setColor(c.id)} className={`h-8 w-8 rounded-full transition ${color === c.id ? "ring-2 ring-slate-900 ring-offset-2" : ""}`} style={{ backgroundColor: c.dot }} />)}
           </div>
         </div>
 
         {/* note */}
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Note (optional)" className="mb-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100" />
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="Нотатка (необовʼязково)" className="mb-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus:border-pink-400 focus:outline-none focus:ring-2 focus:ring-pink-100" />
 
         {/* time estimate */}
         <div className="mb-3">
@@ -7415,14 +7449,14 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
         </div>
 
         <div className="space-y-3">
-          <Row label="Date">
+          <Row label="Дата">
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-pink-400 focus:outline-none" />
           </Row>
 
           <div>
-            <div className="mb-1.5 text-xs font-medium text-slate-500">Repeat</div>
+            <div className="mb-1.5 text-xs font-medium text-slate-500">Повтор</div>
             <div className="flex flex-wrap gap-1.5">
-              {[{ id: "off", l: "Off" }, { id: "daily", l: "Every day" }, { id: "weekdays", l: "Days" }, { id: "times", l: "X / week" }].map((o) => (
+              {[{ id: "off", l: "Один раз" }, { id: "daily", l: "Щодня" }, { id: "weekdays", l: "Дні тижня" }, { id: "times", l: "N / тиждень" }].map((o) => (
                 <button key={o.id} onClick={() => setRepType(o.id)} className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${repType === o.id ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{o.l}</button>
               ))}
             </div>
@@ -7432,52 +7466,52 @@ function TaskEditor({ task, categories, defaultDate, onClose, onSave }) {
               </div>
             )}
             {repType === "times" && (
-              <div className="mt-2 flex items-center gap-2"><input type="number" min={1} max={7} value={times} onChange={(e) => setTimes(Math.max(1, Math.min(7, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">times per week</span></div>
+              <div className="mt-2 flex items-center gap-2"><input type="number" min={1} max={7} value={times} onChange={(e) => setTimes(Math.max(1, Math.min(7, +e.target.value || 1)))} className="w-16 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">разів на тиждень</span></div>
             )}
           </div>
 
-          <Row label="Time">
+          <Row label="Коли">
             <div className="flex items-center gap-2">
-              <button onClick={() => setAnytime((v) => !v)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${anytime ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500"}`}>Anytime</button>
+              <button onClick={() => setAnytime((v) => !v)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${anytime ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500"}`}>Будь-коли</button>
               {!anytime && <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />}
             </div>
           </Row>
 
-          <Row label="Reminder">
+          <Row label="Нагадування">
             <div className="flex items-center gap-2">
-              <button onClick={() => setReminderOn((v) => !v)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${reminderOn ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500"}`}>{reminderOn ? "On" : "Off"}</button>
+              <button onClick={() => setReminderOn((v) => !v)} className={`rounded-lg px-3 py-1.5 text-sm font-medium ${reminderOn ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500"}`}>{reminderOn ? "Увімк" : "Вимк"}</button>
               {reminderOn && <input type="time" value={reminder} onChange={(e) => setReminder(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />}
             </div>
           </Row>
-          {reminderOn && <p className="-mt-1 text-[11px] text-slate-400">Shown on the card as text. In-app only — an artifact can't send phone notifications.</p>}
+          {reminderOn && <p className="-mt-1 text-[11px] text-slate-400">Показується як текст на картці задачі. Лише в застосунку — пуш-сповіщення на телефон не надсилаються.</p>}
 
-          <Row label="Category">
+          <Row label="Категорія">
             <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-pink-400 focus:outline-none">
-              <option value="">None</option>
+              <option value="">Без категорії</option>
               {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Row>
 
           <div>
             <div className="flex items-center justify-between">
-              <div className="text-xs font-medium text-slate-500">Timed goal</div>
-              <button onClick={() => setGoalOn((v) => !v)} className={`rounded-lg px-3 py-1 text-sm font-medium ${goalOn ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500"}`}>{goalOn ? "On" : "Off"}</button>
+              <div className="text-xs font-medium text-slate-500">Ціль з таймером</div>
+              <button onClick={() => setGoalOn((v) => !v)} className={`rounded-lg px-3 py-1 text-sm font-medium ${goalOn ? "bg-pink-500 text-white" : "bg-slate-100 text-slate-500"}`}>{goalOn ? "Увімк" : "Вимк"}</button>
             </div>
-            {goalOn && <div className="mt-2 flex items-center gap-2"><input type="number" min={1} max={240} value={goalMin} onChange={(e) => setGoalMin(Math.max(1, Math.min(240, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">minutes — shows a timer on the card</span></div>}
+            {goalOn && <div className="mt-2 flex items-center gap-2"><input type="number" min={1} max={240} value={goalMin} onChange={(e) => setGoalMin(Math.max(1, Math.min(240, +e.target.value || 1)))} className="w-20 rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm" /><span className="text-sm text-slate-500">хвилин — покаже таймер на картці</span></div>}
           </div>
 
           <div>
-            <div className="mb-1.5 text-xs font-medium text-slate-500">Subtasks (a routine's steps)</div>
+            <div className="mb-1.5 text-xs font-medium text-slate-500">Підзадачі (кроки рутини)</div>
             <div className="space-y-1.5">
               {subs.map((s, i) => (
                 <div key={s.id} className="flex items-center gap-2">
-                  <input value={s.text} onChange={(e) => setSubs((arr) => arr.map((x) => (x.id === s.id ? { ...x, text: e.target.value } : x)))} className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm" placeholder={`Step ${i + 1}`} />
+                  <input value={s.text} onChange={(e) => setSubs((arr) => arr.map((x) => (x.id === s.id ? { ...x, text: e.target.value } : x)))} className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm" placeholder={`Крок ${i + 1}`} />
                   <button onClick={() => setSubs((arr) => arr.filter((x) => x.id !== s.id))} className="rounded p-1 text-slate-300 hover:text-red-500"><X className="h-4 w-4" /></button>
                 </div>
               ))}
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <input value={subText} onChange={(e) => setSubText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addSub(); }} placeholder="Add a step…" className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
+              <input value={subText} onChange={(e) => setSubText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addSub(); }} placeholder="Додати крок…" className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-sm" />
               <button onClick={addSub} className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-200"><Plus className="h-4 w-4" /></button>
             </div>
           </div>
@@ -7504,7 +7538,7 @@ function CategoryManager({ categories, onClose, onAdd, onRename, onRecolor, onDe
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
       <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">Categories</h2><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
+        <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">Категорії</h2><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
         <div className="space-y-2">
           {categories.map((c) => (
             <div key={c.id} className="flex items-center gap-2">
@@ -7513,18 +7547,18 @@ function CategoryManager({ categories, onClose, onAdd, onRename, onRecolor, onDe
               <select value={c.color} onChange={(e) => onRecolor(c.id, e.target.value)} className="rounded-lg border border-slate-200 px-1 py-1.5 text-xs">
                 {PASTELS.map((p) => <option key={p.id} value={p.id}>{p.id}</option>)}
               </select>
-              <button onClick={() => { if (confirm(`Delete “${c.name}”? Its tasks stay, just uncategorized.`)) onDelete(c.id); }} className="rounded p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={() => { if (confirm(`Видалити «${c.name}»? Її задачі залишаться, просто без категорії.`)) onDelete(c.id); }} className="rounded p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
             </div>
           ))}
         </div>
         <div className="mt-4 border-t border-slate-100 pt-4">
-          <div className="mb-1.5 text-xs font-medium text-slate-500">New category</div>
+          <div className="mb-1.5 text-xs font-medium text-slate-500">Нова категорія</div>
           <div className="flex items-center gap-2">
             <div className="flex gap-1">{PASTELS.map((p) => <button key={p.id} onClick={() => setColor(p.id)} className={`h-6 w-6 rounded-full ${color === p.id ? "ring-2 ring-slate-900 ring-offset-1" : ""}`} style={{ backgroundColor: p.dot }} />)}</div>
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) { onAdd(name, color); setName(""); } }} placeholder="Category name" className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none" />
-            <button onClick={() => { if (name.trim()) { onAdd(name, color); setName(""); } }} className="rounded-lg bg-pink-500 px-4 py-2 text-sm font-semibold text-white hover:bg-pink-600">Add</button>
+            <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) { onAdd(name, color); setName(""); } }} placeholder="Назва категорії" className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-pink-400 focus:outline-none" />
+            <button onClick={() => { if (name.trim()) { onAdd(name, color); setName(""); } }} className="rounded-lg bg-pink-500 px-4 py-2 text-sm font-semibold text-white hover:bg-pink-600">Додати</button>
           </div>
         </div>
       </div>
@@ -7538,19 +7572,20 @@ function StreakBorn({ streak, onClose }) {
       <div className="w-full max-w-sm rounded-3xl bg-white p-7 text-center shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mx-auto mb-2 text-6xl">🔥</div>
         <div className="text-4xl font-extrabold tabular-nums text-orange-500">{streak}</div>
-        <h2 className="mt-2 text-xl font-bold text-slate-900">A streak is born!</h2>
-        <p className="mt-1 text-sm text-slate-500">Keep it up every day to help it grow.</p>
+        <h2 className="mt-2 text-xl font-bold text-slate-900">Стрік народився!</h2>
+        <p className="mt-1 text-sm text-slate-500">Тримай щодня, щоб він ріс.</p>
         <div className="mx-auto mt-4 flex max-w-[220px] justify-between">
           {[0, 1, 2, 3, 4, 5, 6].map((i) => <span key={i} className={`h-2.5 w-2.5 rounded-full ${i === 0 ? "bg-orange-400" : "bg-orange-100"}`} />)}
         </div>
-        <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-pink-500 py-3 font-bold text-white transition hover:bg-pink-600">I'm committed 💪</button>
+        <button onClick={onClose} className="mt-6 w-full rounded-2xl bg-pink-500 py-3 font-bold text-white transition hover:bg-pink-600">Обіцяю 💪</button>
       </div>
     </div>
   );
 }
 
-function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
+function RoutineStats({ tasks, completions, moods, streak, best, xp, rewards, onManageRewards, onBack }) {
   const [monthOffset, setMonthOffset] = useState(0);
+  const lp = levelProgress(xp || 0);
   const total = totalTasksCompleted(completions);
   const now = new Date();
   const view = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
@@ -7576,27 +7611,53 @@ function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
     <div className="mx-auto w-full max-w-2xl px-4 pb-16 pt-5">
       <div className="mb-4 flex items-center gap-2">
         <button onClick={onBack} className="grid h-9 w-9 place-items-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-red-100"><ArrowLeft className="h-4 w-4" /></button>
-        <h1 className="text-2xl font-extrabold text-slate-900">Stats</h1>
+        <h1 className="text-2xl font-extrabold text-slate-900">Профіль і статистика</h1>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">🔥</div><div className="text-2xl font-extrabold tabular-nums text-orange-500">{streak.current}</div><div className="text-[11px] text-slate-400">day streak</div></div>
-        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">🏆</div><div className="text-2xl font-extrabold tabular-nums text-amber-500">{best}</div><div className="text-[11px] text-slate-400">best streak</div></div>
-        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">✅</div><div className="text-2xl font-extrabold tabular-nums text-green-500">{total}</div><div className="text-[11px] text-slate-400">completed</div></div>
+      {/* level / XP hero */}
+      <div className="rounded-[22px] p-4.5 text-center text-white" style={{ padding: 18, background: "linear-gradient(135deg,#ff9db4,#ff7a8f)" }}>
+        <div className="text-[13px] text-white/90">Рівень {lp.lvl}</div>
+        <div style={SNUM} className="text-[30px] font-extrabold leading-none">{xp} XP</div>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/30"><div className="h-full rounded-full bg-white transition-all" style={{ width: `${lp.pct * 100}%` }} /></div>
       </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-3">
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">🔥</div><div className="text-2xl font-extrabold tabular-nums text-orange-500">{streak.current}</div><div className="text-[11px] text-slate-400">днів стріку</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">🏆</div><div className="text-2xl font-extrabold tabular-nums text-amber-500">{best}</div><div className="text-[11px] text-slate-400">найкращий</div></div>
+        <div className="rounded-2xl bg-white p-4 text-center shadow-sm ring-1 ring-red-100"><div className="text-3xl">✅</div><div className="text-2xl font-extrabold tabular-nums text-green-500">{total}</div><div className="text-[11px] text-slate-400">виконано</div></div>
+      </div>
+
+      {/* rewards */}
+      {rewards && rewards.length > 0 && (
+        <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-red-100">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-extrabold text-slate-800">Нагороди</span>
+            {onManageRewards && <button onClick={onManageRewards} className="text-[11px] font-bold text-pink-500 hover:text-pink-600">керувати</button>}
+          </div>
+          <div className="mt-2.5 space-y-2">
+            {rewards.map((r) => (
+              <div key={r.id} className="flex items-center gap-2.5 rounded-2xl bg-pink-50/60 px-3 py-2.5">
+                <span className="text-base">{r.emoji || "🎁"}</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">{r.label}</span>
+                <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${r.unlockedAt ? "bg-green-100 text-green-700" : "bg-pink-100 text-pink-600"}`}>{r.cost} XP</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* completion calendar */}
       <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-red-100">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-700">{view.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
+          <h2 className="text-sm font-bold text-slate-700">{view.toLocaleDateString("uk-UA", { month: "long", year: "numeric" })}</h2>
           <div className="flex gap-1">
             <button onClick={() => setMonthOffset((m) => m - 1)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100"><ArrowLeft className="h-4 w-4" /></button>
-            <button onClick={() => setMonthOffset(0)} disabled={monthOffset === 0} className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40">Today</button>
+            <button onClick={() => setMonthOffset(0)} disabled={monthOffset === 0} className="rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 disabled:opacity-40">Сьогодні</button>
             <button onClick={() => setMonthOffset((m) => Math.min(0, m + 1))} disabled={monthOffset === 0} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-40"><ArrowRight className="h-4 w-4" /></button>
           </div>
         </div>
         <div className="grid grid-cols-7 gap-1.5">
-          {["M", "T", "W", "T", "F", "S", "S"].map((w, i) => <div key={i} className="pb-1 text-center text-[10px] font-semibold text-slate-400">{w}</div>)}
+          {["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"].map((w, i) => <div key={i} className="pb-1 text-center text-[10px] font-semibold text-slate-400">{w}</div>)}
           {/* re-pad for Mon-first */}
           {(() => {
             const monPad = (startPad + 6) % 7;
@@ -7614,7 +7675,7 @@ function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
 
       {/* mood calendar */}
       <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-red-100">
-        <h2 className="mb-3 text-sm font-bold text-slate-700">Mood check-ins</h2>
+        <h2 className="mb-3 text-sm font-bold text-slate-700">Відмітки настрою</h2>
         <div className="grid grid-cols-7 gap-1.5">
           {(() => {
             const monPad = (startPad + 6) % 7;
@@ -7631,14 +7692,14 @@ function RoutineStats({ tasks, completions, moods, streak, best, onBack }) {
 
       {/* weekly chart */}
       <div className="mt-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-red-100">
-        <h2 className="mb-4 text-sm font-bold text-slate-700">This week</h2>
+        <h2 className="mb-4 text-sm font-bold text-slate-700">Цей тиждень</h2>
         <div className="h-48 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={week} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#fce7f3" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#c084a8" }} axisLine={false} tickLine={false} />
               <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#c084a8" }} axisLine={false} tickLine={false} unit="%" />
-              <Tooltip cursor={{ fill: "#fdf2f8" }} contentStyle={{ borderRadius: 10, border: "1px solid #fbcfe0", fontSize: 12 }} formatter={(v) => [`${v}%`, "done"]} />
+              <Tooltip cursor={{ fill: "#fdf2f8" }} contentStyle={{ borderRadius: 10, border: "1px solid #fbcfe0", fontSize: 12 }} formatter={(v) => [`${v}%`, "зроблено"]} />
               <Bar dataKey="pct" radius={[6, 6, 0, 0]}>{week.map((w, i) => <Cell key={i} fill={w.pct >= 100 ? "#22c55e" : "#ec4899"} />)}</Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -12783,91 +12844,91 @@ function FastPlan({ goals, diary, fitLog, onSaveGoals, onGoLog }) {
   ];
 
   return (
-    <div>
-      <div className="rounded-3xl bg-gradient-to-br from-orange-400 to-red-400 p-5 text-white shadow-sm">
+    <div style={FBODY}>
+      <div className="rounded-[24px] p-5 text-white" style={{ background: "linear-gradient(150deg,#ffb38a,#ff7a4d)" }}>
         <div className="text-sm font-semibold text-white/90">План — плавно й надовго</div>
-        <div className="text-2xl font-extrabold">−{totalLoss || 30} кг за {months} міс</div>
+        <div style={FNUM} className="text-2xl font-extrabold">−{totalLoss || 30} <FUnit>кг за {months} міс</FUnit></div>
         {ready ? <div className="text-sm text-white/90">≈ {perMonth.toFixed(1)} кг/міс · {perWeek.toFixed(2)} кг/тиждень {paceOk ? "✓ безпечний темп" : "⚠️ швидкувато"}</div>
           : <div className="text-sm text-white/90">Впиши стартову й цільову вагу нижче — і зʼявиться графік по місяцях.</div>}
       </div>
 
       {/* weight goals */}
       <div className="mt-3 grid grid-cols-3 gap-2">
-        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Старт, кг</span><input type="number" step="0.1" value={goals.startWeight ?? ""} onChange={(e) => onSaveGoals({ startWeight: num(e.target.value) })} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
-        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Ціль, кг</span><input type="number" step="0.1" value={goals.targetWeight ?? ""} onChange={(e) => onSaveGoals({ targetWeight: num(e.target.value) })} placeholder={startW != null ? String(Math.round(startW - 30)) : ""} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
-        <label className="block rounded-2xl bg-white p-3 shadow-sm ring-1 ring-orange-50"><span className="mb-1 block text-[11px] text-slate-400">Місяців</span><input type="number" inputMode="numeric" min={3} max={24} value={monthsText} onChange={(e) => setMonthsText(e.target.value)} onBlur={commitMonths} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitMonths(); e.target.blur(); } }} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
+        <label className="block rounded-2xl bg-[#fffdfa] p-3"><span className="mb-1 block text-[11px] text-[#a2938a]">Старт, кг</span><input type="number" step="0.1" value={goals.startWeight ?? ""} onChange={(e) => onSaveGoals({ startWeight: num(e.target.value) })} className="w-full rounded-lg border border-[#ecdfd2] bg-white px-2 py-1.5 text-sm focus:border-[#d97a52] focus:outline-none" /></label>
+        <label className="block rounded-2xl bg-[#fffdfa] p-3"><span className="mb-1 block text-[11px] text-[#a2938a]">Ціль, кг</span><input type="number" step="0.1" value={goals.targetWeight ?? ""} onChange={(e) => onSaveGoals({ targetWeight: num(e.target.value) })} placeholder={startW != null ? String(Math.round(startW - 30)) : ""} className="w-full rounded-lg border border-[#ecdfd2] bg-white px-2 py-1.5 text-sm focus:border-[#d97a52] focus:outline-none" /></label>
+        <label className="block rounded-2xl bg-[#fffdfa] p-3"><span className="mb-1 block text-[11px] text-[#a2938a]">Місяців</span><input type="number" inputMode="numeric" min={3} max={24} value={monthsText} onChange={(e) => setMonthsText(e.target.value)} onBlur={commitMonths} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitMonths(); e.target.blur(); } }} className="w-full rounded-lg border border-[#ecdfd2] bg-white px-2 py-1.5 text-sm focus:border-[#d97a52] focus:outline-none" /></label>
       </div>
 
       {/* personal data for the calorie calc */}
-      <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50">
-        <div className="mb-2 text-sm font-bold text-slate-700">Твої дані <span className="font-normal text-slate-400">— щоб порахувати КБЖУ</span></div>
+      <div className="mt-3 rounded-[22px] bg-[#fffdfa] p-4">
+        <div className="mb-2 text-sm font-bold text-[#33303f]">Твої дані <span className="font-normal text-[#a2938a]">— щоб порахувати КБЖУ</span></div>
         <div className="grid grid-cols-3 gap-2">
-          <label className="block"><span className="mb-1 block text-[11px] text-slate-400">Зріст, см</span><input type="number" value={goals.heightCm ?? ""} onChange={(e) => onSaveGoals({ heightCm: num(e.target.value) })} placeholder="напр. 165" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
-          <label className="block"><span className="mb-1 block text-[11px] text-slate-400">Вік</span><input type="number" value={goals.age ?? ""} onChange={(e) => onSaveGoals({ age: num(e.target.value) })} placeholder="напр. 30" className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:border-orange-400 focus:outline-none" /></label>
-          <div><span className="mb-1 block text-[11px] text-slate-400">Стать</span><div className="flex gap-1">{[["f", "Ж"], ["m", "Ч"]].map(([v, l]) => <button key={v} onClick={() => onSaveGoals({ sex: v })} className={`flex-1 rounded-lg py-1.5 text-sm font-semibold transition ${sex === v ? "bg-orange-500 text-white" : "bg-slate-100 text-slate-500"}`}>{l}</button>)}</div></div>
+          <label className="block"><span className="mb-1 block text-[11px] text-[#a2938a]">Зріст, см</span><input type="number" value={goals.heightCm ?? ""} onChange={(e) => onSaveGoals({ heightCm: num(e.target.value) })} placeholder="напр. 165" className="w-full rounded-lg border border-[#ecdfd2] bg-[#f6ede3] px-2 py-1.5 text-sm focus:border-[#d97a52] focus:outline-none" /></label>
+          <label className="block"><span className="mb-1 block text-[11px] text-[#a2938a]">Вік</span><input type="number" value={goals.age ?? ""} onChange={(e) => onSaveGoals({ age: num(e.target.value) })} placeholder="напр. 30" className="w-full rounded-lg border border-[#ecdfd2] bg-[#f6ede3] px-2 py-1.5 text-sm focus:border-[#d97a52] focus:outline-none" /></label>
+          <div><span className="mb-1 block text-[11px] text-[#a2938a]">Стать</span><div className="flex gap-1">{[["f", "Ж"], ["m", "Ч"]].map(([v, l]) => <button key={v} onClick={() => onSaveGoals({ sex: v })} className={`flex-1 rounded-lg py-1.5 text-sm font-semibold transition ${sex === v ? "bg-[#d97a52] text-white" : "bg-[#f6ede3] text-[#7a6a60]"}`}>{l}</button>)}</div></div>
         </div>
-        <div className="mt-2"><span className="mb-1 block text-[11px] text-slate-400">Активність</span><div className="flex flex-wrap gap-1.5">{ACTS.map(([v, l]) => <button key={v} onClick={() => onSaveGoals({ activity: v })} className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 transition ${Math.abs(activity - v) < 0.01 ? "bg-orange-500 text-white ring-orange-500" : "bg-white text-slate-500 ring-slate-200"}`}>{l}</button>)}</div></div>
+        <div className="mt-2"><span className="mb-1 block text-[11px] text-[#a2938a]">Активність</span><div className="flex flex-wrap gap-1.5">{ACTS.map(([v, l]) => <button key={v} onClick={() => onSaveGoals({ activity: v })} className={`rounded-full px-2.5 py-1 text-xs font-semibold transition ${Math.abs(activity - v) < 0.01 ? "bg-[#d97a52] text-white" : "bg-[#f6ede3] text-[#7a6a60]"}`}>{l}</button>)}</div></div>
       </div>
 
       {/* КБЖУ per day */}
       {canKcal && ready ? (
-        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
+        <div className="mt-3 rounded-[22px] bg-[#fffdfa] p-4">
           <div className="flex items-end justify-between">
-            <div><div className="text-sm font-bold text-slate-700">Скільки їсти щодня</div><div className="text-[11px] text-slate-400">щоб втрачати ≈ {perWeek.toFixed(2)} кг/тиждень</div></div>
-            <div className="text-right"><div className="text-3xl font-extrabold tabular-nums text-orange-600">{kcalTarget}</div><div className="text-[11px] text-slate-400">ккал / день</div></div>
+            <div><div className="text-sm font-bold text-[#33303f]">Скільки їсти щодня</div><div className="text-[11px] text-[#a2938a]">щоб втрачати ≈ {perWeek.toFixed(2)} кг/тиждень</div></div>
+            <div className="text-right"><div style={FNUM} className="text-3xl font-extrabold tabular-nums text-[#ff7a4d]">{kcalTarget}</div><div className="text-[11px] text-[#a2938a]">ккал / день</div></div>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-            {[["Білки", proteinG, macro(proteinG, 4), "bg-rose-50 text-rose-600"], ["Жири", fatG, macro(fatG, 9), "bg-amber-50 text-amber-600"], ["Вуглеводи", carbsG, macro(carbsG, 4), "bg-sky-50 text-sky-600"]].map(([l, g, pct, cls]) => (
-              <div key={l} className={`rounded-2xl p-3 ${cls}`}><div className="text-[11px] font-medium opacity-80">{l}</div><div className="text-lg font-extrabold tabular-nums">{g} г</div><div className="text-[10px] opacity-70">{pct}%</div></div>
+            {[["Білки", proteinG, macro(proteinG, 4), "#c2506b", "#fdeaee"], ["Жири", fatG, macro(fatG, 9), "#b07d16", "#fdf4dd"], ["Вуглеводи", carbsG, macro(carbsG, 4), "#2f7a94", "#e6f3fa"]].map(([l, g, pct, fg, bg]) => (
+              <div key={l} className="rounded-2xl p-3" style={{ backgroundColor: bg, color: fg }}><div className="text-[11px] font-medium opacity-90">{l}</div><div style={FNUM} className="text-lg font-extrabold tabular-nums">{g} г</div><div className="text-[10px] opacity-70">{pct}%</div></div>
             ))}
           </div>
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">BMR ≈ {bmr}</span>
-            <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">Витрата ≈ {tdee}</span>
-            <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">Дефіцит −{dailyDeficit}{workout.perDay > 0 ? ` (з тарілки −${dietDeficit})` : ""}</span>
-            <span className="rounded-full bg-sky-50 px-2.5 py-1 font-semibold text-sky-700">💧 вода ≈ {waterL} л</span>
+            <span className="rounded-full bg-[#f6ede3] px-2.5 py-1 font-semibold text-[#7a6a60]">BMR ≈ {bmr}</span>
+            <span className="rounded-full bg-[#f6ede3] px-2.5 py-1 font-semibold text-[#7a6a60]">Витрата ≈ {tdee}</span>
+            <span className="rounded-full bg-[#eafaf4] px-2.5 py-1 font-semibold text-[#1f6b57]">Дефіцит −{dailyDeficit}{workout.perDay > 0 ? ` (з тарілки −${dietDeficit})` : ""}</span>
+            <span className="rounded-full bg-[#eaeffc] px-2.5 py-1 font-semibold text-[#3f6bb0]">💧 вода ≈ {waterL} л</span>
           </div>
-          {belowFloor && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">⚠️ Для такого темпу калорій вийшло б менше безпечного мінімуму ({floorKcal} ккал), тож я підняла до {floorKcal}. Щоб не голодувати — краще розтягнути план на більше місяців (втрата буде трохи повільніша, але здоровіша).</p>}
-          {workout.perDay > 0 && <p className="mt-3 rounded-xl bg-orange-50 px-3 py-2 text-[11px] leading-relaxed text-orange-800">🏋️ {workout.count} {workout.count === 1 ? "тренування" : "тренувань"} цього тижня з Fitness — ≈{workout.kcal} ккал спалено, тож з тарілки лишається добрати лише −{dietDeficit} ккал/день замість −{dailyDeficit}.</p>}
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-400">Білок високий, щоб зберегти м'язи; решта калорій — вуглеводи й жири. Овочі та клітковина — понад норму, їх не рахуємо жорстко.</p>
+          {belowFloor && <p className="mt-3 rounded-xl bg-[#fff0e6] px-3 py-2 text-[11px] leading-relaxed text-[#b34a1f]">⚠️ Для такого темпу калорій вийшло б менше безпечного мінімуму ({floorKcal} ккал), тож я підняла до {floorKcal}. Щоб не голодувати — краще розтягнути план на більше місяців (втрата буде трохи повільніша, але здоровіша).</p>}
+          {workout.perDay > 0 && <p className="mt-3 rounded-xl bg-[#fff2ea] px-3 py-2 text-[11px] leading-relaxed text-[#b34a1f]">🏋️ {workout.count} {workout.count === 1 ? "тренування" : "тренувань"} цього тижня з Fitness — ≈{workout.kcal} ккал спалено, тож з тарілки лишається добрати лише −{dietDeficit} ккал/день замість −{dailyDeficit}.</p>}
+          <p className="mt-2 text-[11px] leading-relaxed text-[#a2938a]">Білок високий, щоб зберегти м'язи; решта калорій — вуглеводи й жири. Овочі та клітковина — понад норму, їх не рахуємо жорстко.</p>
         </div>
       ) : ready ? (
-        <div className="mt-3 rounded-2xl bg-orange-50/70 p-4 text-center text-sm text-orange-700 ring-1 ring-orange-100">Впиши зріст, вік і стать вище — і я порахую твої калорії та БЖУ на день. 🍽️</div>
+        <div className="mt-3 rounded-[22px] bg-[#fff2ea] p-4 text-center text-sm text-[#b34a1f]">Впиши зріст, вік і стать вище — і я порахую твої калорії та БЖУ на день. 🍽️</div>
       ) : null}
 
       {/* steps target — computed from the goal and the chosen calorie intake */}
       {ready && canKcal && stepPlan ? (
-        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-emerald-100">
+        <div className="mt-3 rounded-[22px] bg-[#fffdfa] p-4">
           <div className="flex items-end justify-between">
             <div>
-              <div className="text-sm font-bold text-slate-700">Скільки кроків на день</div>
-              <div className="text-[11px] text-slate-400">{stepPlan.covered ? "дефіцит уже покривають калорії" : `щоб при ${intakeKcal} ккал добрати −${dailyDeficit} ккал`}</div>
+              <div className="text-sm font-bold text-[#33303f]">Скільки кроків на день</div>
+              <div className="text-[11px] text-[#a2938a]">{stepPlan.covered ? "дефіцит уже покривають калорії" : `щоб при ${intakeKcal} ккал добрати −${dailyDeficit} ккал`}</div>
             </div>
             <div className="text-right">
-              <div className="text-3xl font-extrabold tabular-nums text-emerald-600">{stepPlan.steps.toLocaleString("uk-UA")}</div>
-              <div className="text-[11px] text-slate-400">{stepPlan.covered ? "просто для здоров'я" : `≈ ${stepKm} км · ${stepPlan.burn} ккал`}</div>
+              <div style={FNUM} className="text-3xl font-extrabold tabular-nums text-[#1f6b57]">{stepPlan.steps.toLocaleString("uk-UA")}</div>
+              <div className="text-[11px] text-[#a2938a]">{stepPlan.covered ? "просто для здоров'я" : `≈ ${stepKm} км · ${stepPlan.burn} ккал`}</div>
             </div>
           </div>
 
           <label className="mt-3 block">
-            <span className="mb-1 block text-[11px] text-slate-400">Скільки планую їсти, ккал <span className="text-slate-300">— посунь, і ціль кроків перерахується</span></span>
+            <span className="mb-1 block text-[11px] text-[#a2938a]">Скільки планую їсти, ккал <span className="text-[#c9a789]">— посунь, і ціль кроків перерахується</span></span>
             <div className="flex items-center gap-2">
               <input type="range" min={floorKcal} max={Math.max(floorKcal + 200, (tdee ?? 2000) + 300)} step={25}
                 value={intakeKcal ?? kcalTarget ?? floorKcal}
                 onChange={(e) => onSaveGoals({ intakeKcal: +e.target.value })}
-                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-emerald-100 accent-emerald-600" />
-              <span className="w-14 shrink-0 text-right text-sm font-bold tabular-nums text-slate-700">{intakeKcal}</span>
+                className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-[#d3f0e4] accent-[#3fae8c]" />
+              <span className="w-14 shrink-0 text-right text-sm font-bold tabular-nums text-[#33303f]">{intakeKcal}</span>
             </div>
           </label>
           {goals.intakeKcal != null && goals.intakeKcal !== kcalTarget && (
-            <button onClick={() => onSaveGoals({ intakeKcal: null })} className="mt-1 text-[11px] font-semibold text-emerald-600">↺ повернути рекомендовані {kcalTarget} ккал</button>
+            <button onClick={() => onSaveGoals({ intakeKcal: null })} className="mt-1 text-[11px] font-semibold text-[#3fae8c]">↺ повернути рекомендовані {kcalTarget} ккал</button>
           )}
 
           {stepRows.length > 0 && (
-            <div className="mt-3 overflow-hidden rounded-xl ring-1 ring-slate-100">
-              <div className="grid grid-cols-2 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400"><span>Їси, ккал</span><span className="text-right">Треба кроків</span></div>
+            <div className="mt-3 overflow-hidden rounded-xl bg-[#f6ede3]">
+              <div className="grid grid-cols-2 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#a2938a]"><span>Їси, ккал</span><span className="text-right">Треба кроків</span></div>
               {stepRows.map((r) => (
-                <div key={r.kcal} className={`grid grid-cols-2 px-3 py-1.5 text-sm tabular-nums ${r.kcal === intakeKcal ? "bg-emerald-50 font-bold text-emerald-700" : "text-slate-600"}`}>
+                <div key={r.kcal} className={`grid grid-cols-2 px-3 py-1.5 text-sm tabular-nums ${r.kcal === intakeKcal ? "bg-[#eafaf4] font-bold text-[#1f6b57]" : "text-[#6b5c52]"}`}>
                   <span>{r.kcal}</span>
                   <span className="text-right">{r.covered ? "8 000 ✓" : r.steps.toLocaleString("uk-UA")}</span>
                 </div>
@@ -12875,46 +12936,49 @@ function FastPlan({ goals, diary, fitLog, onSaveGoals, onGoLog }) {
             </div>
           )}
 
-          {stepsTooMany && <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">⚠️ Стільки ходити щодня надовго нереально. Краще один із трьох варіантів: трохи зменшити калорійність, розтягнути план на більше місяців, або додати силові — м'язи піднімають витрату щодня, а не лише під час тренування.</p>}
-          {stepPlan.covered && <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-[11px] leading-relaxed text-emerald-800">✓ При такій калорійності дефіцит набирається і без довгих прогулянок. 8 000 кроків лишаю як норму для здоров'я, серця й голови — не заради мінусу на вагах.</p>}
-          <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">Твої {kcalTarget} ккал порахувалися з рівнем активності «{actLabel}» — і ці кроки якраз і є той рівень у цифрах. Постав «Сидячий» вище — калорій стане менше, зате й ходити треба буде менше. Це одна й та сама ціль, просто ділиться між тарілкою і ногами по-різному.</p>
-          <p className="mt-2 text-[11px] leading-relaxed text-slate-400">Рахунок наближений: ходьба ≈ 0.4 ккал на кг ваги на км понад спокій, довжина кроку — від твого зросту. Побутові {BASE_STEPS.toLocaleString("uk-UA")} кроків уже враховані в базовій витраті. Реальність відрізнятиметься на 10–15% — орієнтуйся на вагу в часі, а не на формулу.</p>
+          {stepsTooMany && <p className="mt-3 rounded-xl bg-[#fff0e6] px-3 py-2 text-[11px] leading-relaxed text-[#b34a1f]">⚠️ Стільки ходити щодня надовго нереально. Краще один із трьох варіантів: трохи зменшити калорійність, розтягнути план на більше місяців, або додати силові — м'язи піднімають витрату щодня, а не лише під час тренування.</p>}
+          {stepPlan.covered && <p className="mt-3 rounded-xl bg-[#eafaf4] px-3 py-2 text-[11px] leading-relaxed text-[#1f6b57]">✓ При такій калорійності дефіцит набирається і без довгих прогулянок. 8 000 кроків лишаю як норму для здоров'я, серця й голови — не заради мінусу на вагах.</p>}
+          <p className="mt-3 rounded-xl bg-[#f6ede3] px-3 py-2 text-[11px] leading-relaxed text-[#7a6a60]">Твої {kcalTarget} ккал порахувалися з рівнем активності «{actLabel}» — і ці кроки якраз і є той рівень у цифрах. Постав «Сидячий» вище — калорій стане менше, зате й ходити треба буде менше. Це одна й та сама ціль, просто ділиться між тарілкою і ногами по-різному.</p>
+          <p className="mt-2 text-[11px] leading-relaxed text-[#a2938a]">Рахунок наближений: ходьба ≈ 0.4 ккал на кг ваги на км понад спокій, довжина кроку — від твого зросту. Побутові {BASE_STEPS.toLocaleString("uk-UA")} кроків уже враховані в базовій витраті. Реальність відрізнятиметься на 10–15% — орієнтуйся на вагу в часі, а не на формулу.</p>
         </div>
       ) : ready ? (
-        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50 text-center"><div className="text-2xl">🚶‍♀️</div><div className="mt-1 text-xl font-extrabold text-slate-800">8–10 тис</div><div className="text-[11px] text-slate-400">кроків на день · впиши зріст, вік і стать, щоб порахувати точно</div></div>
+        <div className="mt-3 rounded-[22px] bg-[#fffdfa] p-4 text-center"><div className="text-2xl">🚶‍♀️</div><div style={FNUM} className="mt-1 text-xl font-extrabold text-[#2a211c]">8–10 тис</div><div className="text-[11px] text-[#a2938a]">кроків на день · впиши зріст, вік і стать, щоб порахувати точно</div></div>
       ) : null}
 
       {ready && (
-        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50 text-center"><div className="text-2xl">💪</div><div className="mt-1 text-xl font-extrabold text-slate-800">2–3</div><div className="text-[11px] text-slate-400">силові / тиждень — саме вони тримають м'язи в дефіциті</div></div>
+        <div className="mt-3 rounded-[22px] bg-[#eafaf4] p-4" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span className="text-2xl">🚶‍♀️</span>
+          <div><div style={FNUM} className="text-xl font-extrabold text-[#1f6b57]">2–3</div><div className="text-[11px] text-[#3f9179]">силові / тиждень — саме вони тримають м'язи в дефіциті</div></div>
+        </div>
       )}
 
       {/* fasting integration */}
       {ready && (
-        <div className="mt-3 rounded-2xl bg-gradient-to-br from-orange-50 to-white p-4 shadow-sm ring-1 ring-orange-100">
-          <div className="flex items-center gap-2 text-sm font-bold text-slate-800"><Hourglass className="h-4 w-4 text-orange-500" /> Як вписати в голодування</div>
-          <p className="mt-1 text-sm leading-relaxed text-slate-600">На 16:8 усі {kcalTarget || "твої"} ккал з'їдай у вікні 8 год — зазвичай 2–3 прийоми. Почни їжу з білка й овочів (ситніше). Поза вікном — вода, чай, кава без цукру. Дефіцит створюєш калоріями, а голодування лише допомагає легше в нього вкластись — не «голодуй + майже не їж», це забагато.</p>
+        <div className="mt-3 rounded-[22px] bg-[#fffdfa] p-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-[#33303f]"><Hourglass className="h-4 w-4 text-[#d97a52]" /> Як вписати в голодування</div>
+          <p className="mt-1 text-sm leading-relaxed text-[#6b5c52]">На 16:8 усі {kcalTarget || "твої"} ккал з'їдай у вікні 8 год — зазвичай 2–3 прийоми. Почни їжу з білка й овочів (ситніше). Поза вікном — вода, чай, кава без цукру. Дефіцит створюєш калоріями, а голодування лише допомагає легше в нього вкластись — не «голодуй + майже не їж», це забагато.</p>
         </div>
       )}
 
       {ready && (
-        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
-          <div className="flex items-center justify-between text-sm"><span className="font-semibold text-slate-700">Зараз {currentW} кг · скинуто {lostSoFar} кг з {totalLoss}</span>{delta != null && <span className={`font-bold ${delta <= 0.5 ? "text-green-600" : "text-amber-600"}`}>{delta <= 0.5 ? "у графіку ✓" : `+${delta} кг до плану`}</span>}</div>
-          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-orange-50"><div className="h-full rounded-full bg-gradient-to-r from-orange-400 to-red-400 transition-all" style={{ width: `${pctDone * 100}%` }} /></div>
+        <div className="mt-3 rounded-[22px] bg-[#fffdfa] p-4">
+          <div className="flex items-center justify-between text-sm"><span className="font-semibold text-[#33303f]">Зараз {currentW} кг · скинуто {lostSoFar} кг з {totalLoss}</span>{delta != null && <span className="font-bold" style={{ color: delta <= 0.5 ? "#3fae8c" : "#b34a1f" }}>{delta <= 0.5 ? "у графіку ✓" : `+${delta} кг до плану`}</span>}</div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#ffe4d1]"><div className="h-full rounded-full transition-all" style={{ width: `${pctDone * 100}%`, background: "linear-gradient(90deg,#ffb38a,#ff7a4d)" }} /></div>
           <div className="mt-2 flex items-center justify-between">
-            <button onClick={onGoLog} className="text-xs font-semibold text-orange-600">+ записати вагу сьогодні</button>
-            {daysToGoal != null && <span className="text-xs text-slate-500">≈<b className="text-slate-700">{daysToGoal}</b> дні до цілі{canKcal ? ` при ${kcalTarget} ккал/день` : ""}</span>}
+            <button onClick={onGoLog} className="text-xs font-semibold text-[#d97a52]">+ записати вагу сьогодні</button>
+            {daysToGoal != null && <span className="text-xs font-semibold text-[#1f6b57]">≈{daysToGoal} днів до цілі{canKcal ? ` при поточному калоражі` : ""}</span>}
           </div>
         </div>
       )}
 
       {ready && milestones.length > 0 && (
-        <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-100">
-          <div className="mb-2 text-sm font-bold text-slate-700">Орієнтири по місяцях</div>
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+        <div className="mt-3 rounded-[22px] bg-[#fffdfa] p-4">
+          <div className="mb-2 text-sm font-bold text-[#33303f]">Орієнтири по місяцях</div>
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
             {milestones.map((m) => { const hit = currentW != null && currentW <= m.w; return (
-              <div key={m.i} className={`rounded-xl px-3 py-2 text-center ${hit ? "bg-green-50 ring-1 ring-green-200" : "bg-slate-50"}`}>
-                <div className="text-[10px] text-slate-400">міс {m.i} · {m.date}</div>
-                <div className={`text-sm font-extrabold tabular-nums ${hit ? "text-green-600" : "text-slate-700"}`}>{m.w} кг</div>
+              <div key={m.i} className="rounded-xl px-2.5 py-2 text-center" style={{ backgroundColor: hit ? "#eafaf4" : "#f6ede3" }}>
+                <div className="text-[10px] text-[#a2938a]">міс {m.i} · {m.date}</div>
+                <div className="text-sm font-extrabold tabular-nums" style={{ ...FNUM, color: hit ? "#3fae8c" : "#33303f" }}>{m.w} кг</div>
               </div>
             ); })}
           </div>
@@ -12924,16 +12988,16 @@ function FastPlan({ goals, diary, fitLog, onSaveGoals, onGoLog }) {
       {/* guidance */}
       <div className="mt-3 space-y-2">
         {TIPS.map((t) => (
-          <div key={t.title} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-orange-50">
-            <div className="flex items-center gap-2 text-sm font-bold text-slate-800"><span className="text-lg">{t.emoji}</span> {t.title}</div>
-            <p className="mt-1 text-sm leading-relaxed text-slate-600">{t.body}</p>
+          <div key={t.title} className="rounded-[20px] bg-[#fffdfa] p-4">
+            <div className="flex items-center gap-2 text-sm font-bold text-[#33303f]"><span className="text-lg">{t.emoji}</span> {t.title}</div>
+            <p className="mt-1 text-sm leading-relaxed text-[#6b5c52]">{t.body}</p>
           </div>
         ))}
       </div>
 
-      <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
-        ⚠️ Це загальні орієнтири, а не медична порада. 30 кг — суттєва зміна, тож варто йти під наглядом лікаря чи дієтолога, особливо з голодуванням. Слухай тіло: запаморочення, слабкість, випадіння волосся — сигнал сповільнитись. Ціль не «швидко», а щоб було стало, здорово й із гарним самопочуттям. 💛
-      </p>
+      <div className="mt-4 rounded-[20px] bg-[#fff0e6] px-4 py-3 text-xs leading-relaxed text-[#b34a1f]">
+        ⚠️ Це загальні орієнтири, а не медична порада. {Math.round(totalLoss) || 30} кг — суттєва зміна, тож варто йти під наглядом лікаря чи дієтолога, особливо з голодуванням. Слухай тіло: запаморочення, слабкість, випадіння волосся — сигнал сповільнитись. Ціль не «швидко», а щоб було стало, здорово й із гарним самопочуттям. 💛
+      </div>
     </div>
   );
 }
@@ -13054,33 +13118,57 @@ function FastDiary({ diary, onNew, onEdit, onDelete }) {
   const rows = diarySorted(diary).reverse();
   const dow = (ds) => WD_UA[new Date(ds + "T00:00:00").getDay()];
   return (
-    <div>
+    <div style={FBODY}>
       <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-xl font-extrabold text-slate-900">Щоденник</h1>
-        <button onClick={onNew} className="inline-flex items-center gap-1.5 rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600"><Plus className="h-4 w-4" /> Запис</button>
+        <h1 style={FNUM} className="text-xl font-extrabold text-[#2a211c]">Щоденник</h1>
+        <button onClick={onNew} className="inline-flex items-center gap-1.5 rounded-2xl bg-[#d97a52] px-3.5 py-2 text-sm font-bold text-white transition hover:bg-[#e05e33]"><Plus className="h-3.5 w-3.5" /> Запис</button>
       </div>
       {rows.length === 0 ? (
-        <div className="rounded-2xl bg-white py-12 text-center text-sm text-slate-400 ring-1 ring-amber-50">Записів ще немає. Заверши голодування на таймері — і рядок з'явиться сам.</div>
+        <div className="rounded-[20px] bg-[#fffdfa] py-12 text-center text-sm text-[#a2938a]">Записів ще немає. Заверши голодування на таймері — і рядок з'явиться сам.</div>
       ) : (
         <div className="space-y-2">
-          {rows.map((r) => (
-            <button key={r.id} onClick={() => onEdit(r)} className="flex w-full items-center gap-3 rounded-2xl bg-white p-3 text-left shadow-sm ring-1 ring-amber-50 transition hover:ring-amber-200">
-              <div className="w-14 shrink-0 text-center"><div className="text-xs font-semibold text-slate-400">{dow(r.date)}</div><div className="text-sm font-bold text-slate-700">{r.date.slice(5)}</div></div>
-              <span className="rounded-full px-2 py-0.5 text-[11px] font-bold text-white" style={{ backgroundColor: protocolColor(getProtocol(r.protocol).level) }}>{getProtocol(r.protocol).label}</span>
-              <div className="min-w-0 flex-1 text-sm">
-                <span className="font-semibold text-slate-800">{r.actualHrs ?? "—"}</span><span className="text-slate-400">/{r.targetHrs ?? "—"} год</span>
-                {r.goalMet ? <Check className="ml-1 inline h-4 w-4 text-green-500" /> : <span className="ml-1 text-slate-300">✗</span>}
-                {r.weight != null && <span className="ml-2 text-slate-500">{r.weight} кг{r.weightChange != null ? ` (${r.weightChange > 0 ? "+" : ""}${r.weightChange})` : ""}</span>}
-                {r.notes && <div className="truncate text-xs text-slate-400">{r.notes}</div>}
-              </div>
-              <span onClick={(e) => { e.stopPropagation(); if (confirm("Видалити запис?")) onDelete(r.id); }} className="rounded p-1 text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></span>
-            </button>
-          ))}
+          {rows.map((r) => {
+            const met = r.goalMet;
+            const hoursColor = met ? "#1f6b57" : "#c9a789";
+            return (
+              <button key={r.id} onClick={() => onEdit(r)} className="flex w-full items-center gap-3 rounded-[18px] bg-[#fffdfa] p-3.5 text-left transition hover:brightness-[.98]">
+                <div className="w-11 shrink-0 text-center"><div className="text-[11px] font-bold text-[#a2938a]">{dow(r.date)}</div><div style={FNUM} className="text-sm font-bold text-[#33303f]">{r.date.slice(5)}</div></div>
+                <span className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold text-white" style={{ backgroundColor: protocolColor(getProtocol(r.protocol).level) }}>{getProtocol(r.protocol).label}</span>
+                <div className="min-w-0 flex-1 text-sm">
+                  <div>
+                    <span className="font-bold" style={{ ...FNUM, color: hoursColor }}>{r.actualHrs ?? "—"}</span>
+                    <span className="text-[#a2938a]">/{r.targetHrs ?? "—"} год</span>{" "}
+                    <span style={{ color: met ? "#3fae8c" : "#c9a789" }}>{met ? "✓" : "✗"}</span>
+                  </div>
+                  {(r.weight != null || r.notes) && (
+                    <div className="truncate text-xs text-[#7a6a60]">
+                      {r.weight != null && <>{r.weight} кг{r.weightChange != null ? ` (${r.weightChange > 0 ? "+" : ""}${r.weightChange})` : ""}{r.notes ? " · " : ""}</>}
+                      {r.notes}
+                    </div>
+                  )}
+                </div>
+                <span onClick={(e) => { e.stopPropagation(); if (confirm("Видалити запис?")) onDelete(r.id); }} className="shrink-0 rounded p-1 text-[#e4d7c9] hover:text-red-400"><Trash2 className="h-4 w-4" /></span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
+// 5-сегментний точковий повзунок для Енергії/Голоду замість голого <input type="number"> —
+// тап на точку встановлює значення 1–5; тап на вже заповнену останню точку скидає в 0.
+function DotScale({ value, onChange, color }) {
+  const v = Number(value) || 0;
+  return (
+    <div className="flex gap-[3px]">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <button key={i} type="button" onClick={() => onChange(v === i ? 0 : i)} className="h-[7px] flex-1 rounded-full transition" style={{ backgroundColor: i <= v ? color : "#f6ede3" }} />
+      ))}
+    </div>
+  );
+}
+
 function DiaryForm({ entry, defaultProtocol, onClose, onSave }) {
   const [f, setF] = useState({
     date: entry?.date || dateKey(Date.now()), protocol: entry?.protocol || defaultProtocol || "16:8",
@@ -13092,25 +13180,56 @@ function DiaryForm({ entry, defaultProtocol, onClose, onSave }) {
   const num = (v) => (v === "" || v == null ? null : parseFloat(v));
   const save = () => {
     const targetHrs = num(f.targetHrs), actualHrs = num(f.actualHrs);
-    onSave({ date: f.date, protocol: f.protocol, targetHrs, actualHrs, goalMet: actualHrs != null && targetHrs != null && actualHrs + 0.05 >= targetHrs, weight: num(f.weight), waist: num(f.waist), energy: num(f.energy), hunger: num(f.hunger), wellbeing: f.wellbeing.trim(), notes: f.notes.trim() });
+    onSave({ date: f.date, protocol: f.protocol, targetHrs, actualHrs, goalMet: actualHrs != null && targetHrs != null && actualHrs + 0.05 >= targetHrs, weight: num(f.weight), waist: num(f.waist), energy: num(f.energy) || null, hunger: num(f.hunger) || null, wellbeing: f.wellbeing.trim(), notes: f.notes.trim() });
   };
+  const fieldCls = "block w-full rounded-xl border-0 bg-white px-3 py-2.5 text-sm text-[#2a211c] outline-none";
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
-      <div className="max-h-[94vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-bold text-slate-900">{entry ? "Запис щоденника" : "Новий запис"}</h2><button onClick={onClose} className="rounded-md p-1 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block"><span className="mb-1 block text-xs text-slate-500">Дата</span><input type="date" value={f.date} onChange={(e) => set("date", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
-          <label className="block"><span className="mb-1 block text-xs text-slate-500">Протокол</span><select value={f.protocol} onChange={(e) => { set("protocol", e.target.value); set("targetHrs", getProtocol(e.target.value).hrs); }} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm">{PROTOCOLS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
-          <label className="block"><span className="mb-1 block text-xs text-slate-500">Ціль, год</span><input type="number" step="0.5" value={f.targetHrs} onChange={(e) => set("targetHrs", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
-          <label className="block"><span className="mb-1 block text-xs text-slate-500">Факт, год</span><input type="number" step="0.5" value={f.actualHrs} onChange={(e) => set("actualHrs", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
-          <label className="block"><span className="mb-1 block text-xs text-slate-500">Вага, кг</span><input type="number" step="0.1" value={f.weight} onChange={(e) => set("weight", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
-          <label className="block"><span className="mb-1 block text-xs text-slate-500">Талія, см</span><input type="number" step="0.5" value={f.waist} onChange={(e) => set("waist", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
-          <label className="block"><span className="mb-1 block text-xs text-slate-500">Енергія 1-5</span><input type="number" min="1" max="5" value={f.energy} onChange={(e) => set("energy", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
-          <label className="block"><span className="mb-1 block text-xs text-slate-500">Голод 1-5</span><input type="number" min="1" max="5" value={f.hunger} onChange={(e) => set("hunger", e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-sm" /></label>
+    <div style={FBODY} className="fixed inset-0 z-[55] flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+      <div className="max-h-[94vh] w-full max-w-lg overflow-y-auto rounded-t-[28px] bg-[#fffdfa] p-5 shadow-xl sm:rounded-[28px]" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 style={FNUM} className="text-lg font-bold text-[#2a211c]">{entry ? "Запис щоденника" : "Новий запис"}</h2>
+          <button onClick={onClose} className="grid h-[30px] w-[30px] place-items-center rounded-full bg-[#f6ede3] text-[#a2938a] hover:text-[#6b5c52]"><X className="h-3.5 w-3.5" /></button>
         </div>
-        <label className="mt-3 block"><span className="mb-1 block text-xs text-slate-500">Сон / самопочуття</span><input value={f.wellbeing} onChange={(e) => set("wellbeing", e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
-        <label className="mt-3 block"><span className="mb-1 block text-xs text-slate-500">Нотатки</span><textarea rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
-        <div className="mt-5 flex justify-end gap-3"><button onClick={onClose} className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-800">Скасувати</button><button onClick={save} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-2.5 font-semibold text-white hover:bg-orange-600"><Check className="h-4 w-4" /> Зберегти</button></div>
+
+        {/* neutral group */}
+        <div className="grid grid-cols-2 gap-2.5 rounded-[20px] bg-[#f6ede3] p-3.5">
+          <label className="block"><span className="mb-1 block text-[11px] font-bold text-[#a2938a]">Дата</span><input type="date" value={f.date} onChange={(e) => set("date", e.target.value)} className={fieldCls} /></label>
+          <label className="block"><span className="mb-1 block text-[11px] font-bold text-[#a2938a]">Протокол</span><select value={f.protocol} onChange={(e) => { set("protocol", e.target.value); set("targetHrs", getProtocol(e.target.value).hrs); }} className={fieldCls}>{PROTOCOLS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
+          <label className="block"><span className="mb-1 block text-[11px] font-bold text-[#a2938a]">Ціль, год</span><input type="number" step="0.5" value={f.targetHrs} onChange={(e) => set("targetHrs", e.target.value)} className={fieldCls} /></label>
+          <label className="block"><span className="mb-1 block text-[11px] font-bold text-[#a2938a]">Факт, год</span><input type="number" step="0.5" value={f.actualHrs} onChange={(e) => set("actualHrs", e.target.value)} className={`${fieldCls} font-bold`} style={{ color: "#d97a52" }} /></label>
+        </div>
+
+        {/* body group — mint */}
+        <div className="mt-2.5 rounded-[20px] bg-[#eafaf4] p-3.5">
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#2d8a6e]">Тіло</div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <label className="block"><span className="mb-1 block text-[11px] text-[#3f9179]">Вага, кг</span><input type="number" step="0.1" value={f.weight} onChange={(e) => set("weight", e.target.value)} className={fieldCls} /></label>
+            <label className="block"><span className="mb-1 block text-[11px] text-[#3f9179]">Талія, см</span><input type="number" step="0.5" value={f.waist} onChange={(e) => set("waist", e.target.value)} placeholder="—" className={fieldCls} /></label>
+          </div>
+        </div>
+
+        {/* wellbeing group — peach, dot scales */}
+        <div className="mt-2.5 rounded-[20px] bg-[#fff0e6] p-3.5">
+          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#b34a1f]">Самопочуття</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="mb-1 flex items-center justify-between"><span className="text-[11px] text-[#b34a1f]">Енергія</span><span style={FNUM} className="text-[13px] font-bold text-[#b34a1f]">{f.energy || 0}/5</span></div>
+              <DotScale value={f.energy} onChange={(v) => set("energy", v)} color="#e2792f" />
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between"><span className="text-[11px] text-[#b34a1f]">Голод</span><span style={FNUM} className="text-[13px] font-bold text-[#b34a1f]">{f.hunger || 0}/5</span></div>
+              <DotScale value={f.hunger} onChange={(v) => set("hunger", v)} color="#e2792f" />
+            </div>
+          </div>
+        </div>
+
+        <label className="mt-2.5 block"><span className="mb-1 block text-[11px] font-bold text-[#7a6a60]">Сон / самопочуття</span><input value={f.wellbeing} onChange={(e) => set("wellbeing", e.target.value)} placeholder="напр. спалось добре, легко" className={`${fieldCls} bg-[#f6ede3] placeholder:text-[#a2938a]`} /></label>
+        <label className="mt-2.5 block"><span className="mb-1 block text-[11px] font-bold text-[#7a6a60]">Нотатки</span><textarea rows={2} value={f.notes} onChange={(e) => set("notes", e.target.value)} placeholder="будь-які деталі дня…" className={`${fieldCls} bg-[#f6ede3] placeholder:text-[#a2938a]`} /></label>
+
+        <div className="mt-4 flex items-center gap-2.5">
+          <button onClick={onClose} className="flex-1 rounded-2xl py-3.5 text-sm font-bold text-[#a2938a] hover:text-[#6b5c52]">Скасувати</button>
+          <button onClick={save} className="flex-[2] inline-flex items-center justify-center gap-2 rounded-2xl bg-[#d97a52] py-3.5 font-bold text-white transition hover:bg-[#e05e33]"><Check className="h-4 w-4" /> Зберегти</button>
+        </div>
       </div>
     </div>
   );
@@ -13228,82 +13347,103 @@ function parseManageIt(md) {
   return { intro, chapters };
 }
 
+// Теплий бурштиновий стиль вкладки Менеджмент — Mulish для великих чисел, Manrope для тексту.
+const MNUM = { fontFamily: "'Mulish', ui-sans-serif, system-ui, sans-serif" };
+const MBODY = { fontFamily: "'Manrope', ui-sans-serif, system-ui, sans-serif" };
+const MUnit = ({ children, className = "" }) => <span style={MBODY} className={className}>{children}</span>;
+
+const MKEYS = { readChapters: "management:readChapters" };
+
+// Дрібне кільце прогресу, як у Fasting/Routine, але з бурштиновим акцентом за замовчуванням.
+function MRing({ pct, size = 36, stroke = 5, color = "#d99a1f", track = "#f5e6c2", children }) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r, off = c * (1 - Math.max(0, Math.min(1, pct)));
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeDasharray={c} strokeDashoffset={off} strokeLinecap="round" style={{ transition: "stroke-dashoffset .5s ease" }} />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">{children}</div>
+    </div>
+  );
+}
+
+// перший не прочитаний розділ — те, що "Продовжити читання" відкриє далі
+function nextUnreadChapter(chapters, readSet) {
+  for (let i = 0; i < chapters.length; i++) if (!readSet.has(i)) return i;
+  return chapters.length ? 0 : null;
+}
+
 function ManagementSection({ name, onRename }) {
   const [doc, setDoc] = useState(null);
   const [error, setError] = useState("");
-  const [view, setView] = useState("toc"); // toc | number index
-  const [mtab, setMtab] = useState("book"); // book | career
+  const [screen, setScreen] = useState("overview"); // "overview" | "toc" | number (reader) | "career"
+  const [readChapters, setReadChapters] = useState([]); // [index,...]
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState(name);
+  const career = useCareerData();
 
   useEffect(() => {
     let alive = true;
     fetch("/manage-it.md").then((r) => { if (!r.ok) throw new Error("not found"); return r.text(); })
       .then((t) => { if (alive) setDoc(parseManageIt(t)); })
       .catch(() => { if (alive) setError("Не вдалося завантажити конспект."); });
+    store.get(MKEYS.readChapters, []).then((v) => { if (alive) setReadChapters(v || []); });
     return () => { alive = false; };
   }, []);
-  useEffect(() => { document.querySelector("main")?.scrollTo?.(0, 0); window.scrollTo(0, 0); }, [view]);
+  useEffect(() => { document.querySelector("main")?.scrollTo?.(0, 0); window.scrollTo(0, 0); }, [screen]);
+
+  const readSet = useMemo(() => new Set(readChapters), [readChapters]);
+  const markRead = useCallback((i) => {
+    if (readSet.has(i)) return;
+    const next = [...readChapters, i];
+    setReadChapters(next);
+    store.set(MKEYS.readChapters, next);
+  }, [readChapters, readSet]);
+
+  const openChapter = useCallback((i) => { markRead(i); setScreen(i); }, [markRead]);
 
   if (error) return <div className="flex flex-1 items-center justify-center text-slate-400">{error}</div>;
-  if (!doc) return <div className="flex flex-1 items-center justify-center text-rose-400"><div className="flex flex-col items-center gap-3"><BookMarked className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження конспекту…</span></div></div>;
+  if (!doc) return <div className="flex flex-1 items-center justify-center" style={{ color: "#d99a1f" }}><div className="flex flex-col items-center gap-3"><BookMarked className="h-8 w-8 animate-pulse" /><span className="text-sm">Завантаження конспекту…</span></div></div>;
 
   const chapters = doc.chapters;
-  const open = (i) => setView(i);
-  const chapter = typeof view === "number" ? chapters[view] : null;
+  const chapter = typeof screen === "number" ? chapters[screen] : null;
+  const bookPct = chapters.length ? readSet.size / chapters.length : 0;
 
   return (
-    <div className="min-h-screen flex-1 bg-gradient-to-b from-rose-50/50 via-slate-50 to-white">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/85 backdrop-blur">
+    <div style={MBODY} className="min-h-screen flex-1 bg-[#fdf6e7] text-[#2c2224]">
+      <header className="sticky top-0 z-20 border-b border-[#f5e6c2] bg-[#fdf6e7]/90 backdrop-blur">
         <div className="mx-auto flex h-14 w-full max-w-3xl items-center gap-2 px-4">
-          {renaming ? (
-            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-40 rounded-lg border border-rose-200 px-2 py-1 text-base font-semibold focus:outline-none" />
-          ) : (
-            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-slate-900">{name} <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-slate-300" /></button>
+          {screen !== "overview" && (
+            <button onClick={() => setScreen("overview")} className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[#a8760a] shadow-sm hover:brightness-95"><ArrowLeft className="h-4 w-4" /></button>
           )}
-          {mtab === "book" && view !== "toc" && <button onClick={() => setView("toc")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-800"><ListTree className="h-4 w-4" /> Зміст</button>}
+          {renaming ? (
+            <input autoFocus value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onBlur={() => { onRename(nameDraft); setRenaming(false); }} onKeyDown={(e) => { if (e.key === "Enter") { onRename(nameDraft); setRenaming(false); } }} className="mr-auto w-40 rounded-lg border border-[#f0d488] px-2 py-1 text-base font-semibold focus:outline-none" />
+          ) : (
+            <button onClick={() => { setNameDraft(name); setRenaming(true); }} className="mr-auto text-base font-semibold text-[#2c2224]">{screen === "overview" ? name : screen === "toc" ? "Manage It!" : typeof screen === "number" ? `Розділ ${screen + 1} з ${chapters.length}` : "Кар'єра"} {screen === "overview" && <Pencil className="ml-0.5 inline h-3.5 w-3.5 text-[#d9c9a0]" />}</button>
+          )}
+          {typeof screen === "number" && <button onClick={() => setScreen("toc")} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-[#9c7a3f] hover:bg-white"><ListTree className="h-4 w-4" /> Зміст</button>}
         </div>
+        {typeof screen === "number" && (
+          <div className="px-4 pb-2"><div className="mx-auto h-[5px] w-full max-w-3xl overflow-hidden rounded-full bg-[#f5e6c2]"><div className="h-full rounded-full bg-[#d99a1f] transition-all" style={{ width: `${((screen + 1) / chapters.length) * 100}%` }} /></div></div>
+        )}
       </header>
 
       <main className="mx-auto w-full max-w-3xl px-4 py-6">
-        <div className="mb-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-rose-100">
-          <button onClick={() => setMtab("book")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${mtab === "book" ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><BookMarked className="h-4 w-4" /> Книга</button>
-          <button onClick={() => setMtab("career")} className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-bold transition ${mtab === "career" ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><TrendingUp className="h-4 w-4" /> Кар'єра</button>
-        </div>
-        {mtab === "career" ? <CareerView /> : view === "toc" ? (
-          <>
-            {/* book hero from intro */}
-            <div className="mb-6 rounded-3xl border border-rose-100 bg-white p-6 shadow-sm">
-              <div className="flex items-start gap-4">
-                <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-rose-600 text-white"><BookMarked className="h-7 w-7" /></span>
-                <div className="min-w-0">
-                  <h1 className="text-2xl font-extrabold leading-tight text-slate-900">Manage It!</h1>
-                  <p className="text-sm font-medium text-slate-500">Johanna Rothman · конспект і лайфхаки по кожній главі</p>
-                </div>
-              </div>
-              <div className="mt-4 text-[15px]">{mdBlocks(introBody(doc.intro))}</div>
-            </div>
-
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-400"><ListTree className="h-4 w-4" /> Зміст — {chapters.length} розділів</h2>
-            <div className="space-y-2">
-              {chapters.map((c, i) => {
-                const special = !c.num;
-                return (
-                  <button key={i} onClick={() => open(i)} className={`flex w-full items-center gap-3 rounded-2xl border p-4 text-left shadow-sm transition hover:shadow-md ${special ? "border-amber-200 bg-amber-50/60 hover:border-amber-300" : "border-slate-100 bg-white hover:border-rose-200"}`}>
-                    <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl text-sm font-extrabold ${special ? "bg-amber-400 text-white" : "bg-rose-100 text-rose-700"}`}>{special ? "🎯" : c.num}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block font-bold text-slate-800">{c.title}</span>
-                      {c.preview && <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-slate-400">{c.preview.replace(/\*\*/g, "")}</span>}
-                    </span>
-                    <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        ) : (
-          <ChapterReader chapter={chapter} index={view} total={chapters.length} onNav={setView} onToc={() => setView("toc")} />
+        {screen === "overview" && (
+          <ManagementOverview
+            doc={doc} readSet={readSet} bookPct={bookPct}
+            career={career}
+            onReadChapter={openChapter} onGoToc={() => setScreen("toc")} onGoCareer={() => setScreen("career")}
+          />
         )}
+        {screen === "toc" && (
+          <BookToc doc={doc} readSet={readSet} bookPct={bookPct} onOpen={openChapter} />
+        )}
+        {typeof screen === "number" && (
+          <ChapterReader chapter={chapter} index={screen} total={chapters.length} onNav={openChapter} onToc={() => setScreen("toc")} />
+        )}
+        {screen === "career" && <CareerHub career={career} />}
       </main>
     </div>
   );
@@ -13315,41 +13455,159 @@ function introBody(intro) {
   return lines.filter((l) => !/^#\s/.test(l) && !/^\*\*Джоанна|^\*\*Johanna/i.test(l.trim())).join("\n").trim();
 }
 
+/* ---------- Огляд: книга + кар'єра одним поглядом ---------- */
+function ManagementOverview({ doc, readSet, bookPct, career, onReadChapter, onGoToc, onGoCareer }) {
+  const chapters = doc.chapters;
+  const continueIdx = nextUnreadChapter(chapters, readSet);
+  const continueChapter = continueIdx != null ? chapters[continueIdx] : null;
+  const { skills, wins, weekText, nextStep, roadmapHeading } = career;
+  const topSkill = skills.length ? skills.slice().sort((a, b) => (b.progress || 0) - (a.progress || 0))[0] : null;
+  const latestWin = wins[0] || null;
+  const winsThisMonth = wins.filter((w) => w.date && w.date.slice(0, 7) === dateKey(Date.now()).slice(0, 7)).length;
+
+  return (
+    <div className="space-y-3">
+      {/* continue reading */}
+      {continueChapter && (
+        <button onClick={() => onReadChapter(continueIdx)} className="flex w-full items-center gap-3.5 rounded-[24px] p-[18px] text-left" style={{ background: "linear-gradient(150deg,#ffe9ad,#fdf8ec 72%)", animation: "sc-rise .5s ease both" }}>
+          <span className="grid h-[64px] w-14 shrink-0 place-items-center rounded-xl bg-white text-2xl">📖</span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-[#8a5f0a]"><span>📖</span> ПРОДОВЖИТИ ЧИТАННЯ</div>
+            <div style={MNUM} className="mt-1 truncate text-lg font-extrabold">{continueChapter.num ? `Розділ ${continueChapter.num} · ` : ""}{continueChapter.title}</div>
+            <div className="mt-2.5 flex items-center gap-2.5">
+              <MRing pct={bookPct} size={36} stroke={4.5} track="#fff"><span style={MNUM} className="text-[9px] font-extrabold text-[#d99a1f]">{Math.round(bookPct * 100)}%</span></MRing>
+              <span className="inline-flex items-center gap-1.5 rounded-2xl bg-[#d99a1f] px-3.5 py-2 text-xs font-bold text-white">Читати</span>
+            </div>
+          </div>
+        </button>
+      )}
+
+      {/* next career step */}
+      {nextStep && (
+        <button onClick={onGoCareer} className="block w-full rounded-[22px] bg-white p-4 text-left">
+          <div className="flex items-center gap-2 text-xs font-bold text-[#9c7a3f]"><span className="shrink-0">🎯</span> НАСТУПНИЙ КРОК КАР'ЄРИ</div>
+          <div className="mt-2 flex items-center gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#fdecc4] text-xl">{nextStep.emoji}</span>
+            <div className="min-w-0 flex-1"><div className="text-sm font-bold text-[#2c2224]">{PATH_STEP_META[nextStep.step.type]?.label || "Крок"} · {nextStep.step.title}</div><div className="text-[11px] text-[#9c7a3f]">Шлях: {roadmapHeading} · крок {nextStep.doneBefore + 1} з {nextStep.total}</div></div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-[#e0c98a]" />
+          </div>
+        </button>
+      )}
+
+      {/* top goal + latest win */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <button onClick={onGoCareer} className="rounded-[20px] bg-white p-3.5 text-left">
+          <div className="text-[11px] font-bold text-[#9c7a3f]">Топ-ціль</div>
+          {topSkill ? (
+            <>
+              <div className="mt-1.5 truncate text-[13px] font-bold text-[#2c2224]">{topSkill.name}</div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#f5e6c2]"><div className="h-full rounded-full bg-[#d99a1f]" style={{ width: `${topSkill.progress || 0}%` }} /></div>
+              <div className="mt-1 text-[11px] text-[#9c7a3f]">{topSkill.progress || 0}%{topSkill.deadline ? ` · до ${topSkill.deadline}` : ""}</div>
+            </>
+          ) : <div className="mt-1.5 text-xs text-[#9c7a3f]">Ще не додано жодної цілі</div>}
+        </button>
+        <button onClick={onGoCareer} className="rounded-[20px] bg-white p-3.5 text-left">
+          <div className="text-[11px] font-bold text-[#9c7a3f]">Остання перемога</div>
+          {latestWin ? (
+            <>
+              <div className="mt-1.5 flex items-start gap-1.5"><span className="shrink-0 text-sm">🏆</span><span className="text-xs leading-snug text-[#2c2224]">{latestWin.text}</span></div>
+              <div className="mt-2 text-[11px] text-[#9c7a3f]">{latestWin.date} · {winsThisMonth} усього цей місяць</div>
+            </>
+          ) : <div className="mt-1.5 text-xs text-[#9c7a3f]">Ще немає записаних перемог</div>}
+        </button>
+      </div>
+
+      {/* weekly review */}
+      <button onClick={onGoCareer} className="block w-full rounded-[20px] bg-[#fdf8ec] p-4 text-left">
+        <div className="text-xs font-bold text-[#9c7a3f]">Огляд тижня</div>
+        {weekText ? (
+          <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-[#4a3f26]">{weekText}</p>
+        ) : (
+          <p className="mt-1.5 text-[13px] leading-relaxed text-[#4a3f26]">Ще не заповнено — три речі, якими пишаєшся цього тижня?</p>
+        )}
+        <span className="mt-2.5 inline-block rounded-2xl bg-white px-4 py-2 text-xs font-bold text-[#d99a1f]">{weekText ? "Редагувати" : "Написати"}</span>
+      </button>
+
+      {/* shortcuts */}
+      <div className="mt-1 grid grid-cols-2 gap-2.5">
+        <button onClick={onGoToc} className="flex flex-col items-center gap-1.5 rounded-[20px] bg-white p-4"><span className="text-2xl">📖</span><span className="text-[13px] font-bold text-[#2c2224]">Книга — зміст</span></button>
+        <button onClick={onGoCareer} className="flex flex-col items-center gap-1.5 rounded-[20px] bg-white p-4"><span className="text-2xl">🎓</span><span className="text-[13px] font-bold text-[#2c2224]">Кар'єра — шлях</span></button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Книга — зміст ---------- */
+function BookToc({ doc, readSet, bookPct, onOpen }) {
+  const chapters = doc.chapters;
+  return (
+    <>
+      <div className="mb-3 flex items-center gap-3.5 rounded-[22px] p-[18px]" style={{ background: "linear-gradient(150deg,#ffe9ad,#fdf8ec 70%)" }}>
+        <span className="grid h-[72px] w-[54px] shrink-0 place-items-center rounded-xl bg-white text-2xl">📚</span>
+        <MRing pct={bookPct} size={52} stroke={6.5}><span style={MNUM} className="text-xs font-extrabold text-[#d99a1f]">{Math.round(bookPct * 100)}%</span></MRing>
+        <div className="min-w-0">
+          <div style={MNUM} className="text-[15px] font-extrabold">{readSet.size} з {chapters.length} глав</div>
+          <div className="text-[11px] text-[#a8760a]">Johanna Rothman · конспект по главах</div>
+        </div>
+      </div>
+      <div className="mb-3 text-[15px] leading-relaxed text-[#4a3f26]">{mdBlocks(introBody(doc.intro))}</div>
+      <div className="space-y-2">
+        {chapters.map((c, i) => {
+          const special = !c.num;
+          const done = readSet.has(i);
+          return (
+            <button key={i} onClick={() => onOpen(i)} className="flex w-full items-center gap-3 rounded-[18px] bg-white p-3.5 text-left">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[13px] font-extrabold" style={{ backgroundColor: done ? "#d99a1f" : "#fdecc4", color: done ? "#fff" : "#1f5580" }}>
+                {special ? "🎯" : done ? <Check className="h-4 w-4" /> : c.num}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-bold text-[#2c2224]">{c.title}</span>
+                {c.preview && <span className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-[#9c7a3f]">{c.preview.replace(/\*\*/g, "")}</span>}
+              </span>
+              <ChevronRight className="h-[15px] w-[15px] shrink-0 text-[#e0c98a]" />
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 function ChapterReader({ chapter, index, total, onNav, onToc }) {
   if (!chapter) return null;
   const secStyle = (h) => {
-    if (/🔑/.test(h)) return { wrap: "rounded-2xl border border-amber-200 bg-amber-50/60 p-4", icon: Lightbulb, iconCls: "text-amber-500", title: "text-amber-900" };
-    if (/🧭/.test(h)) return { wrap: "rounded-2xl border border-sky-200 bg-sky-50/50 p-4", icon: Compass, iconCls: "text-sky-500", title: "text-sky-900" };
-    if (/Про що глава/i.test(h)) return { wrap: "rounded-2xl bg-slate-100/70 p-4", icon: Info, iconCls: "text-slate-400", title: "text-slate-700" };
-    return { wrap: "", icon: null, iconCls: "", title: "text-slate-800" };
+    if (/🔑/.test(h)) return { wrap: "rounded-2xl bg-[#fdf1ce] p-3.5", emoji: "💡", title: "text-[#9c7a1f]" };
+    if (/🧭/.test(h)) return { wrap: "rounded-2xl bg-[#e6f3fa] p-3.5", emoji: "🧭", title: "text-[#1f5580]" };
+    if (/Про що глава/i.test(h)) return { wrap: "rounded-2xl bg-[#fdecc4] p-3.5", emoji: "📋", title: "text-[#8a5f0a]" };
+    return { wrap: "", emoji: null, title: "text-[#2c2224]" };
   };
   const cleanH = (h) => h.replace(/🔑|🧭/g, "").trim();
   return (
-    <div>
+    <div style={MBODY}>
       <div className="mb-5 flex items-center gap-3">
-        {chapter.num && <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-600 text-lg font-extrabold text-white">{chapter.num}</span>}
-        <h1 className="text-2xl font-extrabold leading-tight text-slate-900">{chapter.title}</h1>
+        {chapter.num && <span style={MNUM} className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#d99a1f] text-lg font-extrabold text-white">{chapter.num}</span>}
+        <h1 className="text-2xl font-extrabold leading-tight text-[#2c2224]">{chapter.title}</h1>
       </div>
 
-      {chapter.lead && <div className="mb-4">{mdBlocks(chapter.lead)}</div>}
+      {chapter.lead && <div className="mb-4 text-[#3a2e2c]">{mdBlocks(chapter.lead)}</div>}
 
-      <div className="space-y-4">
+      <div className="space-y-2.5">
         {chapter.sections.map((s, i) => {
           const st = secStyle(s.heading);
           return (
             <section key={i} className={st.wrap}>
-              <h3 className={`mb-2 flex items-center gap-2 text-base font-bold ${st.title}`}>{st.icon && <st.icon className={`h-5 w-5 ${st.iconCls}`} />}{cleanH(s.heading)}</h3>
-              <div className="text-[15px]">{mdBlocks(s.content)}</div>
+              <h3 className={`mb-1.5 flex items-center gap-2 text-[13px] font-bold ${st.title}`}>{st.emoji && <span className="text-[15px]">{st.emoji}</span>}{cleanH(s.heading)}</h3>
+              <div className="text-[13px] leading-[1.55] text-[#5c4d2c]">{mdBlocks(s.content)}</div>
             </section>
           );
         })}
       </div>
 
       {/* prev / next */}
-      <div className="mt-8 flex items-center justify-between gap-3 border-t border-slate-100 pt-5">
-        <button disabled={index <= 0} onClick={() => onNav(index - 1)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Назад</button>
-        <button onClick={onToc} className="text-sm font-medium text-slate-400 hover:text-slate-600">Зміст</button>
-        <button disabled={index >= total - 1} onClick={() => onNav(index + 1)} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
+      <div className="mt-8 flex items-center justify-between gap-3 border-t border-[#f5e6c2] pt-5">
+        <button disabled={index <= 0} onClick={() => onNav(index - 1)} className="inline-flex items-center gap-1.5 text-sm font-bold text-[#9c7a3f] transition disabled:opacity-40"><ChevronLeft className="h-4 w-4" /> Назад</button>
+        <button onClick={onToc} className="text-xs font-bold text-[#9c7a3f] hover:text-[#6e5a30]">Зміст</button>
+        <button disabled={index >= total - 1} onClick={() => onNav(index + 1)} className="inline-flex items-center gap-1.5 rounded-2xl bg-[#d99a1f] px-[18px] py-[11px] text-sm font-bold text-white transition hover:bg-[#a8760a] disabled:opacity-40">Далі <ChevronRight className="h-4 w-4" /></button>
       </div>
     </div>
   );
@@ -16345,10 +16603,11 @@ const CAREERKEYS = { skills: "career:skills", achievements: "career:achievements
 async function collectCareerExport() { return { skills: await store.get(CAREERKEYS.skills, []), achievements: await store.get(CAREERKEYS.achievements, []), reviews: await store.get(CAREERKEYS.reviews, []), path: await store.get(CAREERKEYS.path, {}), bookPath: await store.get(CAREERKEYS.bookPath, {}), enPath: await store.get(CAREERKEYS.enPath, {}), en2Path: await store.get(CAREERKEYS.en2Path, {}) }; }
 async function clearCareerData() { for (const k of Object.values(CAREERKEYS)) await store.remove(k); await store.remove("career:seeded"); }
 
-function CareerView() {
+// Уся kar'єра-держава живе тут — і CareerHub (повний екран), і ManagementOverview
+// (компактний зріз на «Огляді») читають той самий хук, а не тримають дублі стану.
+function useCareerData() {
   const today = dateKey(Date.now());
   const week = finWeekStart(today);
-  const [tab, setTab] = useState("path"); // path | skills | wins | review
   const [skills, setSkills] = useState([]);
   const [wins, setWins] = useState([]);
   const [reviews, setReviews] = useState([]);
@@ -16360,8 +16619,6 @@ function CareerView() {
   const [bookModules, setBookModules] = useState(null);        // fetched from /book-course.json
   const [enModules, setEnModules] = useState(null);            // fetched from /pm-en-course.json
   const [en2Modules, setEn2Modules] = useState(null);          // fetched from /pm-en2-course.json
-  const [pathTab, setPathTab] = useState("roadmap"); // roadmap | book | en | en2
-  const [skillEd, setSkillEd] = useState(null);
   const [winText, setWinText] = useState("");
   const [reviewText, setReviewText] = useState("");
 
@@ -16394,14 +16651,17 @@ function CareerView() {
   const setBookStepDone = (stepId, done) => setBookProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.bookPath, n); return n; });
   const setEnStepDone = (stepId, done) => setEnProg((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.enPath, n); return n; });
   const setEn2StepDone = (stepId, done) => setEn2Prog((prev) => { const n = { ...prev }; if (done) n[stepId] = true; else delete n[stepId]; store.set(CAREERKEYS.en2Path, n); return n; });
-  // fetch each course JSON when needed (roadmap eagerly since it's the default tab; others lazily)
+  // roadmap eagerly (it's the default course + Overview needs it); the other 3 courses lazily, on demand
   useEffect(() => {
     const grab = (url, set) => fetch(url).then((r) => (r.ok ? r.json() : [])).then((d) => set(Array.isArray(d) ? d : [])).catch(() => set([]));
     if (roadmapModules === null) grab("/pm-path.json", setRoadmapModules);
-    if (pathTab === "book" && bookModules === null) grab("/book-course.json", setBookModules);
-    if (pathTab === "en" && enModules === null) grab("/pm-en-course.json", setEnModules);
-    if (pathTab === "en2" && en2Modules === null) grab("/pm-en2-course.json", setEn2Modules);
-  }, [pathTab, roadmapModules, bookModules, enModules, en2Modules]);
+  }, [roadmapModules]);
+  const ensureCourseLoaded = useCallback((key) => {
+    const grab = (url, set) => fetch(url).then((r) => (r.ok ? r.json() : [])).then((d) => set(Array.isArray(d) ? d : [])).catch(() => set([]));
+    if (key === "book" && bookModules === null) grab("/book-course.json", setBookModules);
+    if (key === "en" && enModules === null) grab("/pm-en-course.json", setEnModules);
+    if (key === "en2" && en2Modules === null) grab("/pm-en2-course.json", setEn2Modules);
+  }, [bookModules, enModules, en2Modules]);
   const saveSkills = (n) => { setSkills(n); store.set(CAREERKEYS.skills, n); };
   const saveWins = (n) => { setWins(n); store.set(CAREERKEYS.achievements, n); };
   const saveReviews = (n) => { setReviews(n); store.set(CAREERKEYS.reviews, n); };
@@ -16411,67 +16671,117 @@ function CareerView() {
   const addWin = () => { if (!winText.trim()) return; saveWins([{ id: ruid("win"), date: today, text: winText.trim() }, ...wins]); setWinText(""); };
   const saveReview = () => { const others = reviews.filter((r) => r.week !== week); const next = reviewText.trim() ? [...others, { week, text: reviewText.trim(), ts: Date.now() }] : others; saveReviews(next.sort((a, b) => a.week.localeCompare(b.week))); };
 
+  // перший розблокований, ще не пройдений крок роадмапи — для картки "Наступний крок" на Огляді
+  const nextStep = useMemo(() => {
+    const modules = roadmapModules || [];
+    let doneBefore = 0, total = 0;
+    for (const mod of modules) total += mod.steps.length;
+    for (const mod of modules) {
+      for (let si = 0; si < mod.steps.length; si++) {
+        const sid = pathStepId(mod.slug, si);
+        const done = !!pathProg[sid];
+        if (done) { doneBefore += 1; continue; }
+        const prevDone = si === 0 || !!pathProg[pathStepId(mod.slug, si - 1)];
+        if (prevDone) return { step: mod.steps[si], doneBefore, total, modSlug: mod.slug, stepIdx: si, modTitle: mod.title };
+      }
+    }
+    return null;
+  }, [roadmapModules, pathProg]);
+  const nextStepEmoji = { learn: "📖", read: "🔎", explain: "💡", build: "🛠️", quiz: "❓" };
+  const nextStepWithEmoji = nextStep ? { ...nextStep, emoji: nextStepEmoji[nextStep.step.type] || "📖" } : null;
+
+  return {
+    week, skills, wins, reviews, weekText: reviewText,
+    pathProg, bookProg, enProg, en2Prog,
+    roadmapModules, bookModules, enModules, en2Modules, ensureCourseLoaded,
+    setStepDone, setBookStepDone, setEnStepDone, setEn2StepDone,
+    winText, setWinText, reviewText, setReviewText,
+    upsertSkill, setProgress, addWin, saveReview, saveSkills, saveWins,
+    nextStep: nextStepWithEmoji, roadmapHeading: "технічний PM з AI",
+  };
+}
+
+/* ---------- Кар'єра: перемикач курсів над шляхом + злиті цілі/досягнення ---------- */
+function CareerHub({ career }) {
+  const [ctab, setCtab] = useState("path"); // path | goals
+  const [pathTab, setPathTab] = useState("roadmap"); // roadmap | book | en | en2
+  const [skillEd, setSkillEd] = useState(null);
+  const {
+    skills, wins, reviews, week, reviewText, setReviewText, saveReview,
+    winText, setWinText, addWin, saveWins, upsertSkill, setProgress, saveSkills,
+    roadmapModules, bookModules, enModules, en2Modules, ensureCourseLoaded,
+    pathProg, bookProg, enProg, en2Prog, setStepDone, setBookStepDone, setEnStepDone, setEn2StepDone,
+  } = career;
+
+  useEffect(() => { ensureCourseLoaded(pathTab); }, [pathTab, ensureCourseLoaded]);
+
+  const COURSES = [
+    ["roadmap", "🧭 Роадмапа", roadmapModules, "Шлях: технічний PM з AI", pathProg, career.setStepDone],
+    ["book", "📚 Managing IT", bookModules, "Курс: Managing IT (по книзі)", bookProg, career.setBookStepDone],
+    ["en", "🇬🇧 Pro PM", enModules, "PM course · The Professional Project Manager (English)", enProg, career.setEnStepDone],
+    ["en2", "🇬🇧 PM Basics", en2Modules, "PM course · Project Management by A. Watt (English)", en2Prog, career.setEn2StepDone],
+  ];
+  const active = COURSES.find((c) => c[0] === pathTab);
+
   return (
-    <div>
-      <div className="mb-4 flex gap-1.5 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-rose-100">
-        {[["path", "Шлях", GraduationCap], ["skills", "Цілі", Target], ["wins", "Досягнення", Trophy], ["review", "Огляд", CalendarDays]].map(([k, label, Icon]) => (
-          <button key={k} onClick={() => setTab(k)} className={`flex flex-1 items-center justify-center gap-1 rounded-xl py-2 text-xs font-bold transition sm:text-sm ${tab === k ? "bg-rose-500 text-white shadow" : "text-slate-500 hover:text-slate-700"}`}><Icon className="h-4 w-4 shrink-0" /> {label}</button>
+    <div style={MBODY}>
+      <div className="mb-3 flex gap-1.5 rounded-2xl bg-white p-1">
+        {[["path", "Шлях"], ["goals", "Цілі та досягнення"]].map(([k, label]) => (
+          <button key={k} onClick={() => setCtab(k)} className={`flex-1 rounded-xl py-2 text-sm font-bold transition ${ctab === k ? "bg-[#d99a1f] text-white" : "text-[#9c7a3f] hover:text-[#6e5a30]"}`}>{label}</button>
         ))}
       </div>
 
-      {tab === "path" && (
+      {ctab === "path" && (
         <div>
-          <div className="mb-3 grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1">
-            {[["roadmap", "🧭 Роадмапа"], ["book", "📚 Managing IT (укр)"], ["en", "🇬🇧 Pro PM (EN)"], ["en2", "🇬🇧 PM Basics (EN)"]].map(([k, label]) => (
-              <button key={k} onClick={() => setPathTab(k)} className={`rounded-xl py-1.5 text-[11px] font-bold leading-tight transition sm:text-xs ${pathTab === k ? "bg-white text-rose-600 shadow-sm" : "text-slate-500"}`}>{label}</button>
+          <div className="mb-3 flex gap-1.5 overflow-x-auto pb-0.5">
+            {COURSES.map(([k, label]) => (
+              <button key={k} onClick={() => setPathTab(k)} className="shrink-0 rounded-full px-3.5 py-2 text-xs font-bold" style={{ backgroundColor: pathTab === k ? "#d99a1f" : "#fff", color: pathTab === k ? "#fff" : "#7a5a58" }}>{label}</button>
             ))}
           </div>
-          {pathTab === "roadmap" && <CareerPath modules={roadmapModules || []} heading="Шлях: технічний PM з AI" progress={pathProg} onDone={setStepDone} />}
-          {pathTab === "book" && <CareerPath modules={bookModules || []} heading="Курс: Managing IT (по книзі)" progress={bookProg} onDone={setBookStepDone} />}
-          {pathTab === "en" && <CareerPath modules={enModules || []} heading="PM course · The Professional Project Manager (English)" progress={enProg} onDone={setEnStepDone} />}
-          {pathTab === "en2" && <CareerPath modules={en2Modules || []} heading="PM course · Project Management by A. Watt (English)" progress={en2Prog} onDone={setEn2StepDone} />}
+          <CareerPath modules={active[2] || []} heading={active[3]} progress={active[4]} onDone={active[5]} />
         </div>
       )}
 
-      {tab === "skills" && (
-        <div className="space-y-2">
-          {skills.length === 0 && <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-rose-50">Що вчиш чи прокачуєш? Додай ціль із дедлайном і відстежуй прогрес.</div>}
+      {ctab === "goals" && (
+        <div className="space-y-2.5">
+          <div className="text-xs font-bold text-[#9c7a3f]">Цілі</div>
+          {skills.length === 0 && <div className="rounded-2xl bg-white py-8 text-center text-sm text-[#9c7a3f]">Що вчиш чи прокачуєш? Додай ціль із дедлайном і відстежуй прогрес.</div>}
           {skills.map((s) => (
-            <div key={s.id} className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
+            <div key={s.id} className="rounded-[18px] bg-white p-3.5">
               <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0"><div className="font-bold text-slate-800">{s.name}</div>{(s.target || s.deadline) && <div className="text-xs text-slate-400">{s.target}{s.deadline ? ` · до ${s.deadline}` : ""}</div>}</div>
-                <span className="shrink-0 text-sm font-bold tabular-nums text-rose-600">{s.progress || 0}%</span>
+                <div className="min-w-0"><div className="text-[13px] font-bold text-[#2c2224]">{s.name}</div>{(s.target || s.deadline) && <div className="text-[11px] text-[#9c7a3f]">{s.target}{s.deadline ? ` · до ${s.deadline}` : ""}</div>}</div>
+                <span style={MNUM} className="shrink-0 text-[15px] font-extrabold tabular-nums text-[#d99a1f]">{s.progress || 0}%</span>
               </div>
-              <input type="range" min={0} max={100} step={5} value={s.progress || 0} onChange={(e) => setProgress(s.id, +e.target.value)} className="mt-2 w-full accent-rose-500" />
-              <div className="mt-1 flex gap-2"><button onClick={() => setSkillEd({ skill: s })} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">Редагувати</button><button onClick={() => { if (confirm("Видалити ціль?")) saveSkills(skills.filter((x) => x.id !== s.id)); }} className="ml-auto text-slate-300 hover:text-red-500"><Trash2 className="h-4 w-4" /></button></div>
+              <div className="relative mt-2 h-1.5 rounded-full bg-[#f5e6c2]">
+                <div className="h-full rounded-full bg-[#d99a1f]" style={{ width: `${s.progress || 0}%` }} />
+                <div className="absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-[#d99a1f]" style={{ left: `${s.progress || 0}%`, marginLeft: -8 }} />
+              </div>
+              <input type="range" min={0} max={100} step={5} value={s.progress || 0} onChange={(e) => setProgress(s.id, +e.target.value)} className="mt-2 w-full accent-[#d99a1f]" />
+              <div className="mt-1 flex gap-2"><button onClick={() => setSkillEd({ skill: s })} className="rounded-full bg-[#fdf6e7] px-3 py-1 text-xs font-semibold text-[#7a6a60]">Редагувати</button><button onClick={() => { if (confirm("Видалити ціль?")) saveSkills(skills.filter((x) => x.id !== s.id)); }} className="ml-auto text-[#d9c9a0] hover:text-red-500"><Trash2 className="h-4 w-4" /></button></div>
             </div>
           ))}
-          <button onClick={() => setSkillEd({ skill: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-rose-300 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-50"><Plus className="h-4 w-4" /> Ціль / навичка</button>
-        </div>
-      )}
+          <button onClick={() => setSkillEd({ skill: null })} className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-[#f0d488] py-3 text-sm font-semibold text-[#a8760a] hover:bg-white"><Plus className="h-4 w-4" /> Ціль / навичка</button>
 
-      {tab === "wins" && (
-        <div className="space-y-3">
-          <div className="rounded-2xl bg-rose-50/60 px-4 py-3 text-xs leading-relaxed text-rose-800">Занотовуй робочі перемоги — великі й малі. Це і для резюме, і щоб на важкий день згадати: ти багато можеш.</div>
-          <div className="flex gap-2"><input value={winText} onChange={(e) => setWinText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addWin(); }} placeholder="Що вдалося? (напр. закрила складний баг)" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" /><button onClick={addWin} className="shrink-0 rounded-xl bg-rose-500 px-4 text-sm font-bold text-white hover:bg-rose-600">+</button></div>
-          {wins.length === 0 ? <div className="rounded-2xl bg-white py-8 text-center text-sm text-slate-400 ring-1 ring-rose-50">Ще порожньо. Перша перемога вже сьогодні? 🏆</div> : (
-            <div className="space-y-2">{wins.map((w) => <div key={w.id} className="group flex items-start gap-2 rounded-2xl bg-white p-3 shadow-sm ring-1 ring-rose-50"><span className="text-lg">🏆</span><span className="min-w-0 flex-1"><span className="block text-sm text-slate-700">{w.text}</span><span className="text-[11px] text-slate-400">{w.date}</span></span><button onClick={() => saveWins(wins.filter((x) => x.id !== w.id))} className="text-slate-300 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-4 w-4" /></button></div>)}</div>
-          )}
-        </div>
-      )}
-
-      {tab === "review" && (
-        <div className="space-y-3">
-          <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-rose-100">
-            <div className="mb-1 text-sm font-bold text-slate-700">Тиждень від {week}</div>
-            <p className="mb-2 text-xs text-slate-400">Що вдалося на роботі цього тижня? Навіть одне речення рахується.</p>
-            <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} onBlur={saveReview} rows={3} placeholder="Три речі, якими пишаюся цього тижня…" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:border-rose-400 focus:outline-none" />
+          <div className="pt-2 text-xs font-bold text-[#9c7a3f]">Огляд тижня</div>
+          <div className="rounded-[18px] bg-white p-3.5">
+            <div className="mb-1 text-[13px] font-bold text-[#2c2224]">Тиждень від {week}</div>
+            <p className="mb-2 text-xs text-[#9c7a3f]">Що вдалося на роботі цього тижня? Навіть одне речення рахується.</p>
+            <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} onBlur={saveReview} rows={3} placeholder="Три речі, якими пишаюся цього тижня…" className="w-full rounded-xl border-0 bg-[#fdf6e7] px-3 py-2 text-sm focus:outline-none" />
           </div>
           {reviews.filter((r) => r.week !== week).length > 0 && (
             <div className="space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Минулі тижні</div>
-              {reviews.filter((r) => r.week !== week).slice().reverse().map((r) => <div key={r.week} className="rounded-2xl bg-white p-3 shadow-sm ring-1 ring-rose-50"><div className="text-[11px] font-semibold text-slate-400">від {r.week}</div><div className="mt-0.5 whitespace-pre-wrap text-sm text-slate-600">{r.text}</div></div>)}
+              <div className="text-[11px] font-bold uppercase tracking-wide text-[#c9a789]">Минулі тижні</div>
+              {reviews.filter((r) => r.week !== week).slice().reverse().map((r) => <div key={r.week} className="rounded-[16px] bg-white p-3"><div className="text-[11px] font-semibold text-[#9c7a3f]">від {r.week}</div><div className="mt-0.5 whitespace-pre-wrap text-sm text-[#4a3f26]">{r.text}</div></div>)}
             </div>
+          )}
+
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs font-bold text-[#9c7a3f]">Досягнення</span>
+            <span className="text-[11px] text-[#9c7a3f]">{wins.filter((w) => w.date && w.date.slice(0, 7) === dateKey(Date.now()).slice(0, 7)).length} цього місяця</span>
+          </div>
+          <div className="flex gap-2"><input value={winText} onChange={(e) => setWinText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addWin(); }} placeholder="Що вдалося? (напр. закрила складний баг)" className="min-w-0 flex-1 rounded-xl border-0 bg-white px-3 py-2 text-sm focus:outline-none" /><button onClick={addWin} className="shrink-0 rounded-xl bg-[#d99a1f] px-4 text-sm font-bold text-white hover:bg-[#a8760a]">+</button></div>
+          {wins.length === 0 ? <div className="rounded-2xl bg-white py-8 text-center text-sm text-[#9c7a3f]">Ще порожньо. Перша перемога вже сьогодні? 🏆</div> : (
+            <div className="space-y-2">{wins.map((w) => <div key={w.id} className="group flex items-center gap-2.5 rounded-[16px] bg-white p-3"><span className="text-base">🏆</span><span className="min-w-0 flex-1"><span className="block text-[13px] text-[#2c2224]">{w.text}</span><span className="text-[11px] text-[#9c7a3f]">{w.date}</span></span><button onClick={() => saveWins(wins.filter((x) => x.id !== w.id))} className="text-[#d9c9a0] hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100"><X className="h-4 w-4" /></button></div>)}</div>
           )}
         </div>
       )}
@@ -16499,16 +16809,18 @@ function SkillEditor({ skill, onClose, onSave }) {
 }
 
 /* ---------- Career: Duolingo-style learning path ---------- */
+// Функціональні lucide-іконки лишились у PathLessonModal; самі вузли шляху
+// тепер емодзі (тепліше, per product owner) — див. README Design Tokens.
 const PATH_STEP_META = {
-  learn:   { icon: BookOpen,   ring: "bg-rose-500",  label: "Урок" },
-  read:    { icon: BookMarked, ring: "bg-sky-500",     label: "Читання" },
-  explain: { icon: Lightbulb,  ring: "bg-amber-500",   label: "Поясни" },
-  build:   { icon: Wrench,     ring: "bg-emerald-500", label: "Практика" },
-  quiz:    { icon: HelpCircle, ring: "bg-pink-500",  label: "Тест" },
+  learn:   { icon: BookOpen,   emoji: "📖", ring: "bg-rose-500",    label: "Урок" },
+  read:    { icon: BookMarked, emoji: "🔎", ring: "bg-sky-500",     label: "Читання" },
+  explain: { icon: Lightbulb,  emoji: "💡", ring: "bg-amber-500",   label: "Поясни" },
+  build:   { icon: Wrench,     emoji: "🛠️", ring: "bg-emerald-500", label: "Практика" },
+  quiz:    { icon: HelpCircle, emoji: "❓", ring: "bg-pink-500",    label: "Тест" },
 };
 
 // Learning content is baked in (versioned in code); only per-step completion is stored.
-// Career roadmap is fetched at runtime from /pm-path.json (see CareerView).
+// Career roadmap is fetched at runtime from /pm-path.json (see useCareerData).
 
 // Book course (18+ modules) is fetched at runtime from /book-course.json to keep the bundle small.
 
@@ -16521,58 +16833,57 @@ function CareerPath({ modules = [], heading = "Шлях: технічний PM �
   const openMod = open ? modules[open.modIdx] : null;
   const openStep = openMod ? openMod.steps[open.stepIdx] : null;
 
-  if (!modules.length) return <div className="rounded-2xl bg-white py-10 text-center text-sm text-slate-400 ring-1 ring-rose-50">Курс готується… (контент генерується — зайди трохи згодом)</div>;
+  if (!modules.length) return <div className="rounded-2xl bg-white py-10 text-center text-sm text-[#9c7a3f]">Курс готується… (контент генерується — зайди трохи згодом)</div>;
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-3xl bg-gradient-to-br from-rose-500 to-pink-500 p-5 text-white shadow-sm">
-        <div className="flex items-center gap-2 text-sm font-semibold text-white/90"><GraduationCap className="h-4 w-4" /> {heading}</div>
-        <div className="mt-1 text-2xl font-extrabold tabular-nums">{doneCount} / {totalSteps} кроків</div>
-        <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-white/25"><div className="h-full rounded-full bg-white transition-all" style={{ width: `${totalSteps ? (doneCount / totalSteps) * 100 : 0}%` }} /></div>
-        <div className="mt-1.5 text-xs leading-relaxed text-white/80">Маленькі кроки: вивчи → поясни своїми словами → збери → пройди тест. Роби по одному на день. 💪</div>
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 rounded-[20px] bg-white p-3.5">
+        <MRing pct={totalSteps ? doneCount / totalSteps : 0} size={44} stroke={6}><span style={MNUM} className="text-[10px] font-extrabold text-[#d99a1f]">{totalSteps ? Math.round((doneCount / totalSteps) * 100) : 0}%</span></MRing>
+        <div className="min-w-0"><div className="text-sm font-extrabold text-[#2c2224]">{heading}</div><div className="text-[11px] text-[#9c7a3f]">{doneCount} з {totalSteps} кроків</div></div>
       </div>
 
       {modules.map((mod, mi) => {
         const mDone = mod.steps.filter((_, i) => progress[pathStepId(mod.slug, i)]).length;
         const modDone = mDone === mod.steps.length;
         return (
-          <div key={mod.slug} className="rounded-3xl bg-white p-4 shadow-sm ring-1 ring-rose-50">
-            <div className="mb-3 flex items-center gap-3">
-              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-100 text-2xl">{mod.emoji}</span>
+          <div key={mod.slug} className="rounded-[24px] bg-white p-4">
+            <div className="mb-1 flex items-center gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[#fdecc4] text-2xl">{mod.emoji}</span>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2"><span className="font-bold text-slate-800">{mod.title}</span>{modDone && <Trophy className="h-4 w-4 shrink-0 text-amber-400" />}</div>
-                <div className="text-xs leading-snug text-slate-400">{mod.intro}</div>
+                <div className="flex items-center gap-2"><span className="font-bold text-[#2c2224]">{mod.title}</span>{modDone && <Trophy className="h-4 w-4 shrink-0 text-[#d99a1f]" />}</div>
+                <div className="text-xs leading-snug text-[#9c7a3f]">{mod.intro}</div>
               </div>
-              <span className="shrink-0 text-xs font-bold tabular-nums text-rose-500">{mDone}/{mod.steps.length}</span>
+              <span style={MNUM} className="shrink-0 text-xs font-bold tabular-nums text-[#a8760a]">{mDone}/{mod.steps.length}</span>
             </div>
-            <div className="relative">
-              <span className="pointer-events-none absolute bottom-4 left-[18px] top-4 w-0.5 bg-slate-100" aria-hidden />
-              <div className="relative space-y-1">
-                {mod.steps.map((st, si) => {
-                  const sid = pathStepId(mod.slug, si);
-                  const isDone = !!progress[sid];
-                  const prevDone = si === 0 || !!progress[pathStepId(mod.slug, si - 1)];
-                  const locked = !isDone && !prevDone;
-                  const meta = PATH_STEP_META[st.type] || PATH_STEP_META.learn;
-                  const NodeIcon = isDone ? Check : locked ? Lock : meta.icon;
-                  return (
-                    <div key={sid} className="flex items-center gap-3">
-                      <button disabled={locked} onClick={() => setOpen({ modIdx: mi, stepIdx: si })} className={`relative z-10 grid h-9 w-9 shrink-0 place-items-center rounded-full text-white shadow-sm transition ${isDone ? "bg-emerald-500" : locked ? "bg-slate-200 text-slate-400" : `${meta.ring} hover:scale-105`}`}><NodeIcon className="h-4 w-4" /></button>
-                      <button disabled={locked} onClick={() => setOpen({ modIdx: mi, stepIdx: si })} className="min-w-0 flex-1 py-1.5 text-left disabled:cursor-default">
-                        <div className={`text-sm font-semibold ${locked ? "text-slate-300" : isDone ? "text-slate-400" : "text-slate-700"}`}>{st.title}</div>
-                        <div className="text-[10px] font-bold uppercase tracking-wide text-slate-300">{meta.label}</div>
-                      </button>
-                      {isDone && <Check className="mr-1 h-4 w-4 shrink-0 text-emerald-400" />}
-                    </div>
-                  );
-                })}
-              </div>
+
+            {/* zigzag: emoji nodes alternating left/right, connected by a short vertical line */}
+            <div className="mt-3 flex flex-col items-center gap-0.5">
+              {mod.steps.map((st, si) => {
+                const sid = pathStepId(mod.slug, si);
+                const isDone = !!progress[sid];
+                const prevDone = si === 0 || !!progress[pathStepId(mod.slug, si - 1)];
+                const locked = !isDone && !prevDone;
+                const current = !isDone && !locked;
+                const meta = PATH_STEP_META[st.type] || PATH_STEP_META.learn;
+                const offset = [0, 26, -26, 40, -40][si % 5]; // невеликий зиґзаг, як у мокапі
+                return (
+                  <div key={sid} className="flex flex-col items-center" style={{ marginLeft: offset }}>
+                    <button disabled={locked} onClick={() => setOpen({ modIdx: mi, stepIdx: si })}
+                      className="grid h-14 w-14 place-items-center rounded-full text-2xl transition disabled:cursor-default"
+                      style={{ backgroundColor: isDone ? "#d99a1f" : current ? "#f0d488" : "#f5e6c2", boxShadow: current ? "0 0 0 5px #fdecc4" : "none" }}>
+                      {isDone ? <Check className="h-5 w-5 text-white" /> : <span style={{ opacity: locked ? 0.45 : 1 }}>{meta.emoji}</span>}
+                    </button>
+                    <span className="mt-1 max-w-[84px] text-center text-[10px] font-bold leading-tight" style={{ color: locked ? "#d9c9a0" : "#2c2224" }}>{st.title}</span>
+                    {si < mod.steps.length - 1 && <span className="mt-0.5 h-[22px] w-[3px]" style={{ backgroundColor: locked || (!isDone && !current) ? "#f5e6c2" : "#f0d488" }} />}
+                  </div>
+                );
+              })}
             </div>
-            {modDone && <div className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-center text-sm font-semibold text-amber-700">🎉 Модуль пройдено!</div>}
+            {modDone && <div className="mt-3 rounded-2xl bg-[#fdecc4] px-3 py-2 text-center text-sm font-semibold text-[#8a5f0a]">🎉 Модуль пройдено!</div>}
           </div>
         );
       })}
-      <p className="px-2 pb-2 text-center text-xs leading-relaxed text-slate-400">Це стартова база. Проходь у своєму темпі, повертайся до уроків будь-коли. Прогрес зберігається і синхронізується.</p>
+      <p className="px-2 pb-2 text-center text-xs leading-relaxed text-[#9c7a3f]">Це стартова база. Проходь у своєму темпі, повертайся до уроків будь-коли. Прогрес зберігається і синхронізується.</p>
 
       {openStep && <PathLessonModal step={openStep} done={!!progress[pathStepId(openMod.slug, open.stepIdx)]} onClose={() => setOpen(null)} onDone={(v) => { onDone(pathStepId(openMod.slug, open.stepIdx), v); setOpen(null); }} />}
     </div>
