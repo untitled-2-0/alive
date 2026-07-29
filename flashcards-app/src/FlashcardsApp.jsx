@@ -4565,105 +4565,64 @@ const SKELETON_NOTES = [
   { title: "Фаланги:", body: "на великому пальці кисті та стопи їх дві (проксимальна й дистальна), на решті — три (проксимальна, середня, дистальна)." },
 ];
 
+// Координати підібрані вручну під реальні мітки-крапки з public/medicine/skeleton-front.svg
+// (Human skeleton front uk.svg, LadyofHats, суспільне надбання) — % від розміру зображення.
+const BONE_HOTSPOTS = {
+  skull: [{ x: 46.6, y: 7.1 }],
+  mandible: [{ x: 46.6, y: 14.5 }],
+  hyoid: [{ x: 46.6, y: 16.0 }],
+  cervical: [{ x: 46.6, y: 16.6 }],
+  thoracic: [{ x: 46.6, y: 23.8 }],
+  lumbar: [{ x: 46.6, y: 35.6 }],
+  sacrum: [{ x: 45.9, y: 44.2 }],
+  coccyx: [{ x: 46.4, y: 46.0 }],
+  ribs: [{ x: 49.4, y: 23.2 }],
+  sternum: [{ x: 46.4, y: 21.4 }],
+  clavicle: [{ x: 55.6, y: 17.9 }, { x: 37.4, y: 17.9 }],
+  scapula: [{ x: 60.4, y: 21.5 }, { x: 32.4, y: 21.5 }],
+  humerus: [{ x: 71.4, y: 34.3 }, { x: 21.3, y: 34.3 }],
+  ulna: [{ x: 72.8, y: 38.1 }, { x: 19.9, y: 38.1 }],
+  radius: [{ x: 76.7, y: 40.8 }, { x: 16.1, y: 40.8 }],
+  carpus: [{ x: 80.3, y: 49.5 }, { x: 12.4, y: 49.5 }],
+  metacarpus: [{ x: 80.8, y: 51.6 }, { x: 11.9, y: 51.6 }],
+  handPhalanges: [{ x: 81.5, y: 55.1 }, { x: 11.3, y: 55.1 }],
+  pelvis: [{ x: 55.2, y: 43.2 }, { x: 37.6, y: 43.2 }],
+  femur: [{ x: 53.0, y: 66.8 }, { x: 39.7, y: 66.8 }],
+  patella: [{ x: 53.3, y: 70.7 }, { x: 39.5, y: 70.7 }],
+  tibia: [{ x: 51.6, y: 74.4 }, { x: 41.1, y: 74.4 }],
+  fibula: [{ x: 54.9, y: 78.5 }, { x: 37.9, y: 78.5 }],
+  tarsus: [{ x: 54.7, y: 90.0 }, { x: 38.1, y: 90.0 }],
+  metatarsus: [{ x: 54.7, y: 92.1 }, { x: 38.1, y: 92.1 }],
+  footPhalanges: [{ x: 54.7, y: 95.3 }, { x: 38.1, y: 95.3 }],
+};
+
 function SkeletonDiagram({ selectedId, onPick }) {
-  const base = "#d9d0ba", baseStroke = "#a89a76", hi = "#fbbf24", hiStroke = "#b45309";
-  const fillFor = (id) => (selectedId === id ? hi : base);
-  const strokeFor = (id) => (selectedId === id ? hiStroke : baseStroke);
-  const glow = (id) => (selectedId === id ? { filter: "drop-shadow(0 0 5px rgba(251,191,36,0.85))" } : undefined);
-  const Region = ({ id, children }) => (
-    <g onClick={() => onPick(id)} style={{ cursor: "pointer", ...glow(id) }} className="transition-all">{children}</g>
-  );
   return (
-    <svg viewBox="0 0 220 560" className="h-full w-full">
-      <Region id="ribs"><rect x="68" y="106" width="84" height="72" rx="36" ry="32" fill={fillFor("ribs")} stroke={strokeFor("ribs")} strokeWidth="1.5" /></Region>
-      <Region id="thoracic"><rect x="103" y="100" width="14" height="60" rx="5" fill={fillFor("thoracic")} stroke={strokeFor("thoracic")} strokeWidth="1.5" /></Region>
-      <Region id="cervical"><rect x="104" y="76" width="12" height="24" rx="5" fill={fillFor("cervical")} stroke={strokeFor("cervical")} strokeWidth="1.5" /></Region>
-      <Region id="lumbar"><rect x="103" y="178" width="14" height="34" rx="5" fill={fillFor("lumbar")} stroke={strokeFor("lumbar")} strokeWidth="1.5" /></Region>
-      <Region id="sternum"><rect x="104" y="112" width="9" height="46" rx="3" fill={fillFor("sternum")} stroke={strokeFor("sternum")} strokeWidth="1.5" /></Region>
-      <Region id="sacrum"><path d="M99,212 L121,212 L117,238 L103,238 Z" fill={fillFor("sacrum")} stroke={strokeFor("sacrum")} strokeWidth="1.5" /></Region>
-      <Region id="coccyx"><path d="M107,238 L113,238 L110,248 Z" fill={fillFor("coccyx")} stroke={strokeFor("coccyx")} strokeWidth="1.5" /></Region>
-      <Region id="pelvis">
-        <path d="M60,206 L100,209 L100,238 L86,254 L61,248 L54,222 Z" fill={fillFor("pelvis")} stroke={strokeFor("pelvis")} strokeWidth="1.5" />
-        <path d="M160,206 L120,209 L120,238 L134,254 L159,248 L166,222 Z" fill={fillFor("pelvis")} stroke={strokeFor("pelvis")} strokeWidth="1.5" />
-      </Region>
-      <Region id="scapula">
-        <path d="M46,104 L71,110 L57,150 Z" fill={fillFor("scapula")} stroke={strokeFor("scapula")} strokeWidth="1.5" />
-        <path d="M174,104 L149,110 L163,150 Z" fill={fillFor("scapula")} stroke={strokeFor("scapula")} strokeWidth="1.5" />
-      </Region>
-      <Region id="clavicle">
-        <line x1="103" y1="108" x2="64" y2="99" stroke={strokeFor("clavicle")} strokeWidth="6" strokeLinecap="round" />
-        <line x1="117" y1="108" x2="156" y2="99" stroke={strokeFor("clavicle")} strokeWidth="6" strokeLinecap="round" />
-        <line x1="103" y1="108" x2="64" y2="99" stroke={fillFor("clavicle")} strokeWidth="3" strokeLinecap="round" />
-        <line x1="117" y1="108" x2="156" y2="99" stroke={fillFor("clavicle")} strokeWidth="3" strokeLinecap="round" />
-      </Region>
-      <Region id="humerus">
-        <line x1="62" y1="103" x2="47" y2="190" stroke={strokeFor("humerus")} strokeWidth="12" strokeLinecap="round" />
-        <line x1="158" y1="103" x2="173" y2="190" stroke={strokeFor("humerus")} strokeWidth="12" strokeLinecap="round" />
-        <line x1="62" y1="103" x2="47" y2="190" stroke={fillFor("humerus")} strokeWidth="8" strokeLinecap="round" />
-        <line x1="158" y1="103" x2="173" y2="190" stroke={fillFor("humerus")} strokeWidth="8" strokeLinecap="round" />
-      </Region>
-      <Region id="ulna">
-        <line x1="45" y1="190" x2="37" y2="270" stroke={strokeFor("ulna")} strokeWidth="8" strokeLinecap="round" />
-        <line x1="175" y1="190" x2="183" y2="270" stroke={strokeFor("ulna")} strokeWidth="8" strokeLinecap="round" />
-        <line x1="45" y1="190" x2="37" y2="270" stroke={fillFor("ulna")} strokeWidth="5" strokeLinecap="round" />
-        <line x1="175" y1="190" x2="183" y2="270" stroke={fillFor("ulna")} strokeWidth="5" strokeLinecap="round" />
-      </Region>
-      <Region id="radius">
-        <line x1="52" y1="190" x2="49" y2="268" stroke={strokeFor("radius")} strokeWidth="7" strokeLinecap="round" />
-        <line x1="168" y1="190" x2="171" y2="268" stroke={strokeFor("radius")} strokeWidth="7" strokeLinecap="round" />
-        <line x1="52" y1="190" x2="49" y2="268" stroke={fillFor("radius")} strokeWidth="4" strokeLinecap="round" />
-        <line x1="168" y1="190" x2="171" y2="268" stroke={fillFor("radius")} strokeWidth="4" strokeLinecap="round" />
-      </Region>
-      <Region id="carpus">
-        <rect x="33" y="270" width="16" height="14" rx="5" fill={fillFor("carpus")} stroke={strokeFor("carpus")} strokeWidth="1.5" />
-        <rect x="171" y="270" width="16" height="14" rx="5" fill={fillFor("carpus")} stroke={strokeFor("carpus")} strokeWidth="1.5" />
-      </Region>
-      <Region id="metacarpus">
-        <rect x="33" y="286" width="15" height="15" rx="4" fill={fillFor("metacarpus")} stroke={strokeFor("metacarpus")} strokeWidth="1.5" />
-        <rect x="172" y="286" width="15" height="15" rx="4" fill={fillFor("metacarpus")} stroke={strokeFor("metacarpus")} strokeWidth="1.5" />
-      </Region>
-      <Region id="handPhalanges">
-        <ellipse cx="41" cy="309" rx="11" ry="9" fill={fillFor("handPhalanges")} stroke={strokeFor("handPhalanges")} strokeWidth="1.5" />
-        <ellipse cx="179" cy="309" rx="11" ry="9" fill={fillFor("handPhalanges")} stroke={strokeFor("handPhalanges")} strokeWidth="1.5" />
-      </Region>
-      <Region id="femur">
-        <line x1="80" y1="248" x2="76" y2="378" stroke={strokeFor("femur")} strokeWidth="16" strokeLinecap="round" />
-        <line x1="140" y1="248" x2="144" y2="378" stroke={strokeFor("femur")} strokeWidth="16" strokeLinecap="round" />
-        <line x1="80" y1="248" x2="76" y2="378" stroke={fillFor("femur")} strokeWidth="11" strokeLinecap="round" />
-        <line x1="140" y1="248" x2="144" y2="378" stroke={fillFor("femur")} strokeWidth="11" strokeLinecap="round" />
-      </Region>
-      <Region id="patella">
-        <circle cx="76" cy="384" r="9" fill={fillFor("patella")} stroke={strokeFor("patella")} strokeWidth="1.5" />
-        <circle cx="144" cy="384" r="9" fill={fillFor("patella")} stroke={strokeFor("patella")} strokeWidth="1.5" />
-      </Region>
-      <Region id="tibia">
-        <line x1="75" y1="392" x2="72" y2="488" stroke={strokeFor("tibia")} strokeWidth="11" strokeLinecap="round" />
-        <line x1="145" y1="392" x2="148" y2="488" stroke={strokeFor("tibia")} strokeWidth="11" strokeLinecap="round" />
-        <line x1="75" y1="392" x2="72" y2="488" stroke={fillFor("tibia")} strokeWidth="7" strokeLinecap="round" />
-        <line x1="145" y1="392" x2="148" y2="488" stroke={fillFor("tibia")} strokeWidth="7" strokeLinecap="round" />
-      </Region>
-      <Region id="fibula">
-        <line x1="84" y1="392" x2="82" y2="486" stroke={strokeFor("fibula")} strokeWidth="6" strokeLinecap="round" />
-        <line x1="136" y1="392" x2="138" y2="486" stroke={strokeFor("fibula")} strokeWidth="6" strokeLinecap="round" />
-        <line x1="84" y1="392" x2="82" y2="486" stroke={fillFor("fibula")} strokeWidth="3" strokeLinecap="round" />
-        <line x1="136" y1="392" x2="138" y2="486" stroke={fillFor("fibula")} strokeWidth="3" strokeLinecap="round" />
-      </Region>
-      <Region id="tarsus">
-        <rect x="63" y="490" width="20" height="16" rx="6" fill={fillFor("tarsus")} stroke={strokeFor("tarsus")} strokeWidth="1.5" />
-        <rect x="137" y="490" width="20" height="16" rx="6" fill={fillFor("tarsus")} stroke={strokeFor("tarsus")} strokeWidth="1.5" />
-      </Region>
-      <Region id="metatarsus">
-        <rect x="60" y="507" width="24" height="13" rx="4" fill={fillFor("metatarsus")} stroke={strokeFor("metatarsus")} strokeWidth="1.5" />
-        <rect x="136" y="507" width="24" height="13" rx="4" fill={fillFor("metatarsus")} stroke={strokeFor("metatarsus")} strokeWidth="1.5" />
-      </Region>
-      <Region id="footPhalanges">
-        <ellipse cx="58" cy="526" rx="11" ry="7" fill={fillFor("footPhalanges")} stroke={strokeFor("footPhalanges")} strokeWidth="1.5" />
-        <ellipse cx="162" cy="526" rx="11" ry="7" fill={fillFor("footPhalanges")} stroke={strokeFor("footPhalanges")} strokeWidth="1.5" />
-      </Region>
-      <Region id="hyoid"><ellipse cx="110" cy="74" rx="7" ry="3.5" fill={fillFor("hyoid")} stroke={strokeFor("hyoid")} strokeWidth="1.5" /></Region>
-      <Region id="mandible"><rect x="94" y="57" width="32" height="15" rx="7" fill={fillFor("mandible")} stroke={strokeFor("mandible")} strokeWidth="1.5" /></Region>
-      <Region id="skull"><ellipse cx="110" cy="36" rx="27" ry="30" fill={fillFor("skull")} stroke={strokeFor("skull")} strokeWidth="1.5" /></Region>
-    </svg>
+    <div className="relative mx-auto w-full select-none">
+      <img src="/medicine/skeleton-front.svg" alt="Скелет людини, вигляд спереду" className="block w-full h-auto" draggable={false} />
+      <div className="pointer-events-none absolute inset-0">
+        {Object.entries(BONE_HOTSPOTS).map(([id, points]) =>
+          points.map((p, i) => {
+            const active = selectedId === id;
+            return (
+              <button
+                key={`${id}-${i}`}
+                onClick={() => onPick(id)}
+                aria-label={SKELETON_REGION_LABELS[id] || id}
+                className="pointer-events-auto absolute grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full transition-all"
+                style={{
+                  left: `${p.x}%`, top: `${p.y}%`,
+                  width: active ? 22 : 16, height: active ? 22 : 16,
+                  background: active ? "rgba(251,191,36,0.55)" : "transparent",
+                  boxShadow: active ? "0 0 10px 4px rgba(251,191,36,0.85)" : "none",
+                  border: active ? "2px solid #b45309" : "2px solid transparent",
+                }}
+              />
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -4725,7 +4684,7 @@ function SkeletonView() {
     <div className="lg:grid lg:grid-cols-[240px_1fr] lg:items-start lg:gap-6">
       <div className="lg:sticky lg:top-20">
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="mx-auto h-[300px] w-full max-w-[200px]"><SkeletonDiagram selectedId={sel?.id} onPick={pickRegion} /></div>
+          <div className="mx-auto w-full max-w-[220px]"><SkeletonDiagram selectedId={sel?.id} onPick={pickRegion} /></div>
           <div className="mt-3 min-h-[40px] rounded-xl bg-slate-50 px-3 py-2 text-center">
             {sel ? (
               <>
@@ -4774,6 +4733,115 @@ function SkeletonView() {
   );
 }
 
+// Список повторює підписи з реального атласу (OpenStax, CC BY 4.0, укр. переклад —
+// файл 1105_Anterior_and_Posterior_Views_of_Muscles_uk.jpg, Wikimedia Commons),
+// латину додано окремо. Картинку не розмічаємо крапками — вона й так підписана.
+const MUSCLE_ATLAS_GROUPS = [
+  {
+    title: "Вигляд спереду", view: "front",
+    muscles: [
+      { name: "Надчерепний м'яз", latin: "m. epicranius" },
+      { name: "Груднинно-ключично-соскоподібний м'яз", latin: "m. sternocleidomastoideus" },
+      { name: "Трапецієподібний м'яз", latin: "m. trapezius" },
+      { name: "Дельтоподібний м'яз", latin: "m. deltoideus" },
+      { name: "Великий грудний м'яз", latin: "m. pectoralis major" },
+      { name: "Малий грудний м'яз", latin: "m. pectoralis minor" },
+      { name: "Передній зубчастий м'яз", latin: "m. serratus anterior" },
+      { name: "Прямий м'яз живота", latin: "m. rectus abdominis" },
+      { name: "Зовнішній косий м'яз живота", latin: "m. obliquus externus abdominis" },
+      { name: "Двоголовий м'яз плеча", latin: "m. biceps brachii" },
+      { name: "Плечовий м'яз", latin: "m. brachialis" },
+      { name: "Плечопроменевий м'яз", latin: "m. brachioradialis" },
+      { name: "Круглий пронатор", latin: "m. pronator teres" },
+      { name: "Променевий згинач зап'ястя", latin: "m. flexor carpi radialis" },
+      { name: "Гребінний м'яз", latin: "m. pectineus" },
+      { name: "Довгий привідний м'яз", latin: "m. adductor longus" },
+      { name: "М'яз-натягувач широкої фасції стегна", latin: "m. tensor fasciae latae" },
+      { name: "Клубово-поперековий м'яз", latin: "m. iliopsoas" },
+      { name: "Кравецький м'яз", latin: "m. sartorius" },
+      { name: "Прямий м'яз стегна", latin: "m. rectus femoris" },
+      { name: "Тонкий м'яз", latin: "m. gracilis" },
+      { name: "Латеральний широкий м'яз", latin: "m. vastus lateralis" },
+      { name: "Присередній широкий м'яз", latin: "m. vastus medialis" },
+      { name: "Довгий малогомілковий м'яз", latin: "m. peroneus longus" },
+      { name: "Передній великогомілковий м'яз", latin: "m. tibialis anterior" },
+      { name: "Камбалоподібний і литковий м'язи", latin: "m. soleus et gastrocnemius" },
+    ],
+  },
+  {
+    title: "Вигляд ззаду", view: "back",
+    muscles: [
+      { name: "Надчерепний м'яз", latin: "m. epicranius" },
+      { name: "Сухожильний шолом", latin: "galea aponeurotica" },
+      { name: "Ремінний м'яз голови", latin: "m. splenius capitis" },
+      { name: "М'яз-підіймач лопатки", latin: "m. levator scapulae" },
+      { name: "Ромбоподібний м'яз", latin: "m. rhomboideus" },
+      { name: "Трапецієподібний м'яз", latin: "m. trapezius" },
+      { name: "Надостний м'яз", latin: "m. supraspinatus" },
+      { name: "Малий круглий м'яз", latin: "m. teres minor" },
+      { name: "Підостний м'яз", latin: "m. infraspinatus" },
+      { name: "Великий круглий м'яз", latin: "m. teres major" },
+      { name: "Дельтоподібний м'яз", latin: "m. deltoideus" },
+      { name: "Найширший м'яз спини", latin: "m. latissimus dorsi" },
+      { name: "Триголовий м'яз плеча", latin: "m. triceps brachii" },
+      { name: "Плечопроменевий м'яз", latin: "m. brachioradialis" },
+      { name: "Променевий розгинач зап'ястя", latin: "m. extensor carpi radialis" },
+      { name: "Розгинач пальців", latin: "m. extensor digitorum" },
+      { name: "Ліктьовий розгинач зап'ястя", latin: "m. extensor carpi ulnaris" },
+      { name: "Ліктьовий згинач зап'ястя", latin: "m. flexor carpi ulnaris" },
+      { name: "Нижній задній зубчастий м'яз", latin: "m. serratus posterior inferior" },
+      { name: "Зовнішній косий м'яз живота", latin: "m. obliquus externus abdominis" },
+      { name: "Середній сідничний м'яз", latin: "m. gluteus medius" },
+      { name: "Великий сідничний м'яз", latin: "m. gluteus maximus" },
+      { name: "Малий сідничний м'яз", latin: "m. gluteus minimus" },
+      { name: "Близнюкові м'язи", latin: "mm. gemelli" },
+      { name: "Двоголовий м'яз стегна", latin: "m. biceps femoris" },
+      { name: "Півсухожилковий м'яз", latin: "m. semitendinosus" },
+      { name: "Півперетинчастий м'яз", latin: "m. semimembranosus" },
+      { name: "Тонкий м'яз", latin: "m. gracilis" },
+      { name: "Довгий малогомілковий м'яз", latin: "m. peroneus longus" },
+      { name: "Литковий м'яз", latin: "m. gastrocnemius" },
+      { name: "Камбалоподібний м'яз", latin: "m. soleus" },
+      { name: "Задній великогомілковий м'яз", latin: "m. tibialis posterior" },
+    ],
+  },
+];
+
+function MuscleView() {
+  const [view, setView] = useState("front");
+  const [selIdx, setSelIdx] = useState(null);
+  const group = MUSCLE_ATLAS_GROUPS.find((g) => g.view === view);
+  const switchView = (v) => { setView(v); setSelIdx(null); };
+
+  return (
+    <div className="lg:grid lg:grid-cols-[240px_1fr] lg:items-start lg:gap-6">
+      <div className="lg:sticky lg:top-20">
+        <div className="rounded-2xl border border-slate-200 bg-white p-2">
+          <div className="mb-2 flex rounded-full bg-slate-100 p-1">
+            <button onClick={() => switchView("front")} className={`flex-1 rounded-full py-1.5 text-xs font-bold transition ${view === "front" ? "bg-teal-600 text-white" : "text-slate-500"}`}>Спереду</button>
+            <button onClick={() => switchView("back")} className={`flex-1 rounded-full py-1.5 text-xs font-bold transition ${view === "back" ? "bg-teal-600 text-white" : "text-slate-500"}`}>Ззаду</button>
+          </div>
+          <img src={view === "front" ? "/medicine/muscles_front.jpg" : "/medicine/muscles_back.jpg"} alt={`М'язи людини, вигляд ${view === "front" ? "спереду" : "ззаду"}`} className="block w-full rounded-xl" />
+          <p className="mt-2 px-1 text-center text-[11px] leading-snug text-slate-400">Праворуч на зображенні — поверхневі м'язи, ліворуч — глибокі</p>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-1.5 lg:mt-0">
+        <div className="mb-2 rounded-2xl bg-white p-3 text-center text-xs font-semibold text-slate-400">{group.title} · {group.muscles.length} м'язів у підписах атласу</div>
+        {group.muscles.map((m, i) => (
+          <button key={i} onClick={() => setSelIdx(i)}
+            className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition ${selIdx === i ? "border-amber-400 bg-amber-50" : "border-transparent bg-white hover:border-slate-200 hover:bg-slate-50"}`}>
+            <div className="min-w-0">
+              <div className={`text-sm font-semibold ${selIdx === i ? "text-amber-800" : "text-slate-800"}`}>{m.name}</div>
+              <div className="truncate text-xs italic text-slate-400">{m.latin}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MedicineSection() {
   const [tab, setTab] = useState("skeleton");
   return (
@@ -4787,10 +4855,14 @@ function MedicineSection() {
           <button onClick={() => setTab("skeleton")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "skeleton" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             🦴 Скелет людини
           </button>
+          <button onClick={() => setTab("muscles")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "muscles" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            💪 М'язи людини
+          </button>
         </div>
       </header>
       <main className="mx-auto w-full max-w-4xl px-3 py-4 pb-24 sm:px-4 sm:py-5 lg:pb-8">
         {tab === "skeleton" && <SkeletonView />}
+        {tab === "muscles" && <MuscleView />}
       </main>
     </div>
   );
