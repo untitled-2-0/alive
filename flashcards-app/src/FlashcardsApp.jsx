@@ -22,7 +22,7 @@ import {
   Wrench, Star, Users, Sparkles as SparklesIcon, Scale as ScaleIcon, ArrowLeftRight, Home,
   HandHeart, ShoppingCart, Wallet, ShoppingBasket, Search,
   Package, Lock, HelpCircle, Stethoscope, TestTube2, Minus, ChevronUp,
-  Move, PartyPopper, Hand, Gift,
+  Move, PartyPopper, Hand, Gift, Bone,
 } from "lucide-react";
 import lottie from "lottie-web";
 import {
@@ -3904,6 +3904,8 @@ export default function FlashcardsApp() {
           <InventorySection name={inventoryName} onRename={renameInventory} />
         ) : section === "analyses" ? (
           <AnalysesSection />
+        ) : section === "medicine" ? (
+          <MedicineSection />
         ) : section === "fitness" ? (
           <FitnessSection name={fitnessName} onRename={renameFitness} />
         ) : section === "nutrition" ? (
@@ -4108,6 +4110,7 @@ function MobileNav({ section, onSection, studyingDue, calmName, fastingName, mgm
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
     { id: "money", label: "Гроші", icon: Wallet, badge: 0 },
     { id: "analyses", label: "Аналізи", icon: Stethoscope, badge: 0 },
+    { id: "medicine", label: "Медицина", icon: Bone, badge: 0 },
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
     { id: "books", label: booksName || "Книги", icon: BookMarked, badge: 0 },
     { id: "fitness", label: fitnessName || "Fitness", icon: HeartPulse, badge: 0 },
@@ -4169,6 +4172,7 @@ function Sidebar({ section, collapsed, onSection, onToggle, studyingDue, calmNam
     { id: "management", label: mgmtName || "Менеджмент", icon: Briefcase, badge: 0 },
     { id: "money", label: "Гроші", icon: Wallet, badge: 0 },
     { id: "analyses", label: "Аналізи", icon: Stethoscope, badge: 0 },
+    { id: "medicine", label: "Медицина", icon: Bone, badge: 0 },
     { id: "inventory", label: inventoryName || "Inventory", icon: Home, badge: 0 },
     { id: "books", label: booksName || "Книги", icon: BookMarked, badge: 0 },
     { id: "fitness", label: fitnessName || "Fitness", icon: HeartPulse, badge: 0 },
@@ -4411,6 +4415,382 @@ function AnalysesSection() {
           })}
           {rows.filter(matchesFilter).length === 0 && <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center"><CheckCircle2 className="mx-auto h-8 w-8 text-emerald-400" /><div className="mt-2 text-sm font-bold text-slate-700">Усе готово</div><div className="text-xs text-slate-400">Для цього фільтра пунктів немає.</div></div>}
         </div>
+      </main>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Medicine — Skeleton reference                                       */
+/* ------------------------------------------------------------------ */
+const SKELETON_REGION_LABELS = {
+  skull: "Череп", mandible: "Нижня щелепа", hyoid: "Під'язикова кістка",
+  cervical: "Шийні хребці", thoracic: "Грудні хребці", lumbar: "Поперекові хребці",
+  sacrum: "Крижова кістка", coccyx: "Куприк", ribs: "Ребра", sternum: "Груднина",
+  clavicle: "Ключиця", scapula: "Лопатка", humerus: "Плечова", ulna: "Ліктьова", radius: "Променева",
+  carpus: "Кістки зап'ястка", metacarpus: "П'ясткові", handPhalanges: "Фаланги пальців (кисть)",
+  pelvis: "Тазова кістка", femur: "Стегнова", patella: "Наколінок", tibia: "Великогомілкова",
+  fibula: "Малогомілкова", tarsus: "Кістки заплесна", metatarsus: "Плеснові", footPhalanges: "Фаланги пальців (стопа)",
+};
+
+const SKELETON_GROUPS = [
+  {
+    title: "Осьовий скелет — skeleton axiale (80)",
+    subgroups: [
+      {
+        title: "Мозковий череп — neurocranium (8)",
+        bones: [
+          { id: "skull", name: "Лобова", latin: "os frontale", count: 1 },
+          { id: "skull", name: "Тім'яна", latin: "os parietale", count: 2 },
+          { id: "skull", name: "Потилична", latin: "os occipitale", count: 1 },
+          { id: "skull", name: "Скронева", latin: "os temporale", count: 2 },
+          { id: "skull", name: "Клиноподібна", latin: "os sphenoidale", count: 1 },
+          { id: "skull", name: "Решітчаста", latin: "os ethmoidale", count: 1 },
+        ],
+      },
+      {
+        title: "Лицевий череп — viscerocranium (14)",
+        bones: [
+          { id: "skull", name: "Верхня щелепа", latin: "maxilla", count: 2 },
+          { id: "skull", name: "Піднебінна", latin: "os palatinum", count: 2 },
+          { id: "skull", name: "Вилична", latin: "os zygomaticum", count: 2 },
+          { id: "skull", name: "Носова", latin: "os nasale", count: 2 },
+          { id: "skull", name: "Слізна", latin: "os lacrimale", count: 2 },
+          { id: "skull", name: "Нижня носова раковина", latin: "concha nasalis inferior", count: 2 },
+          { id: "skull", name: "Леміш", latin: "vomer", count: 1 },
+          { id: "mandible", name: "Нижня щелепа", latin: "mandibula", count: 1 },
+        ],
+      },
+      {
+        title: "Слухові кісточки — ossicula auditus (6)",
+        bones: [
+          { id: "skull", name: "Молоточок", latin: "malleus", count: 2 },
+          { id: "skull", name: "Ковадло", latin: "incus", count: 2 },
+          { id: "skull", name: "Стремінце", latin: "stapes", count: 2 },
+        ],
+      },
+      {
+        title: "Під'язикова кістка (1)",
+        bones: [{ id: "hyoid", name: "Під'язикова кістка", latin: "os hyoideum", count: 1 }],
+      },
+      {
+        title: "Хребет — columna vertebralis (26)",
+        bones: [
+          { id: "cervical", name: "Шийні хребці (С1 — atlas, С2 — axis)", latin: "vertebrae cervicales", count: 7 },
+          { id: "thoracic", name: "Грудні хребці", latin: "vertebrae thoracicae", count: 12 },
+          { id: "lumbar", name: "Поперекові хребці", latin: "vertebrae lumbales", count: 5 },
+          { id: "sacrum", name: "Крижова кістка", latin: "os sacrum", count: 1 },
+          { id: "coccyx", name: "Куприк", latin: "os coccygis", count: 1 },
+        ],
+      },
+      {
+        title: "Грудна клітка — thorax (25)",
+        bones: [
+          { id: "ribs", name: "Ребра", latin: "costae", count: "24 (12 пар)" },
+          { id: "sternum", name: "Груднина", latin: "sternum", count: 1 },
+        ],
+      },
+    ],
+  },
+  {
+    title: "Додатковий скелет — skeleton appendiculare (126)",
+    subgroups: [
+      {
+        title: "Пояс верхньої кінцівки (4)",
+        bones: [
+          { id: "clavicle", name: "Ключиця", latin: "clavicula", count: 2 },
+          { id: "scapula", name: "Лопатка", latin: "scapula", count: 2 },
+        ],
+      },
+      {
+        title: "Вільна верхня кінцівка (60)",
+        bones: [
+          { id: "humerus", name: "Плечова", latin: "humerus", count: 2 },
+          { id: "ulna", name: "Ліктьова", latin: "ulna", count: 2 },
+          { id: "radius", name: "Променева", latin: "radius", count: 2 },
+          { id: "carpus", name: "Кістки зап'ястка", latin: "ossa carpi", count: 16 },
+          { id: "metacarpus", name: "П'ясткові", latin: "ossa metacarpi", count: 10 },
+          { id: "handPhalanges", name: "Фаланги пальців", latin: "phalanges", count: 28 },
+        ],
+        detail: {
+          id: "carpus", kind: "pairs",
+          title: "Зап'ясток (по 8 на кожній руці, два ряди)",
+          columns: ["Проксимальний ряд", "Дистальний ряд"],
+          rows: [
+            [{ name: "Човноподібна", latin: "os scaphoideum" }, { name: "Кістка-трапеція", latin: "os trapezium" }],
+            [{ name: "Півмісяцева", latin: "os lunatum" }, { name: "Трапецієподібна", latin: "os trapezoideum" }],
+            [{ name: "Тригранна", latin: "os triquetrum" }, { name: "Головчаста", latin: "os capitatum" }],
+            [{ name: "Горохоподібна", latin: "os pisiforme" }, { name: "Гачкувата", latin: "os hamatum" }],
+          ],
+        },
+      },
+      {
+        title: "Пояс нижньої кінцівки (2)",
+        bones: [{ id: "pelvis", name: "Тазова кістка", latin: "os coxae", count: 2, note: "Зрощується з трьох: клубова — os ilium, сіднича — os ischium, лобкова — os pubis." }],
+      },
+      {
+        title: "Вільна нижня кінцівка (60)",
+        bones: [
+          { id: "femur", name: "Стегнова", latin: "femur", count: 2 },
+          { id: "patella", name: "Наколінок", latin: "patella", count: 2 },
+          { id: "tibia", name: "Великогомілкова", latin: "tibia", count: 2 },
+          { id: "fibula", name: "Малогомілкова", latin: "fibula", count: 2 },
+          { id: "tarsus", name: "Кістки заплесна", latin: "ossa tarsi", count: 14 },
+          { id: "metatarsus", name: "Плеснові", latin: "ossa metatarsi", count: 10 },
+          { id: "footPhalanges", name: "Фаланги пальців", latin: "phalanges", count: 28 },
+        ],
+        detail: {
+          id: "tarsus", kind: "list",
+          title: "Заплесно (по 7 на кожній нозі)",
+          columns: ["Українська", "Латина"],
+          rows: [
+            { name: "Надп'яткова", latin: "talus" },
+            { name: "П'яткова", latin: "calcaneus" },
+            { name: "Човноподібна", latin: "os naviculare" },
+            { name: "Медіальна клиноподібна", latin: "os cuneiforme mediale" },
+            { name: "Проміжна клиноподібна", latin: "os cuneiforme intermedium" },
+            { name: "Латеральна клиноподібна", latin: "os cuneiforme laterale" },
+            { name: "Кубоподібна", latin: "os cuboideum" },
+          ],
+        },
+      },
+    ],
+  },
+];
+
+const SKELETON_NOTES = [
+  { title: "206 — умовна цифра.", body: "У новонародженого близько 270 кісток; частина зростається з віком (крижі, куприк, тазова кістка)." },
+  { title: "Сесамоподібні кістки", body: "(крім наколінка) до списку не входять — їхня кількість індивідуальна, найчастіші в ділянці великого пальця кисті й стопи." },
+  { title: "Вставні кістки черепа", body: "(ossa suturalia, кістки Вормія) трапляються в швах і теж не рахуються." },
+  { title: "Фаланги:", body: "на великому пальці кисті та стопи їх дві (проксимальна й дистальна), на решті — три (проксимальна, середня, дистальна)." },
+];
+
+function SkeletonDiagram({ selectedId, onPick }) {
+  const base = "#d9d0ba", baseStroke = "#a89a76", hi = "#fbbf24", hiStroke = "#b45309";
+  const fillFor = (id) => (selectedId === id ? hi : base);
+  const strokeFor = (id) => (selectedId === id ? hiStroke : baseStroke);
+  const glow = (id) => (selectedId === id ? { filter: "drop-shadow(0 0 5px rgba(251,191,36,0.85))" } : undefined);
+  const Region = ({ id, children }) => (
+    <g onClick={() => onPick(id)} style={{ cursor: "pointer", ...glow(id) }} className="transition-all">{children}</g>
+  );
+  return (
+    <svg viewBox="0 0 220 560" className="h-full w-full">
+      <Region id="ribs"><rect x="68" y="106" width="84" height="72" rx="36" ry="32" fill={fillFor("ribs")} stroke={strokeFor("ribs")} strokeWidth="1.5" /></Region>
+      <Region id="thoracic"><rect x="103" y="100" width="14" height="60" rx="5" fill={fillFor("thoracic")} stroke={strokeFor("thoracic")} strokeWidth="1.5" /></Region>
+      <Region id="cervical"><rect x="104" y="76" width="12" height="24" rx="5" fill={fillFor("cervical")} stroke={strokeFor("cervical")} strokeWidth="1.5" /></Region>
+      <Region id="lumbar"><rect x="103" y="178" width="14" height="34" rx="5" fill={fillFor("lumbar")} stroke={strokeFor("lumbar")} strokeWidth="1.5" /></Region>
+      <Region id="sternum"><rect x="104" y="112" width="9" height="46" rx="3" fill={fillFor("sternum")} stroke={strokeFor("sternum")} strokeWidth="1.5" /></Region>
+      <Region id="sacrum"><path d="M99,212 L121,212 L117,238 L103,238 Z" fill={fillFor("sacrum")} stroke={strokeFor("sacrum")} strokeWidth="1.5" /></Region>
+      <Region id="coccyx"><path d="M107,238 L113,238 L110,248 Z" fill={fillFor("coccyx")} stroke={strokeFor("coccyx")} strokeWidth="1.5" /></Region>
+      <Region id="pelvis">
+        <path d="M60,206 L100,209 L100,238 L86,254 L61,248 L54,222 Z" fill={fillFor("pelvis")} stroke={strokeFor("pelvis")} strokeWidth="1.5" />
+        <path d="M160,206 L120,209 L120,238 L134,254 L159,248 L166,222 Z" fill={fillFor("pelvis")} stroke={strokeFor("pelvis")} strokeWidth="1.5" />
+      </Region>
+      <Region id="scapula">
+        <path d="M46,104 L71,110 L57,150 Z" fill={fillFor("scapula")} stroke={strokeFor("scapula")} strokeWidth="1.5" />
+        <path d="M174,104 L149,110 L163,150 Z" fill={fillFor("scapula")} stroke={strokeFor("scapula")} strokeWidth="1.5" />
+      </Region>
+      <Region id="clavicle">
+        <line x1="103" y1="108" x2="64" y2="99" stroke={strokeFor("clavicle")} strokeWidth="6" strokeLinecap="round" />
+        <line x1="117" y1="108" x2="156" y2="99" stroke={strokeFor("clavicle")} strokeWidth="6" strokeLinecap="round" />
+        <line x1="103" y1="108" x2="64" y2="99" stroke={fillFor("clavicle")} strokeWidth="3" strokeLinecap="round" />
+        <line x1="117" y1="108" x2="156" y2="99" stroke={fillFor("clavicle")} strokeWidth="3" strokeLinecap="round" />
+      </Region>
+      <Region id="humerus">
+        <line x1="62" y1="103" x2="47" y2="190" stroke={strokeFor("humerus")} strokeWidth="12" strokeLinecap="round" />
+        <line x1="158" y1="103" x2="173" y2="190" stroke={strokeFor("humerus")} strokeWidth="12" strokeLinecap="round" />
+        <line x1="62" y1="103" x2="47" y2="190" stroke={fillFor("humerus")} strokeWidth="8" strokeLinecap="round" />
+        <line x1="158" y1="103" x2="173" y2="190" stroke={fillFor("humerus")} strokeWidth="8" strokeLinecap="round" />
+      </Region>
+      <Region id="ulna">
+        <line x1="45" y1="190" x2="37" y2="270" stroke={strokeFor("ulna")} strokeWidth="8" strokeLinecap="round" />
+        <line x1="175" y1="190" x2="183" y2="270" stroke={strokeFor("ulna")} strokeWidth="8" strokeLinecap="round" />
+        <line x1="45" y1="190" x2="37" y2="270" stroke={fillFor("ulna")} strokeWidth="5" strokeLinecap="round" />
+        <line x1="175" y1="190" x2="183" y2="270" stroke={fillFor("ulna")} strokeWidth="5" strokeLinecap="round" />
+      </Region>
+      <Region id="radius">
+        <line x1="52" y1="190" x2="49" y2="268" stroke={strokeFor("radius")} strokeWidth="7" strokeLinecap="round" />
+        <line x1="168" y1="190" x2="171" y2="268" stroke={strokeFor("radius")} strokeWidth="7" strokeLinecap="round" />
+        <line x1="52" y1="190" x2="49" y2="268" stroke={fillFor("radius")} strokeWidth="4" strokeLinecap="round" />
+        <line x1="168" y1="190" x2="171" y2="268" stroke={fillFor("radius")} strokeWidth="4" strokeLinecap="round" />
+      </Region>
+      <Region id="carpus">
+        <rect x="33" y="270" width="16" height="14" rx="5" fill={fillFor("carpus")} stroke={strokeFor("carpus")} strokeWidth="1.5" />
+        <rect x="171" y="270" width="16" height="14" rx="5" fill={fillFor("carpus")} stroke={strokeFor("carpus")} strokeWidth="1.5" />
+      </Region>
+      <Region id="metacarpus">
+        <rect x="33" y="286" width="15" height="15" rx="4" fill={fillFor("metacarpus")} stroke={strokeFor("metacarpus")} strokeWidth="1.5" />
+        <rect x="172" y="286" width="15" height="15" rx="4" fill={fillFor("metacarpus")} stroke={strokeFor("metacarpus")} strokeWidth="1.5" />
+      </Region>
+      <Region id="handPhalanges">
+        <ellipse cx="41" cy="309" rx="11" ry="9" fill={fillFor("handPhalanges")} stroke={strokeFor("handPhalanges")} strokeWidth="1.5" />
+        <ellipse cx="179" cy="309" rx="11" ry="9" fill={fillFor("handPhalanges")} stroke={strokeFor("handPhalanges")} strokeWidth="1.5" />
+      </Region>
+      <Region id="femur">
+        <line x1="80" y1="248" x2="76" y2="378" stroke={strokeFor("femur")} strokeWidth="16" strokeLinecap="round" />
+        <line x1="140" y1="248" x2="144" y2="378" stroke={strokeFor("femur")} strokeWidth="16" strokeLinecap="round" />
+        <line x1="80" y1="248" x2="76" y2="378" stroke={fillFor("femur")} strokeWidth="11" strokeLinecap="round" />
+        <line x1="140" y1="248" x2="144" y2="378" stroke={fillFor("femur")} strokeWidth="11" strokeLinecap="round" />
+      </Region>
+      <Region id="patella">
+        <circle cx="76" cy="384" r="9" fill={fillFor("patella")} stroke={strokeFor("patella")} strokeWidth="1.5" />
+        <circle cx="144" cy="384" r="9" fill={fillFor("patella")} stroke={strokeFor("patella")} strokeWidth="1.5" />
+      </Region>
+      <Region id="tibia">
+        <line x1="75" y1="392" x2="72" y2="488" stroke={strokeFor("tibia")} strokeWidth="11" strokeLinecap="round" />
+        <line x1="145" y1="392" x2="148" y2="488" stroke={strokeFor("tibia")} strokeWidth="11" strokeLinecap="round" />
+        <line x1="75" y1="392" x2="72" y2="488" stroke={fillFor("tibia")} strokeWidth="7" strokeLinecap="round" />
+        <line x1="145" y1="392" x2="148" y2="488" stroke={fillFor("tibia")} strokeWidth="7" strokeLinecap="round" />
+      </Region>
+      <Region id="fibula">
+        <line x1="84" y1="392" x2="82" y2="486" stroke={strokeFor("fibula")} strokeWidth="6" strokeLinecap="round" />
+        <line x1="136" y1="392" x2="138" y2="486" stroke={strokeFor("fibula")} strokeWidth="6" strokeLinecap="round" />
+        <line x1="84" y1="392" x2="82" y2="486" stroke={fillFor("fibula")} strokeWidth="3" strokeLinecap="round" />
+        <line x1="136" y1="392" x2="138" y2="486" stroke={fillFor("fibula")} strokeWidth="3" strokeLinecap="round" />
+      </Region>
+      <Region id="tarsus">
+        <rect x="63" y="490" width="20" height="16" rx="6" fill={fillFor("tarsus")} stroke={strokeFor("tarsus")} strokeWidth="1.5" />
+        <rect x="137" y="490" width="20" height="16" rx="6" fill={fillFor("tarsus")} stroke={strokeFor("tarsus")} strokeWidth="1.5" />
+      </Region>
+      <Region id="metatarsus">
+        <rect x="60" y="507" width="24" height="13" rx="4" fill={fillFor("metatarsus")} stroke={strokeFor("metatarsus")} strokeWidth="1.5" />
+        <rect x="136" y="507" width="24" height="13" rx="4" fill={fillFor("metatarsus")} stroke={strokeFor("metatarsus")} strokeWidth="1.5" />
+      </Region>
+      <Region id="footPhalanges">
+        <ellipse cx="58" cy="526" rx="11" ry="7" fill={fillFor("footPhalanges")} stroke={strokeFor("footPhalanges")} strokeWidth="1.5" />
+        <ellipse cx="162" cy="526" rx="11" ry="7" fill={fillFor("footPhalanges")} stroke={strokeFor("footPhalanges")} strokeWidth="1.5" />
+      </Region>
+      <Region id="hyoid"><ellipse cx="110" cy="74" rx="7" ry="3.5" fill={fillFor("hyoid")} stroke={strokeFor("hyoid")} strokeWidth="1.5" /></Region>
+      <Region id="mandible"><rect x="94" y="57" width="32" height="15" rx="7" fill={fillFor("mandible")} stroke={strokeFor("mandible")} strokeWidth="1.5" /></Region>
+      <Region id="skull"><ellipse cx="110" cy="36" rx="27" ry="30" fill={fillFor("skull")} stroke={strokeFor("skull")} strokeWidth="1.5" /></Region>
+    </svg>
+  );
+}
+
+function SkeletonRow({ bone, active, onPick }) {
+  return (
+    <button onClick={() => onPick(bone)}
+      className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition ${active ? "border-amber-400 bg-amber-50" : "border-transparent bg-white hover:border-slate-200 hover:bg-slate-50"}`}>
+      <div className="min-w-0">
+        <div className={`text-sm font-semibold ${active ? "text-amber-800" : "text-slate-800"}`}>{bone.name}</div>
+        <div className="truncate text-xs italic text-slate-400">{bone.latin}</div>
+        {bone.note && <div className="mt-0.5 text-[11px] italic leading-snug text-slate-400">{bone.note}</div>}
+      </div>
+      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums ${active ? "bg-amber-400 text-amber-900" : "bg-slate-100 text-slate-500"}`}>{bone.count}</span>
+    </button>
+  );
+}
+
+function SkeletonDetailTable({ detail, onPick }) {
+  return (
+    <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
+      <div className="bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-500">{detail.title}</div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-t border-slate-100 bg-slate-50/60 text-slate-400">
+            {detail.columns.map((c) => <th key={c} className="px-3 py-1.5 text-left font-semibold">{c}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {detail.kind === "pairs"
+            ? detail.rows.map((pair, i) => (
+                <tr key={i} className="border-t border-slate-100">
+                  {pair.map((cell, j) => (
+                    <td key={j} className="p-0">
+                      <button onClick={() => onPick({ id: detail.id, name: cell.name, latin: cell.latin })} className="block w-full px-3 py-1.5 text-left text-slate-600 transition hover:bg-amber-50 hover:text-amber-700">
+                        {cell.name} <span className="italic text-slate-400">— {cell.latin}</span>
+                      </button>
+                    </td>
+                  ))}
+                </tr>
+              ))
+            : detail.rows.map((b, i) => (
+                <tr key={i} onClick={() => onPick({ id: detail.id, name: b.name, latin: b.latin })} className="cursor-pointer border-t border-slate-100 text-slate-600 transition hover:bg-amber-50 hover:text-amber-700">
+                  <td className="px-3 py-1.5">{b.name}</td>
+                  <td className="px-3 py-1.5 italic text-slate-400">{b.latin}</td>
+                </tr>
+              ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SkeletonView() {
+  const [sel, setSel] = useState(null); // { id, name, latin }
+  const pick = useCallback((bone) => setSel({ id: bone.id, name: bone.name, latin: bone.latin || "" }), []);
+  const pickRegion = useCallback((id) => setSel({ id, name: SKELETON_REGION_LABELS[id] || id, latin: "" }), []);
+
+  return (
+    <div className="lg:grid lg:grid-cols-[240px_1fr] lg:items-start lg:gap-6">
+      <div className="lg:sticky lg:top-20">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="mx-auto h-[300px] w-full max-w-[200px]"><SkeletonDiagram selectedId={sel?.id} onPick={pickRegion} /></div>
+          <div className="mt-3 min-h-[40px] rounded-xl bg-slate-50 px-3 py-2 text-center">
+            {sel ? (
+              <>
+                <div className="text-sm font-bold text-slate-800">{sel.name}</div>
+                {sel.latin && <div className="text-xs italic text-slate-400">{sel.latin}</div>}
+              </>
+            ) : (
+              <div className="text-xs leading-relaxed text-slate-400">Тисни на назву кістки в списку — вона підсвітиться тут 🦴</div>
+            )}
+          </div>
+        </div>
+        <div className="mt-3 rounded-2xl bg-white px-4 py-3 text-center">
+          <div className="text-2xl font-black tabular-nums text-teal-700">206</div>
+          <div className="text-xs font-semibold text-slate-400">кісток у дорослої людини</div>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-4 lg:mt-0">
+        {SKELETON_GROUPS.map((section) => (
+          <div key={section.title}>
+            <h2 className="mb-2 text-base font-extrabold text-slate-900">{section.title}</h2>
+            <div className="space-y-3">
+              {section.subgroups.map((sg) => (
+                <div key={sg.title} className="rounded-2xl bg-white p-3">
+                  <div className="mb-2 text-sm font-bold text-teal-700">{sg.title}</div>
+                  <div className="space-y-1.5">
+                    {sg.bones.map((b, i) => <SkeletonRow key={i} bone={b} active={sel?.id === b.id && sel?.name === b.name} onPick={pick} />)}
+                  </div>
+                  {sg.detail && <SkeletonDetailTable detail={sg.detail} onPick={pick} />}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+
+        <div className="rounded-2xl bg-amber-50 p-4">
+          <div className="mb-2 text-sm font-extrabold text-amber-800">Кілька важливих застережень</div>
+          <ul className="space-y-2">
+            {SKELETON_NOTES.map((n, i) => <li key={i} className="text-xs leading-relaxed text-amber-900"><span className="font-bold">{n.title}</span> {n.body}</li>)}
+          </ul>
+        </div>
+
+        <p className="px-1 pb-2 text-center text-xs leading-relaxed text-slate-400">Раджу тримати цю таблицю як каркас і поступово дописувати до кожної кістки її рельєф — саме він знадобиться, коли дійдете до м'язів.</p>
+      </div>
+    </div>
+  );
+}
+
+function MedicineSection() {
+  const [tab, setTab] = useState("skeleton");
+  return (
+    <div className="min-h-screen min-w-0 flex-1 bg-slate-50">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex min-h-14 w-full max-w-4xl items-center gap-3 px-3 py-2 sm:px-4">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-teal-50 text-teal-600"><Bone className="h-5 w-5" /></span>
+          <div className="mr-auto min-w-0"><h1 className="font-bold text-slate-900">Медицина</h1><p className="hidden text-xs text-slate-400 sm:block">Довідник для навчання</p></div>
+        </div>
+        <div className="mx-auto flex w-full max-w-4xl gap-2 overflow-x-auto px-3 pb-2 sm:px-4">
+          <button onClick={() => setTab("skeleton")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "skeleton" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🦴 Скелет людини
+          </button>
+        </div>
+      </header>
+      <main className="mx-auto w-full max-w-4xl px-3 py-4 pb-24 sm:px-4 sm:py-5 lg:pb-8">
+        {tab === "skeleton" && <SkeletonView />}
       </main>
     </div>
   );
