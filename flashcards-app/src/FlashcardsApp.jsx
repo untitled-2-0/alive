@@ -4858,6 +4858,182 @@ const MUSCLE_ATLAS_GROUPS = [
   },
 ];
 
+/* Atlases whose own diagram already carries the labels (heart) or numbered
+   leader lines (brain, urogenital). The list beside the image is the legend —
+   we deliberately don't re-point at the drawing ourselves, because a hotspot
+   nudged onto the wrong structure is worse than none in a medical reference. */
+const BRAIN_PARTS = [
+  { n: 1, name: "Великий мозок", latin: "cerebrum", note: "об'єднує 2 і 3" },
+  { n: 2, name: "Кінцевий мозок", latin: "telencephalon" },
+  { n: 3, name: "Проміжний мозок", latin: "diencephalon" },
+  { n: 4, name: "Стовбур головного мозку", latin: "truncus encephali", note: "об'єднує 5, 6 і 7" },
+  { n: 5, name: "Середній мозок", latin: "mesencephalon" },
+  { n: 6, name: "Міст", latin: "pons" },
+  { n: 7, name: "Довгастий мозок", latin: "medulla oblongata" },
+  { n: 8, name: "Мозочок", latin: "cerebellum" },
+  { n: 9, name: "Спинний мозок", latin: "medulla spinalis" },
+];
+
+const HEART_PARTS = [
+  { group: "Камери", items: [
+    { name: "Праве передсердя", latin: "atrium dextrum" },
+    { name: "Ліве передсердя", latin: "atrium sinistrum" },
+    { name: "Правий шлуночок", latin: "ventriculus dexter" },
+    { name: "Лівий шлуночок", latin: "ventriculus sinister" },
+  ] },
+  { group: "Клапани", items: [
+    { name: "Тристулковий клапан", latin: "valva tricuspidalis", note: "праве передсердя → правий шлуночок" },
+    { name: "Клапан легеневого стовбура", latin: "valva trunci pulmonalis" },
+    { name: "Мітральний (двостулковий) клапан", latin: "valva mitralis", note: "ліве передсердя → лівий шлуночок" },
+    { name: "Клапан аорти", latin: "valva aortae" },
+  ] },
+  { group: "Великі судини", items: [
+    { name: "Верхня порожниста вена", latin: "vena cava superior" },
+    { name: "Нижня порожниста вена", latin: "vena cava inferior" },
+    { name: "Легеневий стовбур і легеневі артерії", latin: "truncus pulmonalis, aa. pulmonales" },
+    { name: "Легеневі вени", latin: "venae pulmonales" },
+    { name: "Аорта", latin: "aorta" },
+  ] },
+  { group: "Оболонка", items: [
+    { name: "Перикард", latin: "pericardium" },
+  ] },
+];
+
+const UROGENITAL_VIEWS = [
+  { view: "female", title: "Жіноча", img: "/medicine/urogenital_female.png", parts: [
+    { n: "1", name: "Яєчник", latin: "ovarium" },
+    { n: "2", name: "Воронка маткової труби", latin: "infundibulum" },
+    { n: "3", name: "Маткова труба", latin: "tuba uterina" },
+    { n: "4", name: "Матка", latin: "uterus" },
+    { n: "5", name: "Шийка матки", latin: "cervix uteri" },
+    { n: "6", name: "Піхва", latin: "vagina" },
+    { n: "6*", name: "Склепіння піхви", latin: "fornix vaginae" },
+    { n: "7", name: "Сечовий міхур", latin: "vesica urinaria" },
+    { n: "8", name: "Сечівник", latin: "urethra" },
+    { n: "9", name: "Парауретральна залоза", latin: "glandula paraurethralis" },
+    { n: "10", name: "Клітор — голівка й тіло", latin: "clitoris" },
+    { n: "11", name: "Цибулина присінка", latin: "bulbus vestibuli" },
+    { n: "12", name: "Ніжка клітора", latin: "crus clitoridis" },
+    { n: "13", name: "Точка G", latin: "G-zone" },
+    { n: "14", name: "Малі статеві губи", latin: "labia minora" },
+    { n: "15", name: "Великі статеві губи", latin: "labia majora" },
+    { n: "16", name: "Велика присінкова (бартолінова) залоза", latin: "glandula vestibularis major" },
+    { n: "17", name: "Промежина", latin: "perineum" },
+    { n: "18", name: "Ободова кишка", latin: "colon" },
+    { n: "19", name: "Пряма кишка", latin: "rectum" },
+    { n: "20", name: "Анус", latin: "anus" },
+    { n: "a", name: "Лобкова кістка", latin: "os pubis" },
+    { n: "b", name: "Крижова кістка", latin: "os sacrum" },
+    { n: "c", name: "Куприк", latin: "os coccygis" },
+  ] },
+  { view: "male", title: "Чоловіча", img: "/medicine/urogenital_male.png", parts: [
+    { n: "1", name: "Яєчко", latin: "testis" },
+    { n: "2", name: "Придаток яєчка", latin: "epididymis" },
+    { n: "3", name: "Сім'явиносна протока", latin: "ductus deferens" },
+    { n: "4", name: "Простата", latin: "prostata" },
+    { n: "5", name: "Пухирчаста залоза", latin: "glandula vesiculosa" },
+    { n: "6", name: "Сім'явипорскувальна протока", latin: "ductus ejaculatorius" },
+    { n: "7", name: "Бульбоуретральна залоза", latin: "glandula bulbourethralis" },
+    { n: "8", name: "Сечовий міхур", latin: "vesica urinaria" },
+    { n: "9", name: "Сечівник", latin: "urethra" },
+    { n: "10", name: "Губчасте тіло голівки", latin: "corpus spongiosum glandis" },
+    { n: "11", name: "Губчасте тіло", latin: "corpus spongiosum penis" },
+    { n: "12", name: "Печеристе тіло", latin: "corpus cavernosum penis" },
+    { n: "13", name: "Сигмоподібна кишка", latin: "colon sigmoideum" },
+    { n: "14", name: "Пряма кишка", latin: "rectum" },
+    { n: "15", name: "Анус", latin: "anus" },
+    { n: "a", name: "Лобковий симфіз", latin: "symphysis pubica" },
+    { n: "b", name: "Крижова кістка", latin: "os sacrum" },
+    { n: "c", name: "Куприк", latin: "os coccygis" },
+  ] },
+];
+
+/* image + legend list; `n` renders as a numbered chip when the drawing is numbered */
+function AtlasView({ img, alt, caption, sections, wide }) {
+  const [sel, setSel] = useState(null);
+  return (
+    <div className={`lg:grid ${wide ? "lg:grid-cols-[minmax(0,1fr)_320px]" : "lg:grid-cols-[280px_1fr]"} lg:items-start lg:gap-6`}>
+      <div className="lg:sticky lg:top-20">
+        <div className="rounded-2xl border border-slate-200 bg-white p-2">
+          <img src={img} alt={alt} className="block w-full rounded-xl" />
+          {caption && <p className="mt-2 px-1 text-center text-[11px] leading-snug text-slate-400">{caption}</p>}
+        </div>
+      </div>
+      <div className="mt-4 space-y-3 lg:mt-0">
+        {sections.map((sec) => (
+          <div key={sec.group || "all"}>
+            {sec.group && <div className="mb-1.5 px-1 text-sm font-bold text-teal-700">{sec.group}</div>}
+            <div className="space-y-1.5">
+              {sec.items.map((it, i) => {
+                const key = `${sec.group || ""}-${i}`;
+                const active = sel === key;
+                return (
+                  <button key={key} onClick={() => setSel(active ? null : key)}
+                    className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition ${active ? "border-amber-400 bg-amber-50" : "border-transparent bg-white hover:border-slate-200 hover:bg-slate-50"}`}>
+                    {it.n != null && (
+                      <span className={`mt-0.5 grid h-6 min-w-6 shrink-0 place-items-center rounded-full px-1 text-xs font-bold tabular-nums ${active ? "bg-amber-400 text-amber-900" : "bg-slate-100 text-slate-500"}`}>{it.n}</span>
+                    )}
+                    <span className="min-w-0">
+                      <span className={`block text-sm font-semibold ${active ? "text-amber-800" : "text-slate-800"}`}>{it.name}</span>
+                      <span className="block text-xs italic text-slate-400">{it.latin}</span>
+                      {it.note && <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">{it.note}</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BrainView() {
+  return (
+    <AtlasView
+      img="/medicine/brain.svg"
+      alt="Головний мозок людини, серединний (сагітальний) розріз"
+      caption="Сагітальний розріз. Номери на схемі відповідають списку"
+      sections={[{ items: BRAIN_PARTS }]}
+    />
+  );
+}
+
+function HeartView() {
+  return (
+    <AtlasView
+      img="/medicine/heart.svg"
+      alt="Будова серця людини, розріз"
+      caption="Стрілки — напрямок руху крові. Сині судини несуть венозну кров, червоні — артеріальну"
+      sections={HEART_PARTS}
+    />
+  );
+}
+
+function UrogenitalView() {
+  const [view, setView] = useState("female");
+  const v = UROGENITAL_VIEWS.find((x) => x.view === view);
+  return (
+    <div>
+      <div className="mx-auto mb-3 flex max-w-xs rounded-full bg-slate-100 p-1">
+        {UROGENITAL_VIEWS.map((x) => (
+          <button key={x.view} onClick={() => setView(x.view)}
+            className={`flex-1 rounded-full py-1.5 text-xs font-bold transition ${view === x.view ? "bg-teal-600 text-white" : "text-slate-500"}`}>{x.title}</button>
+        ))}
+      </div>
+      <AtlasView
+        key={view}
+        wide
+        img={v.img}
+        alt={`Сечостатева система, ${v.title.toLowerCase()}, сагітальний розріз`}
+        caption="Сагітальний розріз таза. Номери на схемі відповідають списку"
+        sections={[{ items: v.parts }]}
+      />
+    </div>
+  );
+}
+
 function MuscleView() {
   const [view, setView] = useState("front");
   const [selIdx, setSelIdx] = useState(null);
@@ -4909,11 +5085,23 @@ function MedicineSection() {
           <button onClick={() => setTab("muscles")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "muscles" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             💪 М'язи людини
           </button>
+          <button onClick={() => setTab("brain")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "brain" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🧠 Мозок
+          </button>
+          <button onClick={() => setTab("heart")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "heart" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            ❤️ Серце
+          </button>
+          <button onClick={() => setTab("urogenital")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "urogenital" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            💧 Сечостатева
+          </button>
         </div>
       </header>
       <main className="mx-auto w-full max-w-4xl px-3 py-4 pb-24 sm:px-4 sm:py-5 lg:pb-8">
         {tab === "skeleton" && <SkeletonView />}
         {tab === "muscles" && <MuscleView />}
+        {tab === "brain" && <BrainView />}
+        {tab === "heart" && <HeartView />}
+        {tab === "urogenital" && <UrogenitalView />}
       </main>
     </div>
   );
