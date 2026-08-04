@@ -690,6 +690,9 @@ async function rescueOrphanDecks(idx) {
       topic: "", description: "", emoji: best ? "" : "🛟", color: "blue", groupId: "",
       language: "", autoPlay: false, goal: "longterm", deadline: null,
     }];
+    // Re-save the cards so they enter the cloud queue too. Without this only the
+    // index would sync and other devices would show the deck with zero cards.
+    await store.set(`cards:${id}`, cards);
     known.add(id);
     rescued += 1;
   }
