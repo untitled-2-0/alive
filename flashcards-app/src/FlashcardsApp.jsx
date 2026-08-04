@@ -650,6 +650,52 @@ const store = {
   },
 };
 
+/* Re-attach card sets whose deck vanished from decks:index — a stale cloud copy
+   used to overwrite the index after a large import, leaving the cards in storage
+   but invisible. Mutates idx.decks; returns how many decks came back. */
+async function rescueOrphanDecks(idx) {
+  if (typeof localStorage === "undefined") return 0;
+  const known = new Set((idx.decks || []).map((d) => d.id));
+  const orphans = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const m = (localStorage.key(i) || "").match(/^recall:cards:(.+)$/);
+    if (m && !known.has(m[1])) orphans.push(m[1]);
+  }
+  if (!orphans.length) return 0;
+
+  // Recover real names by matching card fronts against the shipped decks.
+  const catalog = new Map(); // front → deck name
+  for (const url of ["/english-decks.json", "/lang-starters.json"]) {
+    try {
+      const raw = await (await fetch(url)).json();
+      const entries = Array.isArray(raw?.decks)
+        ? raw.decks.map((d) => [d.name, d.cards])
+        : Object.entries(raw);
+      for (const [name, cards] of entries) for (const [f] of cards || []) if (f) catalog.set(String(f), name);
+    } catch { /* offline: fall back to generic names */ }
+  }
+
+  let rescued = 0;
+  for (const id of orphans) {
+    const cards = await store.get(`cards:${id}`, []);
+    if (!Array.isArray(cards) || !cards.length) continue;
+    const votes = {};
+    for (const c of cards.slice(0, 25)) {
+      const hit = catalog.get(String(c?.front || ""));
+      if (hit) votes[hit] = (votes[hit] || 0) + 1;
+    }
+    const best = Object.entries(votes).sort((a, b) => b[1] - a[1])[0];
+    idx.decks = [...(idx.decks || []), {
+      id, name: best ? best[0] : `Відновлена колода ${id.slice(-5)}`, created: Date.now(),
+      topic: "", description: "", emoji: best ? "" : "🛟", color: "blue", groupId: "",
+      language: "", autoPlay: false, goal: "longterm", deadline: null,
+    }];
+    known.add(id);
+    rescued += 1;
+  }
+  return rescued;
+}
+
 /* ------------------------------------------------------------------ */
 /* Card factory + column auto-detection                                */
 /* ------------------------------------------------------------------ */
@@ -2971,6 +3017,8 @@ export default function FlashcardsApp() {
     (async () => {
       const idx = await store.get("decks:index", { decks: [] });
       const gi = await store.get("groups:index", { groups: [] });
+      const rescued = await rescueOrphanDecks(idx);
+      if (rescued) await store.set("decks:index", { decks: idx.decks });
       // one-time: seed FR/PL/ES starter decks under a "Мови" group
       if (!(await store.get("langs:seeded", false))) {
         try {

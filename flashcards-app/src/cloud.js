@@ -46,9 +46,25 @@ export async function pullToLocal() {
   const { data, error } = await supabase.from("kv").select("key,value");
   if (error) throw error;
   for (const row of data || []) {
-    try { localStorage.setItem(PREFIX + row.key, JSON.stringify(row.value)); } catch (e) { /* ignore */ }
+    try { localStorage.setItem(PREFIX + row.key, writeValueFor(row.key, row.value)); } catch (e) { /* ignore */ }
   }
   return (data || []).length;
+}
+
+/* Deck/group indexes are unioned rather than replaced: a cloud copy that predates
+   a local import would otherwise drop those decks out of the UI while their
+   cards:* keys stay in localStorage, which reads to the user as lost data. */
+const INDEX_KEYS = { "decks:index": "decks", "groups:index": "groups" };
+function writeValueFor(key, cloudValue) {
+  const field = INDEX_KEYS[key];
+  if (!field) return JSON.stringify(cloudValue);
+  let localList = [];
+  try { localList = JSON.parse(localStorage.getItem(PREFIX + key) || "{}")?.[field] || []; } catch { localList = []; }
+  const cloudList = Array.isArray(cloudValue?.[field]) ? cloudValue[field] : [];
+  const merged = [...cloudList];
+  const seen = new Set(cloudList.map((it) => it?.id));
+  for (const it of localList) if (it?.id && !seen.has(it.id)) merged.push(it);
+  return JSON.stringify({ ...cloudValue, [field]: merged });
 }
 
 /* ---- upsert rows in byte-sized batches; continue past a failed batch so one
@@ -109,7 +125,10 @@ async function flush() {
   const upserts = [], deletes = [];
   for (const [k, v] of snapshot) { if (v && v.__deleted) deletes.push(k); else upserts.push({ user_id: user.id, key: k, value: v }); }
   try {
-    if (upserts.length) { const { error } = await supabase.from("kv").upsert(upserts); if (error) throw error; }
+    // Batch by bytes: a single upsert of a freshly-imported 9k-card deck set is
+    // megabytes and the API rejects the whole request, so without this every
+    // large import silently never reaches the cloud.
+    if (upserts.length) { const ok = await upsertRows(upserts); if (ok < upserts.length) throw new Error(`${upserts.length - ok} rows rejected`); }
     for (const k of deletes) { const { error } = await supabase.from("kv").delete().eq("key", k); if (error) throw error; }
     backoff = 1200; // success → reset backoff
   } catch (e) {
@@ -173,8 +192,10 @@ export async function mergeCloud() {
   const cloudKeys = new Set();
   for (const row of data || []) {
     cloudKeys.add(row.key);
-    try { localStorage.setItem(PREFIX + row.key, JSON.stringify(row.value)); } catch { /* ignore */ }
+    try { localStorage.setItem(PREFIX + row.key, writeValueFor(row.key, row.value)); } catch { /* ignore */ }
   }
+  // The unioned indexes are now local-only news for the cloud; re-push them.
+  for (const key of Object.keys(INDEX_KEYS)) cloudKeys.delete(key);
   const rows = collectLocalRows(cloudKeys); // local keys the cloud lacks (incl. photos)
   const pushed = await upsertRows(rows);
   return { pulled: cloudKeys.size, pushed };
