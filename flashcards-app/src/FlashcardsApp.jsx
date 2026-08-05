@@ -3797,21 +3797,21 @@ export default function FlashcardsApp() {
     await importCards(groups);
   }, [importCards]);
 
-  const [loadingEnglish, setLoadingEnglish] = useState(false);
-  const importEnglishDecks = useCallback(async () => {
-    setLoadingEnglish(true);
+  const [loadingLang, setLoadingLang] = useState("");
+  const importLanguageDecks = useCallback(async (pack) => {
+    setLoadingLang(pack.id);
     try {
-      const res = await fetch("/english-decks.json");
+      const res = await fetch(pack.file);
       if (!res.ok) throw new Error("not found");
       const data = await res.json();
-      const g = await createGroup({ name: "English", emoji: "🇬🇧", color: "blue" });
+      const g = await createGroup({ name: pack.group, emoji: pack.emoji, color: pack.color });
       const groups = {};
       for (const [name, cards] of Object.entries(data)) groups[name] = cards.map(([f, b]) => makeCard(f, b));
-      await importCards(groups, { newDeckMeta: { groupId: g.id } });
+      await importCards(groups, { newDeckMeta: { groupId: g.id, language: pack.language } });
     } catch (e) {
       flash("Не вдалося завантажити колоди");
     } finally {
-      setLoadingEnglish(false);
+      setLoadingLang("");
     }
   }, [createGroup, importCards, flash]);
 
@@ -4080,8 +4080,8 @@ export default function FlashcardsApp() {
             onMoveDeck={(deckId, groupId) => updateDeck(deckId, { groupId })}
             onImport={() => setView("import")}
             onSample={loadSample}
-            onLoadEnglish={importEnglishDecks}
-            loadingEnglish={loadingEnglish}
+            onLoadLang={importLanguageDecks}
+            loadingLang={loadingLang}
             onOpenStats={() => setView("stats")}
           />
         )}
@@ -4112,7 +4112,7 @@ export default function FlashcardsApp() {
           />
         )}
         {view === "import" && (
-          <ImportView decks={decks} onImport={importCards} onCancel={() => setView("home")} onLoadEnglish={importEnglishDecks} loadingEnglish={loadingEnglish} />
+          <ImportView decks={decks} onImport={importCards} onCancel={() => setView("home")} onLoadLang={importLanguageDecks} loadingLang={loadingLang} />
         )}
         {view === "stats" && (
           <StatsView
@@ -6599,7 +6599,7 @@ function HomeView({
   decks, groups, summary, groupSummary, totalDue, stats,
   onStudy, onStudyAll, onStudyGroup, onOpenDeck, onDelete, onEdit, onMoveDeck,
   onNewDeck, onNewGroup, onEditGroup, onDeleteGroup, onToggleGroup, onImport, onSample,
-  onLoadEnglish, loadingEnglish, onOpenStats,
+  onLoadLang, loadingLang, onOpenStats,
 }) {
   const streak = computeStreak(stats.history);
   const studiedToday = stats.history?.[dateKey(Date.now())]?.studied || 0;
@@ -6636,10 +6636,15 @@ function HomeView({
           щоб вони траплялись точно перед тим, як забудеш.
         </p>
         <div className="mt-6 flex flex-col items-center gap-3">
-          {onLoadEnglish && (
-            <button onClick={onLoadEnglish} disabled={loadingEnglish} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-base font-bold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-60">
-              {loadingEnglish ? <><RefreshCw className="h-5 w-5 animate-spin" /> Завантажую…</> : <>🇬🇧 Мої англійські колоди</>}
-            </button>
+          {onLoadLang && (
+            <div className="flex flex-wrap justify-center gap-2">
+              {LANG_PACKS.map((p) => (
+                <button key={p.id} onClick={() => onLoadLang(p)} disabled={!!loadingLang}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:opacity-60">
+                  {loadingLang === p.id ? <><RefreshCw className="h-4 w-4 animate-spin" /> Завантажую…</> : <>{p.emoji} {p.label}</>}
+                </button>
+              ))}
+            </div>
           )}
           <div className="flex gap-3">
             <button onClick={onNewDeck} className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 font-bold text-white shadow-sm transition hover:bg-rose-700">
@@ -7923,7 +7928,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
 /* ------------------------------------------------------------------ */
 /* Import view                                                         */
 /* ------------------------------------------------------------------ */
-function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }) {
+function ImportView({ decks, onImport, onCancel, onLoadLang, loadingLang }) {
   const [mode, setMode] = useState("file"); // file | paste
   const [parsed, setParsed] = useState(null); // { headers, rows, source }
   const [sheets, setSheets] = useState(null); // [{name, deckName, cards:[[f,b]], include}] for multi-sheet workbooks
@@ -8092,16 +8097,29 @@ function ImportView({ decks, onImport, onCancel, onLoadEnglish, loadingEnglish }
         <h1 className="text-xl font-bold text-slate-900">Імпорт карток</h1>
       </div>
 
-      {onLoadEnglish && (
-        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
-          <span className="text-2xl">🇬🇧</span>
-          <div className="min-w-0 flex-1">
-            <div className="font-bold text-slate-800">Мої англійські колоди</div>
-            <div className="text-xs text-slate-500">15 готових колод · ~9 500 карток. Один тап — і вони у тебе.</div>
+      {onLoadLang && (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <div className="font-bold text-slate-800">Готові колоди</div>
+          <div className="mt-0.5 text-xs text-slate-500">Один тап — і вони у тебе, розкладені по темах.</div>
+          <div className="mt-3 space-y-2">
+            {LANG_PACKS.map((p) => (
+              <div key={p.id} className="flex flex-wrap items-center gap-3 rounded-xl bg-white p-3">
+                <span className="text-2xl">{p.emoji}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-slate-800">{p.label}</div>
+                  <div className="text-xs text-slate-500">{p.note}</div>
+                </div>
+                <button onClick={() => onLoadLang(p)} disabled={!!loadingLang}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-60">
+                  {loadingLang === p.id ? <><RefreshCw className="h-4 w-4 animate-spin" /> Завантажую…</> : "Завантажити"}
+                </button>
+              </div>
+            ))}
           </div>
-          <button onClick={onLoadEnglish} disabled={loadingEnglish} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-bold text-white transition hover:bg-blue-700 disabled:opacity-60">
-            {loadingEnglish ? <><RefreshCw className="h-4 w-4 animate-spin" /> Завантажую…</> : "Завантажити"}
-          </button>
+          <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+            Французька, іспанська й польська зібрані з речень Tatoeba (ліцензія CC BY) — їх писали носії мов.
+            Розподіл по темах автоматичний, тож окремі фрази можуть лежати не в тій колоді.
+          </p>
         </div>
       )}
 
@@ -18993,6 +19011,15 @@ const PATH_STEP_META = {
 // Career roadmap is fetched at runtime from /pm-path.json (see useCareerData).
 
 // Book course (18+ modules) is fetched at runtime from /book-course.json to keep the bundle small.
+
+/* Готові набори карток. Англійський зібраний вручну; решта — з Tatoeba (CC BY),
+   тому й підписані окремо: там речення живі, але рубрикація автоматична. */
+const LANG_PACKS = [
+  { id: "en", file: "/english-decks.json", group: "English",     emoji: "🇬🇧", color: "blue",   language: "en", label: "Англійська", note: "15 колод" },
+  { id: "fr", file: "/french-decks.json",  group: "Французька",  emoji: "🇫🇷", color: "indigo", language: "fr", label: "Французька", note: "8 054 фрази" },
+  { id: "es", file: "/spanish-decks.json", group: "Іспанська",   emoji: "🇪🇸", color: "amber",  language: "es", label: "Іспанська",  note: "7 026 фраз" },
+  { id: "pl", file: "/polish-decks.json",  group: "Польська",    emoji: "🇵🇱", color: "rose",   language: "pl", label: "Польська",   note: "3 961 фраза" },
+];
 
 const pathStepId = (slug, i) => `${slug}:${i}`;
 
