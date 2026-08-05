@@ -650,6 +650,8 @@ const store = {
   },
 };
 
+let storageRepairDone = false; // module scope so a remounted app doesn't repeat the repairs
+
 /* Re-attach card sets whose deck vanished from decks:index — a stale cloud copy
    used to overwrite the index after a large import, leaving the cards in storage
    but invisible. Mutates idx.decks; returns how many decks came back. */
@@ -697,6 +699,61 @@ async function rescueOrphanDecks(idx) {
     rescued += 1;
   }
   return rescued;
+}
+
+/* Drop decks that are byte-for-byte repeats of another deck — the rescue above
+   can resurrect a copy the user already has. Deliberately narrow: two decks are
+   only "the same" when their cards match exactly, so a deck holding anything
+   unique is never touched. The copy carrying the most review history wins.
+   Mutates idx.decks; returns how many duplicates were removed. */
+async function dedupeDecks(idx) {
+  const decks = idx.decks || [];
+  if (decks.length < 2) return 0;
+
+  // Cheap pass first: only decks agreeing on name AND card count can be dupes,
+  // so we avoid reading every deck's cards on a normal boot.
+  const buckets = new Map();
+  for (const d of decks) {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(`recall:cards:${d.id}`) : null;
+    if (!raw) continue;
+    let n = 0;
+    try { n = (JSON.parse(raw) || []).length; } catch { continue; }
+    if (!n) continue;
+    const key = `${(d.name || "").trim().toLowerCase()}::${n}`;
+    buckets.set(key, [...(buckets.get(key) || []), d]);
+  }
+
+  const doomed = new Set();
+  for (const group of buckets.values()) {
+    if (group.length < 2) continue;
+    const loaded = [];
+    for (const d of group) {
+      const cards = await store.get(`cards:${d.id}`, []);
+      if (!Array.isArray(cards) || !cards.length) continue;
+      loaded.push({
+        deck: d,
+        cards,
+        sig: cards.map((c) => `${c?.front ?? ""} ${c?.back ?? ""}`).sort().join(""),
+        progress: cards.reduce((s, c) => s + ((c?.reps || 0) > 0 ? 1 : 0), 0),
+      });
+    }
+    const bySig = new Map();
+    for (const e of loaded) bySig.set(e.sig, [...(bySig.get(e.sig) || []), e]);
+    for (const same of bySig.values()) {
+      if (same.length < 2) continue;
+      // keep the most-studied copy; then a filed one; then the oldest
+      same.sort((a, b) =>
+        b.progress - a.progress ||
+        (b.deck.groupId ? 1 : 0) - (a.deck.groupId ? 1 : 0) ||
+        (a.deck.created || 0) - (b.deck.created || 0));
+      for (const loser of same.slice(1)) doomed.add(loser.deck.id);
+    }
+  }
+
+  if (!doomed.size) return 0;
+  idx.decks = decks.filter((d) => !doomed.has(d.id));
+  for (const id of doomed) await store.remove(`cards:${id}`);
+  return doomed.size;
 }
 
 /* ------------------------------------------------------------------ */
@@ -3020,8 +3077,16 @@ export default function FlashcardsApp() {
     (async () => {
       const idx = await store.get("decks:index", { decks: [] });
       const gi = await store.get("groups:index", { groups: [] });
-      const rescued = await rescueOrphanDecks(idx);
-      if (rescued) await store.set("decks:index", { decks: idx.decks });
+      // Run the storage repairs once per page load. StrictMode invokes this
+      // effect twice in dev, and two interleaved passes race: the second reads
+      // the index before the first has written it back, then persists its stale
+      // copy over the repair — leaving deck entries whose cards are gone.
+      if (!storageRepairDone) {
+        storageRepairDone = true;
+        const rescued = await rescueOrphanDecks(idx);
+        const deduped = await dedupeDecks(idx);
+        if (rescued || deduped) await store.set("decks:index", { decks: idx.decks });
+      }
       // one-time: seed FR/PL/ES starter decks under a "Мови" group
       if (!(await store.get("langs:seeded", false))) {
         try {
@@ -4948,6 +5013,88 @@ const UROGENITAL_VIEWS = [
   ] },
 ];
 
+const RESPIRATORY_PARTS = [
+  { group: "Верхні дихальні шляхи", items: [
+    { name: "Носова порожнина", latin: "cavitas nasi" },
+    { name: "Присінок носа", latin: "vestibulum nasi" },
+    { name: "Лобова пазуха", latin: "sinus frontalis" },
+    { name: "Клиноподібна пазуха", latin: "sinus sphenoidalis" },
+    { name: "Ротова порожнина", latin: "cavitas oris" },
+    { name: "Глотка", latin: "pharynx" },
+    { name: "Надгортанник", latin: "epiglottis" },
+    { name: "Голосова складка", latin: "plica vocalis" },
+    { name: "Щитоподібний хрящ", latin: "cartilago thyroidea" },
+    { name: "Перстенеподібний хрящ", latin: "cartilago cricoidea" },
+  ] },
+  { group: "Нижні дихальні шляхи", items: [
+    { name: "Трахея", latin: "trachea" },
+    { name: "Кіль трахеї", latin: "carina tracheae", note: "місце поділу на головні бронхи" },
+    { name: "Головні бронхи — лівий і правий", latin: "bronchi principales" },
+    { name: "Проміжний бронх", latin: "bronchus intermedius" },
+    { name: "Часткові (вторинні) бронхи", latin: "bronchi lobares" },
+  ] },
+  { group: "Легені", items: [
+    { name: "Верхівка легені", latin: "apex pulmonis" },
+    { name: "Верхня частка", latin: "lobus superior" },
+    { name: "Середня частка", latin: "lobus medius", note: "лише в правій легені" },
+    { name: "Нижня частка", latin: "lobus inferior" },
+    { name: "Горизонтальна щілина", latin: "fissura horizontalis" },
+    { name: "Коса щілина", latin: "fissura obliqua" },
+    { name: "Серцева вирізка", latin: "incisura cardiaca" },
+    { name: "Язичок легені", latin: "lingula pulmonis" },
+    { name: "Діафрагма", latin: "diaphragma" },
+  ] },
+  { group: "Де відбувається газообмін", items: [
+    { name: "Альвеолярний хід", latin: "ductus alveolaris" },
+    { name: "Альвеолярні мішечки", latin: "sacculi alveolares" },
+    { name: "Альвеоли", latin: "alveoli pulmonis" },
+    { name: "Капіляри", latin: "vasa capillaria" },
+    { name: "Легенева артерія", latin: "arteria pulmonalis", note: "приносить венозну кров" },
+    { name: "Легенева вена", latin: "vena pulmonalis", note: "виносить артеріальну кров" },
+  ] },
+];
+
+const DIGESTIVE_PARTS = [
+  { group: "Ротова порожнина", items: [
+    { name: "Піднебіння", latin: "palatum" },
+    { name: "Язичок", latin: "uvula palatina" },
+    { name: "Язик", latin: "lingua" },
+    { name: "Зуби", latin: "dentes" },
+  ] },
+  { group: "Слинні залози", items: [
+    { name: "Привушна залоза", latin: "glandula parotidea" },
+    { name: "Піднижньощелепна залоза", latin: "glandula submandibularis" },
+    { name: "Під'язикова залоза", latin: "glandula sublingualis" },
+  ] },
+  { group: "Верхній відділ", items: [
+    { name: "Глотка", latin: "pharynx" },
+    { name: "Стравохід", latin: "oesophagus" },
+    { name: "Шлунок", latin: "gaster" },
+  ] },
+  { group: "Тонка кишка", items: [
+    { name: "Дванадцятипала кишка", latin: "duodenum" },
+    { name: "Порожня кишка", latin: "jejunum" },
+    { name: "Клубова кишка", latin: "ileum" },
+  ] },
+  { group: "Товста кишка", items: [
+    { name: "Сліпа кишка", latin: "caecum" },
+    { name: "Червоподібний відросток (апендикс)", latin: "appendix vermiformis" },
+    { name: "Висхідна ободова кишка", latin: "colon ascendens" },
+    { name: "Поперечна ободова кишка", latin: "colon transversum" },
+    { name: "Низхідна ободова кишка", latin: "colon descendens" },
+    { name: "Сигмоподібна кишка", latin: "colon sigmoideum" },
+    { name: "Пряма кишка", latin: "rectum" },
+    { name: "Відхідник", latin: "anus" },
+  ] },
+  { group: "Великі залози травлення", items: [
+    { name: "Печінка", latin: "hepar" },
+    { name: "Жовчний міхур", latin: "vesica biliaris" },
+    { name: "Загальна жовчна протока", latin: "ductus choledochus" },
+    { name: "Підшлункова залоза", latin: "pancreas" },
+    { name: "Панкреатична протока", latin: "ductus pancreaticus" },
+  ] },
+];
+
 /* image + legend list; `n` renders as a numbered chip when the drawing is numbered */
 function AtlasView({ img, alt, caption, sections, wide }) {
   const [sel, setSel] = useState(null);
@@ -4996,6 +5143,28 @@ function BrainView() {
       alt="Головний мозок людини, серединний (сагітальний) розріз"
       caption="Сагітальний розріз. Номери на схемі відповідають списку"
       sections={[{ items: BRAIN_PARTS }]}
+    />
+  );
+}
+
+function RespiratoryView() {
+  return (
+    <AtlasView
+      img="/medicine/respiratory.svg"
+      alt="Дихальна система людини"
+      caption="Праворуч угорі — будова стінки бронха, праворуч унизу — альвеоли зблизька"
+      sections={RESPIRATORY_PARTS}
+    />
+  );
+}
+
+function DigestiveView() {
+  return (
+    <AtlasView
+      img="/medicine/digestive.svg"
+      alt="Травна система людини"
+      caption="Травний канал іде від рота до відхідника; печінка й підшлункова виділяють у нього свої соки"
+      sections={DIGESTIVE_PARTS}
     />
   );
 }
@@ -5091,6 +5260,12 @@ function MedicineSection() {
           <button onClick={() => setTab("heart")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "heart" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             ❤️ Серце
           </button>
+          <button onClick={() => setTab("respiratory")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "respiratory" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🫁 Дихальна
+          </button>
+          <button onClick={() => setTab("digestive")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "digestive" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🍎 Травна
+          </button>
           <button onClick={() => setTab("urogenital")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "urogenital" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             💧 Сечостатева
           </button>
@@ -5101,6 +5276,8 @@ function MedicineSection() {
         {tab === "muscles" && <MuscleView />}
         {tab === "brain" && <BrainView />}
         {tab === "heart" && <HeartView />}
+        {tab === "respiratory" && <RespiratoryView />}
+        {tab === "digestive" && <DigestiveView />}
         {tab === "urogenital" && <UrogenitalView />}
       </main>
     </div>
