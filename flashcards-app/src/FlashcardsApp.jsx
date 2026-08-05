@@ -3816,6 +3816,22 @@ export default function FlashcardsApp() {
     }
   }, [createGroup, importCards, flash]);
 
+  // Атлас «Медицини» → колоди, щоб той самий матеріал можна було повторювати.
+  const importMedicineDecks = useCallback(async () => {
+    setLoadingLang("med");
+    try {
+      const data = buildMedicineDecks();
+      const g = await createGroup({ name: "Медицина", emoji: "🩺", color: "teal" });
+      const groups = {};
+      for (const [name, cards] of Object.entries(data)) groups[name] = cards.map(([f, b]) => makeCard(f, b, "анатомія"));
+      await importCards(groups, { newDeckMeta: { groupId: g.id } });
+    } catch (e) {
+      flash("Не вдалося зібрати колоди");
+    } finally {
+      setLoadingLang("");
+    }
+  }, [createGroup, importCards, flash]);
+
   /* ------------------------------------------------------------------ */
   /* Study session                                                      */
   /* ------------------------------------------------------------------ */
@@ -4113,7 +4129,7 @@ export default function FlashcardsApp() {
           />
         )}
         {view === "import" && (
-          <ImportView decks={decks} onImport={importCards} onCancel={() => setView("home")} onLoadLang={importLanguageDecks} loadingLang={loadingLang} />
+          <ImportView decks={decks} onImport={importCards} onCancel={() => setView("home")} onLoadLang={importLanguageDecks} onLoadMedicine={importMedicineDecks} loadingLang={loadingLang} />
         )}
         {view === "stats" && (
           <StatsView
@@ -7929,7 +7945,7 @@ function CardEditor({ deck, card, onClose, onSave }) {
 /* ------------------------------------------------------------------ */
 /* Import view                                                         */
 /* ------------------------------------------------------------------ */
-function ImportView({ decks, onImport, onCancel, onLoadLang, loadingLang }) {
+function ImportView({ decks, onImport, onCancel, onLoadLang, onLoadMedicine, loadingLang }) {
   const [mode, setMode] = useState("file"); // file | paste
   const [parsed, setParsed] = useState(null); // { headers, rows, source }
   const [sheets, setSheets] = useState(null); // [{name, deckName, cards:[[f,b]], include}] for multi-sheet workbooks
@@ -8117,6 +8133,19 @@ function ImportView({ decks, onImport, onCancel, onLoadLang, loadingLang }) {
               </div>
             ))}
           </div>
+          {onLoadMedicine && (
+            <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl bg-white p-3">
+              <span className="text-2xl">🩺</span>
+              <div className="min-w-0 flex-1">
+                <div className="font-bold text-slate-800">Медицина — анатомія</div>
+                <div className="text-xs text-slate-500">Усе з розділу «Медицина» картками: назва → латина й що воно робить</div>
+              </div>
+              <button onClick={onLoadMedicine} disabled={!!loadingLang}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-teal-700 disabled:opacity-60">
+                {loadingLang === "med" ? <><RefreshCw className="h-4 w-4 animate-spin" /> Збираю…</> : "Зібрати"}
+              </button>
+            </div>
+          )}
           <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
             Французька, іспанська й польська зібрані з речень Tatoeba (ліцензія CC BY) — їх писали носії мов.
             Розподіл по темах автоматичний, тож окремі фрази можуть лежати не в тій колоді.
@@ -19015,6 +19044,39 @@ const PATH_STEP_META = {
 // Career roadmap is fetched at runtime from /pm-path.json (see useCareerData).
 
 // Book course (18+ modules) is fetched at runtime from /book-course.json to keep the bundle small.
+
+/* Медичні колоди збираємо з тих самих даних, що показує розділ «Медицина», —
+   нічого не дублюємо, тож атлас і картки не розійдуться. Лице картки — назва,
+   зворот — латина й пояснення, навіщо ця штука потрібна. */
+function buildMedicineDecks() {
+  const back = (latin, note) => [latin, note].filter(Boolean).join(" — ");
+  const fromSections = (secs) =>
+    secs.flatMap((s) => (s.items || []).map((i) => [i.name, back(i.latin, i.note)]));
+  const decks = {};
+  const put = (name, rows) => { const r = rows.filter(([f, b]) => f && b); if (r.length) decks[name] = r; };
+
+  put("Скелет — кістки", SKELETON_GROUPS.flatMap((g) => g.subgroups.flatMap((sg) => [
+    ...sg.bones.map((b) => [b.name, back(b.latin, b.note)]),
+    ...(sg.detail ? (sg.detail.kind === "pairs" ? sg.detail.rows.flat() : sg.detail.rows)
+        .map((c) => [c.name, c.latin]) : []),
+  ])));
+  put("М'язи", MUSCLE_ATLAS_GROUPS.flatMap((g) => g.muscles.map((m) => [m.name, back(m.latin, m.note)])));
+  put("Мозок — будова", BRAIN_PARTS.map((p) => [p.name, back(p.latin, p.note)]));
+  put("Серце", fromSections(HEART_PARTS));
+  put("Кровоносна система", fromSections(CIRCULATORY_PARTS));
+  put("Дихальна система", fromSections(RESPIRATORY_PARTS));
+  put("Травна система", fromSections(DIGESTIVE_PARTS));
+  put("Нервова система", fromSections(NERVOUS_PARTS));
+  put("Ендокринна система", fromSections(ENDOCRINE_PARTS));
+  put("Лімфатична та імунна", [...fromSections(LYMPHATIC_PARTS), ...fromSections(IMMUNE_PARTS)]);
+  put("Опорно-рухова система", fromSections(LOCOMOTOR_PARTS));
+  put("Сечостатева система", UROGENITAL_VIEWS.flatMap((v) => v.parts.map((p) => [p.name, back(p.latin, p.note)])));
+  put("Органи чуття", SENSORY_VIEWS.flatMap((v) => fromSections(v.sections)));
+  put("Медіатори", NEURO_CHEM.map((c) => [c.name, `${c.abbr} · ${c.kind} — ${c.does}`]));
+  put("Вітаміни", VITAMINS.map((v) => [`Вітамін ${v.letter} (${v.name})`, `${v.does} Дефіцит: ${v.low}`]));
+  put("Бар'єр мозку", BBB_ITEMS.map((i) => [i.name, `${BBB_HOW[i.how].label} — ${i.why}`]));
+  return decks;
+}
 
 /* Готові набори карток. Англійський зібраний вручну; решта — з Tatoeba (CC BY),
    тому й підписані окремо: там речення живі, але рубрикація автоматична. */
