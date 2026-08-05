@@ -5648,6 +5648,212 @@ function BrainWorksView() {
   );
 }
 
+/* ---------- Медицина → «Медіатори»: де в мозку що виробляється ---------- */
+const CHEM_REGIONS = {
+  cortex:      { c: [206, 74],  label: "Кора" },
+  hippocampus: { c: [246, 176], label: "Гіпокамп" },
+  striatum:    { c: [150, 120], label: "Смугасте тіло" },
+  accumbens:   { c: [118, 158], label: "Прилегле ядро" },
+  basalis:     { c: [138, 172], label: "Ядро Мейнерта" },
+  thalamus:    { c: [206, 136], label: "Таламус" },
+  hypothal:    { c: [178, 176], label: "Гіпоталамус" },
+  // ці два ядра лежать поруч, тому їхні підписи розводимо вручну — інакше налазять
+  nigra:       { c: [232, 200], label: "Чорна речовина", lx: 268, ly: 186, anchor: "start" },
+  vta:         { c: [212, 208], label: "Вентральна ділянка покриву", lx: 176, ly: 244, anchor: "end" },
+  raphe:       { c: [246, 232], label: "Ядра шва" },
+  locus:       { c: [268, 214], label: "Блакитна пляма" },
+  cerebellum:  { c: [330, 208], label: "Мозочок" },
+  cord:        { c: [258, 292], label: "Спинний мозок" },
+};
+
+const NEURO_CHEM = [
+  { id: "glutamate", name: "Глутамат", abbr: "Glu", kind: "Збудливий",
+    tone: "amber", diffuse: ["cortex", "hippocampus"],
+    where: "Не має окремого «заводу» — ним користуються самі нейрони кори й гіпокампа.",
+    does: "Головна педаль газу мозку: приблизно 80 % усіх синапсів збудливі, і майже всі вони глутаматні. На ньому тримаються навчання й пам'ять.",
+    excess: "Забагато — це збудлива токсичність: клітина перезбуджується й гине. Так ушкоджується мозок при інсульті й травмі.",
+    drugs: "Кетамін і мемантин блокують його NMDA-рецептор." },
+  { id: "gaba", name: "ГАМК", abbr: "GABA", kind: "Гальмівний",
+    tone: "teal", diffuse: ["cortex", "striatum", "cerebellum"],
+    where: "Теж без окремого ядра: гальмівні вставні нейрони розсіяні по всій корі, смугастому тілі й мозочку.",
+    does: "Головне гальмо. Без нього збудження ширилося б лавиною — саме зрив цього балансу й дає епілептичний напад.",
+    excess: "Забагато — сонливість, млявість, порушення координації.",
+    drugs: "Алкоголь, бензодіазепіни й снодійні підсилюють саме ГАМК — звідси і розслаблення, і загальмованість." },
+  { id: "dopamine", name: "Дофамін", abbr: "DA", kind: "Модулятор",
+    tone: "violet", sources: ["nigra", "vta"], targets: [["nigra","striatum"], ["vta","accumbens"], ["vta","cortex"]],
+    where: "Два різні шляхи з середнього мозку: чорна речовина → смугасте тіло, і вентральна ділянка покриву → прилегле ядро й лобова кора.",
+    does: "Не «гормон задоволення», а сигнал очікування: підскакує, коли нагорода виявилась кращою за очікувану. Керує мотивацією й рухом.",
+    excess: "Загибель клітин чорної речовини дає хворобу Паркінсона. Надлишок у другому шляху пов'язують із психозом.",
+    drugs: "Леводопа поповнює його при Паркінсоні; антипсихотики блокують; кокаїн і амфетамін не дають прибрати зі щілини." },
+  { id: "serotonin", name: "Серотонін", abbr: "5-HT", kind: "Модулятор",
+    tone: "rose", sources: ["raphe"], targets: [["raphe","cortex"], ["raphe","hippocampus"], ["raphe","cord"]],
+    where: "Ядра шва — вузька смужка по середині стовбура мозку. Звідти волокна розходяться майже по всьому мозку.",
+    does: "Налаштовує настрій, тривогу, сон і апетит. Цікаво, що 90 % серотоніну тіла — узагалі в кишечнику, не в мозку.",
+    excess: "Різкий надлишок дає серотоніновий синдром — небезпечний стан із гарячкою й сплутаністю.",
+    drugs: "СІЗЗС (антидепресанти) заважають прибирати його зі щілини." },
+  { id: "norepi", name: "Норадреналін", abbr: "NE", kind: "Модулятор",
+    tone: "sky", sources: ["locus"], targets: [["locus","cortex"], ["locus","hippocampus"]],
+    where: "Блакитна пляма — крихітне ядро в мості, лічені тисячі клітин на весь мозок.",
+    does: "Пильність і зосередження. Це система тривоги: вмикає увагу, піднімає тиск і пульс.",
+    excess: "Надлишок — тривога, безсоння, серцебиття.",
+    drugs: "Частина антидепресантів і ліків від СДУГ діють саме на нього." },
+  { id: "ach", name: "Ацетилхолін", abbr: "ACh", kind: "Модулятор",
+    tone: "emerald", sources: ["basalis"], targets: [["basalis","cortex"], ["basalis","hippocampus"]],
+    where: "У мозку — з ядра Мейнерта в основі переднього мозку. Поза мозком це ще й медіатор нервово-м'язового з'єднання.",
+    does: "Увага й пам'ять у мозку; скорочення м'язів на периферії.",
+    excess: "Загибель нейронів ядра Мейнерта — одна з перших подій при хворобі Альцгеймера.",
+    drugs: "Ліки від Альцгеймера гальмують його розпад. Ботокс, навпаки, блокує його викид у м'яз." },
+  { id: "histamine", name: "Гістамін", abbr: "HA", kind: "Модулятор",
+    tone: "orange", sources: ["hypothal"], targets: [["hypothal","cortex"]],
+    where: "Туберомамілярне ядро гіпоталамуса.",
+    does: "Тримає нас у неспанні. Поза мозком — учасник алергічної реакції.",
+    excess: "—",
+    drugs: "Старі протиалергічні ліки проходять у мозок і блокують його — тому від них хилить у сон." },
+  { id: "endorphin", name: "Ендорфіни", abbr: "—", kind: "Нейропептиди",
+    tone: "fuchsia", sources: ["hypothal", "cord"], targets: [["hypothal","cord"]],
+    where: "Гіпоталамус і стовбур, а також власні контури спинного мозку.",
+    does: "Власні знеболювальні тіла: глушать больовий сигнал ще на вході в спинний мозок.",
+    excess: "—",
+    drugs: "Морфін і опіоїди сідають на ті самі рецептори — тому й знеболюють, і викликають залежність." },
+];
+
+const CHEM_TONE = {
+  amber:   { dot: "#f59e0b", soft: "#fef3c7", text: "text-amber-900",   ring: "border-amber-400 bg-amber-50" },
+  teal:    { dot: "#0d9488", soft: "#ccfbf1", text: "text-teal-900",    ring: "border-teal-400 bg-teal-50" },
+  violet:  { dot: "#7c3aed", soft: "#ede9fe", text: "text-violet-900",  ring: "border-violet-400 bg-violet-50" },
+  rose:    { dot: "#e11d48", soft: "#ffe4e6", text: "text-rose-900",    ring: "border-rose-400 bg-rose-50" },
+  sky:     { dot: "#0284c7", soft: "#e0f2fe", text: "text-sky-900",     ring: "border-sky-400 bg-sky-50" },
+  emerald: { dot: "#059669", soft: "#d1fae5", text: "text-emerald-900", ring: "border-emerald-400 bg-emerald-50" },
+  orange:  { dot: "#ea580c", soft: "#ffedd5", text: "text-orange-900",  ring: "border-orange-400 bg-orange-50" },
+  fuchsia: { dot: "#c026d3", soft: "#fae8ff", text: "text-fuchsia-900", ring: "border-fuchsia-400 bg-fuchsia-50" },
+};
+
+function ChemBrainMap({ chem }) {
+  const t = CHEM_TONE[chem.tone];
+  const lit = new Set([...(chem.sources || []), ...(chem.diffuse || [])]);
+  const fill = (id, base) => (lit.has(id) ? t.dot : base);
+  const soft = (id, base) => (lit.has(id) ? t.soft : base);
+  const arrows = (chem.targets || []).map(([a, b], i) => {
+    const [x1, y1] = CHEM_REGIONS[a].c, [x2, y2] = CHEM_REGIONS[b].c;
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - 34;
+    return <path key={i} d={`M${x1},${y1} Q${mx},${my} ${x2},${y2}`} fill="none"
+      stroke={t.dot} strokeWidth="2.5" strokeDasharray="6 5" markerEnd="url(#chem-arrow)" opacity="0.85" />;
+  });
+  return (
+    <svg viewBox="0 0 460 330" className="w-full" role="img" aria-label={`Де виробляється ${chem.name}`}>
+      <defs>
+        <marker id="chem-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill={t.dot} />
+        </marker>
+      </defs>
+      {/* кора + контур мозку */}
+      <path d="M60,120 Q66,34 176,24 Q300,14 344,84 Q372,128 350,164 Q330,196 300,196 L268,196 L268,236 Q268,262 250,272 L246,300 L230,300 L228,268 Q206,254 200,228 Q160,224 120,206 Q70,184 60,120 Z"
+        fill={soft("cortex", "#f1f5f9")} stroke="#94a3b8" strokeWidth="2.5" />
+      {/* мозолисте тіло */}
+      <path d="M128,132 Q186,96 250,124 Q214,112 178,120 Q150,124 128,132 Z" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="1.5" />
+      {/* мозочок */}
+      <path d="M300,180 Q356,176 366,214 Q370,248 320,250 Q290,248 288,216 Q288,192 300,180 Z"
+        fill={soft("cerebellum", "#e2e8f0")} stroke="#94a3b8" strokeWidth="2" />
+      {/* смугасте тіло */}
+      <ellipse cx="150" cy="120" rx="27" ry="19" fill={fill("striatum", "#cbd5e1")} stroke="#94a3b8" strokeWidth="1.5" />
+      {/* таламус */}
+      <ellipse cx="206" cy="136" rx="24" ry="17" fill={fill("thalamus", "#cbd5e1")} stroke="#94a3b8" strokeWidth="1.5" />
+      {/* гіпокамп */}
+      <path d="M232,168 Q252,158 262,176 Q266,192 250,192 Q236,190 232,168 Z" fill={fill("hippocampus", "#cbd5e1")} stroke="#94a3b8" strokeWidth="1.5" />
+      {/* гіпоталамус */}
+      <ellipse cx="178" cy="176" rx="15" ry="10" fill={fill("hypothal", "#cbd5e1")} stroke="#94a3b8" strokeWidth="1.5" />
+      {/* прилегле ядро */}
+      <circle cx="118" cy="158" r="11" fill={fill("accumbens", "#cbd5e1")} stroke="#94a3b8" strokeWidth="1.5" />
+      {/* ядро Мейнерта */}
+      <circle cx="138" cy="172" r="8" fill={fill("basalis", "#cbd5e1")} stroke="#94a3b8" strokeWidth="1.5" />
+      {/* чорна речовина + ВДП */}
+      <ellipse cx="232" cy="200" rx="13" ry="7" fill={fill("nigra", "#94a3b8")} stroke="#64748b" strokeWidth="1.5" />
+      <circle cx="212" cy="208" r="7" fill={fill("vta", "#cbd5e1")} stroke="#94a3b8" strokeWidth="1.5" />
+      {/* ядра шва + блакитна пляма */}
+      <rect x="241" y="212" width="10" height="42" rx="5" fill={fill("raphe", "#cbd5e1")} stroke="#94a3b8" strokeWidth="1.5" />
+      <circle cx="268" cy="214" r="7" fill={fill("locus", "#cbd5e1")} stroke="#94a3b8" strokeWidth="1.5" />
+      {/* спинний мозок */}
+      <rect x="238" y="266" width="16" height="46" rx="7" fill={fill("cord", "#e2e8f0")} stroke="#94a3b8" strokeWidth="1.5" />
+      {arrows}
+      {[...lit].map((id) => {
+        const r = CHEM_REGIONS[id]; if (!r) return null;
+        const right = r.c[0] > 210;
+        const x = r.lx ?? r.c[0] + (right ? 16 : -16);
+        const y = r.ly ?? r.c[1] - 14;
+        return (
+          <g key={id}>
+            {r.lx != null && <line x1={r.c[0]} y1={r.c[1]} x2={x + (r.anchor === "end" ? 4 : -4)} y2={y - 4}
+              stroke="#94a3b8" strokeWidth="1" />}
+            <text x={x} y={y} textAnchor={r.anchor ?? (right ? "start" : "end")}
+              className="fill-slate-600" style={{ fontSize: 11, fontWeight: 700 }}>{r.label}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function NeurotransmitterView() {
+  const [sel, setSel] = useState("dopamine");
+  const chem = NEURO_CHEM.find((c) => c.id === sel);
+  const t = CHEM_TONE[chem.tone];
+  return (
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-6">
+      <div className="lg:sticky lg:top-20">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+          <ChemBrainMap chem={chem} />
+          <p className="mt-1 px-1 text-center text-[11px] leading-snug text-slate-400">
+            Розріз мозку збоку, обличчям ліворуч. Підсвічено те, що виробляє обраний медіатор; пунктир — куди він проєктується
+          </p>
+        </div>
+        <div className={`mt-3 rounded-2xl border p-4 ${t.ring}`}>
+          <div className="flex items-center gap-2">
+            <span className="h-3.5 w-3.5 shrink-0 rounded-full" style={{ background: t.dot }} />
+            <span className={`text-base font-extrabold ${t.text}`}>{chem.name}</span>
+            <span className="text-xs italic text-slate-400">{chem.abbr}</span>
+            <span className="ml-auto rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-bold text-slate-500">{chem.kind}</span>
+          </div>
+          <dl className="mt-2 space-y-1.5 text-sm leading-relaxed text-slate-700">
+            <div><dt className="inline font-semibold text-slate-900">Де: </dt><dd className="inline">{chem.where}</dd></div>
+            <div><dt className="inline font-semibold text-slate-900">Що робить: </dt><dd className="inline">{chem.does}</dd></div>
+            {chem.excess !== "—" && <div><dt className="inline font-semibold text-slate-900">Коли ламається: </dt><dd className="inline">{chem.excess}</dd></div>}
+            <div><dt className="inline font-semibold text-slate-900">Що на нього діє: </dt><dd className="inline">{chem.drugs}</dd></div>
+          </dl>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-1.5 lg:mt-0">
+        <div className="mb-1 rounded-2xl bg-white p-3">
+          <div className="text-sm font-extrabold text-slate-900">Спершу головне</div>
+          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+            Глутамат і ГАМК — це газ і гальмо, разом близько <span className="font-semibold text-slate-800">90 % усіх синапсів</span>.
+            Решта — дофамін, серотонін, норадреналін — не передають повідомлення, а <span className="font-semibold text-slate-800">крутять гучність</span>:
+            їх мало, вони з крихітних ядер у стовбурі, але вони заливають увесь мозок і задають режим — спати чи пильнувати, хотіти чи ні.
+          </p>
+        </div>
+        {NEURO_CHEM.map((c) => {
+          const ct = CHEM_TONE[c.tone];
+          const active = c.id === sel;
+          return (
+            <button key={c.id} onClick={() => setSel(c.id)}
+              className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${active ? ct.ring : "border-transparent bg-white hover:border-slate-200 hover:bg-slate-50"}`}>
+              <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: ct.dot }} />
+              <span className="min-w-0">
+                <span className={`block text-sm font-semibold ${active ? ct.text : "text-slate-800"}`}>{c.name}</span>
+                <span className="block text-[11px] leading-snug text-slate-400">{c.kind} · {c.abbr}</span>
+              </span>
+            </button>
+          );
+        })}
+        <p className="px-1 pt-2 text-[11px] leading-relaxed text-slate-400">
+          Тут спрощено: медіатор сам собою не «добрий» і не «поганий» — усе залежить від того, на який рецептор він сяде.
+          Той самий дофамін в одному шляху керує рухом, а в іншому — мотивацією.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function LocomotorView() {
   return (
     <AtlasView
@@ -5847,6 +6053,9 @@ function MedicineSection() {
           <button onClick={() => setTab("brainworks")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "brainworks" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             ⚡ Як працює мозок
           </button>
+          <button onClick={() => setTab("chem")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "chem" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🧪 Медіатори
+          </button>
           <button onClick={() => setTab("locomotor")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "locomotor" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             🦿 Опорно-рухова
           </button>
@@ -5885,6 +6094,7 @@ function MedicineSection() {
         {tab === "brain" && <BrainView />}
         {tab === "heart" && <HeartView />}
         {tab === "brainworks" && <BrainWorksView />}
+        {tab === "chem" && <NeurotransmitterView />}
         {tab === "locomotor" && <LocomotorView />}
         {tab === "sensory" && <SensoryView />}
         {tab === "circulatory" && <CirculatoryView />}
