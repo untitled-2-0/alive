@@ -6048,7 +6048,9 @@ function BBBDiagram({ item }) {
       {item.how === "carrier" && (
         <g>
           <rect x="196" y="70" width="28" height="50" rx="9" fill="#0284c7" stroke="#075985" strokeWidth="2" />
-          <text x="210" y="134" textAnchor="middle" className="fill-sky-700" style={{ fontSize: 10, fontWeight: 800 }}>переносник</text>
+          {/* підпис виносимо в кров: під самим переносником його накриває смуга астроцитів */}
+          <line x1="248" y1="30" x2="228" y2="70" stroke="#0284c7" strokeWidth="1.5" />
+          <text x="252" y="26" className="fill-sky-700" style={{ fontSize: 10, fontWeight: 800 }}>переносник</text>
         </g>
       )}
       {/* ніжки астроцита */}
