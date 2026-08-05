@@ -5433,6 +5433,221 @@ function BrainView() {
   );
 }
 
+/* ---------- Медицина → «Як працює мозок»: інтерактивний нейрон ---------- */
+const NEURON_PARTS = {
+  dendrites: { name: "Дендрити", latin: "dendrita",
+    what: "Гілки, що приймають сигнали від інших нейронів.",
+    why: "Один нейрон збирає їх тисячами — і від кількох тисяч входів залежить, спрацює він чи змовчить." },
+  soma: { name: "Тіло клітини (сома)", latin: "soma / perikaryon",
+    what: "Центр нейрона з ядром; тут іде обмін речовин.",
+    why: "Сома підсумовує все, що прийшло дендритами: збудження зі знаком «плюс», гальмування — «мінус»." },
+  hillock: { name: "Аксонний горбок", latin: "colliculus axonis",
+    what: "Місце, де аксон відходить від соми.",
+    why: "Тут ухвалюється рішення. Якщо сума входів перевищила поріг — імпульс виникає; якщо ні — нічого не відбувається. Проміжного не буває." },
+  axon: { name: "Аксон", latin: "axon",
+    what: "Довгий відросток, що несе імпульс від соми далі.",
+    why: "Аксони від спинного мозку до стопи сягають метра — це одна клітина завдовжки з ногу." },
+  myelin: { name: "Мієлінова оболонка", latin: "vagina myelini",
+    what: "Жирова ізоляція навколо аксона.",
+    why: "Ізольованою ділянкою сигнал не тече, а перестрибує — це прискорює його з 1 до 100 м/с. Саме мієлін руйнується при розсіяному склерозі." },
+  node: { name: "Перехват Ранв'є", latin: "nodus Ranvieri",
+    what: "Проміжок між сусідніми ділянками мієліну.",
+    why: "Тільки тут імпульс «оновлюється». Тому він стрибає від перехвату до перехвату, а не повзе рівномірно." },
+  terminals: { name: "Закінчення аксона", latin: "terminationes axonis",
+    what: "Кінцеві гілочки з пухирцями медіатора.",
+    why: "Тут електричний сигнал перетворюється на хімічний — і передається далі через синапс." },
+};
+
+function NeuronDiagram({ selected, onPick, running }) {
+  const hit = (id) => ({
+    onClick: () => onPick(id),
+    style: { cursor: "pointer" },
+    opacity: !selected || selected === id ? 1 : 0.35,
+  });
+  const on = (id) => selected === id;
+  const NODES = [250, 310, 370, 430, 490];
+  return (
+    <svg viewBox="0 0 620 220" className="w-full" role="img" aria-label="Схема нейрона">
+      {/* дендрити */}
+      <g {...hit("dendrites")}>
+        {[[-38,-34],[-46,-6],[-38,26],[-20,-48],[-18,46]].map(([dx,dy],i)=>(
+          <g key={i}>
+            <path d={`M104,110 L${104+dx},${110+dy}`} stroke={on("dendrites")?"#0d9488":"#94a3b8"} strokeWidth="4" strokeLinecap="round" fill="none" />
+            <path d={`M${104+dx},${110+dy} l${dx/3},${dy/2-6} M${104+dx},${110+dy} l${dx/3},${dy/2+6}`} stroke={on("dendrites")?"#0d9488":"#94a3b8"} strokeWidth="3" strokeLinecap="round" fill="none" />
+          </g>
+        ))}
+      </g>
+      {/* сома + ядро */}
+      <g {...hit("soma")}>
+        <circle cx="118" cy="110" r="30" fill={on("soma")?"#5eead4":"#cbd5e1"} stroke={on("soma")?"#0d9488":"#94a3b8"} strokeWidth="2.5" />
+        <circle cx="118" cy="110" r="11" fill={on("soma")?"#0f766e":"#94a3b8"} />
+        {running && <circle cx="118" cy="110" r="30" fill="#14b8a6" style={{ animation: "nrn-soma 1.9s linear infinite" }} />}
+      </g>
+      {/* аксонний горбок */}
+      <g {...hit("hillock")}>
+        <path d="M146,96 L176,104 L176,116 L146,124 Z" fill={on("hillock")?"#5eead4":"#cbd5e1"} stroke={on("hillock")?"#0d9488":"#94a3b8"} strokeWidth="2.5" />
+      </g>
+      {/* аксон */}
+      <g {...hit("axon")}>
+        <line x1="176" y1="110" x2="520" y2="110" stroke={on("axon")?"#0d9488":"#94a3b8"} strokeWidth="9" strokeLinecap="round" />
+      </g>
+      {/* мієлін */}
+      <g {...hit("myelin")}>
+        {[190, 250, 310, 370, 430].map((x,i)=>(
+          <rect key={i} x={x} y="94" width="48" height="32" rx="15"
+            fill={on("myelin")?"#99f6e4":"#e2e8f0"} stroke={on("myelin")?"#0d9488":"#94a3b8"} strokeWidth="2.5" />
+        ))}
+      </g>
+      {/* перехвати Ранв'є */}
+      <g {...hit("node")}>
+        {NODES.map((x,i)=>(
+          <circle key={i} cx={x} cy="110" r="5"
+            fill={on("node")?"#0d9488":"#64748b"}
+            style={running ? { animation: `nrn-node 1.9s linear ${i*0.32}s infinite` } : undefined} />
+        ))}
+      </g>
+      {/* закінчення */}
+      <g {...hit("terminals")}>
+        {[[-30,-40],[-4,-52],[16,-26],[16,26],[-4,52],[-30,40]].map(([dx,dy],i)=>(
+          <g key={i}>
+            <path d={`M520,110 Q${560+dx/2},${110+dy/2} ${566+dx},${110+dy}`} stroke={on("terminals")?"#0d9488":"#94a3b8"} strokeWidth="4" fill="none" strokeLinecap="round" />
+            <circle cx={566+dx} cy={110+dy} r="7" fill={on("terminals")?"#0d9488":"#94a3b8"} />
+          </g>
+        ))}
+      </g>
+      {/* біжучий імпульс */}
+      {running && (
+        <g style={{ animation: "nrn-travel 1.9s linear infinite" }}>
+          <circle cx="180" cy="110" r="13" fill="#f59e0b" opacity="0.35" />
+          <circle cx="180" cy="110" r="7" fill="#f59e0b" />
+        </g>
+      )}
+    </svg>
+  );
+}
+
+function SynapseDiagram({ firing }) {
+  const anim = (name, dur, delay) => (firing ? { animation: `${name} ${dur} linear ${delay}s infinite` } : { opacity: 0.25 });
+  return (
+    <svg viewBox="0 0 320 210" className="w-full" role="img" aria-label="Схема синапса">
+      <path d="M40,10 Q40,64 96,64 L200,64 Q256,64 256,10" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2.5" />
+      <text x="148" y="34" textAnchor="middle" className="fill-slate-500" style={{ fontSize: 11 }}>закінчення аксона</text>
+      {[[110,40],[148,34],[186,42]].map(([x,y],i)=>(
+        <circle key={i} cx={x} cy={y} r="8" fill="#f59e0b" opacity="0.9" style={anim("syn-vesicle","1.6s", i*0.25)} />
+      ))}
+      <line x1="30" y1="76" x2="290" y2="76" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="4 4" />
+      <text x="296" y="98" textAnchor="end" className="fill-slate-400" style={{ fontSize: 10 }}>синаптична щілина</text>
+      {[96,128,160,192,224].map((x,i)=>(
+        <circle key={i} cx={x} cy="82" r="4.5" fill="#f59e0b" style={anim("syn-cross","1.6s", 0.3 + i*0.09)} />
+      ))}
+      <path d="M30,150 Q160,120 290,150 L290,200 L30,200 Z" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2.5" />
+      {[96,128,160,192,224].map((x,i)=>(
+        <rect key={i} x={x-9} y={132 + Math.round(Math.abs(x-160)/12)} width="18" height="11" rx="4"
+          fill="#14b8a6" style={anim("syn-recv","1.6s", 0.5 + i*0.09)} />
+      ))}
+      <text x="160" y="186" textAnchor="middle" className="fill-slate-500" style={{ fontSize: 11 }}>дендрит наступного нейрона</text>
+    </svg>
+  );
+}
+
+const BRAIN_FACTS = [
+  { k: "86 млрд", v: "нейронів у мозку — і приблизно стільки ж допоміжних клітин глії" },
+  { k: "~7 000", v: "синапсів у середньому має один нейрон" },
+  { k: "1–100 м/с", v: "швидкість імпульсу: без мієліну повільно, з мієліном — як автомобіль на трасі" },
+  { k: "20 %", v: "усієї енергії тіла з'їдає мозок, важачи лише 2 % ваги" },
+  { k: "1–2 мс", v: "триває один імпульс; після нього нейрон коротко «глухий» — рефрактерний період" },
+  { k: "0,5 мс", v: "затримка на синапсі. Саме вона робить мозок хімічним, а не просто електричним" },
+];
+
+function BrainWorksView() {
+  const [sel, setSel] = useState("hillock");
+  const [running, setRunning] = useState(true);
+  const [firing, setFiring] = useState(true);
+  const p = NEURON_PARTS[sel];
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <h2 className="mr-auto text-sm font-extrabold text-slate-900">Нейрон — клітина, що передає сигнал</h2>
+          <button onClick={() => setRunning((r) => !r)}
+            className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${running ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+            {running ? "⏸ Зупинити імпульс" : "▶ Пустити імпульс"}
+          </button>
+        </div>
+        <p className="mb-2 text-xs text-slate-400">Тисни на будь-яку частину схеми — унизу з'явиться пояснення</p>
+        <NeuronDiagram selected={sel} onPick={setSel} running={running} />
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {Object.entries(NEURON_PARTS).map(([id, part]) => (
+            <button key={id} onClick={() => setSel(id)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${sel === id ? "bg-amber-400 text-amber-900" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+              {part.name}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 rounded-xl bg-amber-50 p-3">
+          <div className="text-sm font-bold text-amber-900">{p.name}</div>
+          <div className="text-xs italic text-amber-700/70">{p.latin}</div>
+          <p className="mt-1.5 text-sm leading-relaxed text-slate-700">{p.what}</p>
+          <p className="mt-1 text-sm leading-relaxed text-amber-900"><span className="font-semibold">Навіщо: </span>{p.why}</p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-1 text-sm font-extrabold text-slate-900">Правило «все або нічого»</h2>
+        <p className="text-sm leading-relaxed text-slate-600">
+          Нейрон не вміє кричати голосніше. Імпульс або виникає на повну, або не виникає зовсім —
+          сили сигналу не існує. Силу подразника мозок кодує <span className="font-semibold text-slate-800">частотою</span>:
+          легкий дотик — кілька імпульсів за секунду, опік — сотні. І ще тим,
+          <span className="font-semibold text-slate-800"> скільки</span> нейронів озвалося водночас.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="mb-1 flex flex-wrap items-center gap-2">
+          <h2 className="mr-auto text-sm font-extrabold text-slate-900">Синапс — місце передачі</h2>
+          <button onClick={() => setFiring((f) => !f)}
+            className={`rounded-full px-3 py-1.5 text-xs font-bold transition ${firing ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+            {firing ? "⏸ Зупинити" : "▶ Передати сигнал"}
+          </button>
+        </div>
+        <SynapseDiagram firing={firing} />
+        <ol className="mt-2 space-y-1.5 text-sm leading-relaxed text-slate-600">
+          <li><span className="font-semibold text-slate-800">1.</span> Імпульс добігає до закінчення аксона.</li>
+          <li><span className="font-semibold text-slate-800">2.</span> Пухирці з медіатором зливаються з мембраною й викидають його в щілину.</li>
+          <li><span className="font-semibold text-slate-800">3.</span> Медіатор перепливає щілину — вона завширшки лише 20 нанометрів.</li>
+          <li><span className="font-semibold text-slate-800">4.</span> Він сідає на рецептори наступного нейрона й або збуджує його, або гальмує.</li>
+          <li><span className="font-semibold text-slate-800">5.</span> Залишки медіатора прибираються — інакше сигнал не спинився б.</li>
+        </ol>
+        <p className="mt-2 rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
+          Саме на цьому кроці працює більшість ліків для психіки й більшість наркотиків: вони не змінюють
+          «проводку», а втручаються в хімію щілини — додають медіатора, заважають його прибирати
+          або займають рецептор замість нього.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <h2 className="mb-2 text-sm font-extrabold text-slate-900">Як із цього виходить мозок</h2>
+        <div className="space-y-2 text-sm leading-relaxed text-slate-600">
+          <p><span className="font-semibold text-slate-800">Один нейрон нічого не знає.</span> Він лише додає входи й вирішує: спрацювати чи ні.</p>
+          <p><span className="font-semibold text-slate-800">Знання — у зв'язках.</span> Пам'ять, звичка й навичка — це не «файл» десь у мозку, а те, які саме синапси стали сильнішими.</p>
+          <p><span className="font-semibold text-slate-800">Разом спрацювали — міцніше зв'язалися.</span> Якщо два нейрони раз за разом активні одночасно, синапс між ними міцнішає. Тому повторення й працює — і тому інтервальні повторення в цьому додатку мають сенс.</p>
+          <p><span className="font-semibold text-slate-800">Мозок переписує сам себе.</span> Це нейропластичність: зв'язки, якими не користуються, слабшають, а ті, що в ділі, — ростуть.</p>
+        </div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {BRAIN_FACTS.map((f) => (
+          <div key={f.k} className="rounded-2xl bg-white p-3">
+            <div className="text-lg font-black text-teal-700">{f.k}</div>
+            <div className="text-xs leading-snug text-slate-500">{f.v}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LocomotorView() {
   return (
     <AtlasView
@@ -5629,6 +5844,9 @@ function MedicineSection() {
           <button onClick={() => setTab("heart")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "heart" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             ❤️ Серце
           </button>
+          <button onClick={() => setTab("brainworks")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "brainworks" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            ⚡ Як працює мозок
+          </button>
           <button onClick={() => setTab("locomotor")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "locomotor" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             🦿 Опорно-рухова
           </button>
@@ -5666,6 +5884,7 @@ function MedicineSection() {
         {tab === "muscles" && <MuscleView />}
         {tab === "brain" && <BrainView />}
         {tab === "heart" && <HeartView />}
+        {tab === "brainworks" && <BrainWorksView />}
         {tab === "locomotor" && <LocomotorView />}
         {tab === "sensory" && <SensoryView />}
         {tab === "circulatory" && <CirculatoryView />}

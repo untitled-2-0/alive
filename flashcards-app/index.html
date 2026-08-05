@@ -17,6 +17,23 @@
       @keyframes sc-rise { from { transform: translateY(8px); opacity: 0; } }
       @keyframes sc-pop { 0% { transform: scale(.94); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
       @keyframes sc-flamePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+
+      /* Медицина → «Як працює мозок»: нервовий імпульс і синапс.
+         Імпульс стрибає між перехватами Ранв'є, тому рух ступінчастий, а не рівний. */
+      @keyframes nrn-travel {
+        0%   { transform: translateX(0);    opacity: 0; }
+        4%   { opacity: 1; }
+        96%  { opacity: 1; }
+        100% { transform: translateX(430px); opacity: 0; }
+      }
+      @keyframes nrn-node   { 0%, 100% { r: 5; opacity: .25; } 50% { r: 9; opacity: 1; } }
+      @keyframes nrn-soma   { 0%, 100% { opacity: .15; } 25% { opacity: .55; } }
+      @keyframes syn-vesicle { 0% { transform: translate(0,0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(26px, 38px); opacity: 0; } }
+      @keyframes syn-cross   { 0% { transform: translateY(0); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(58px); opacity: 0; } }
+      @keyframes syn-recv    { 0%, 60% { opacity: .2; } 80% { opacity: 1; } 100% { opacity: .2; } }
+      @media (prefers-reduced-motion: reduce) {
+        [class*="nrn-"], [class*="syn-"] { animation: none !important; }
+      }
     </style>
   </head>
   <body>
