@@ -5152,6 +5152,110 @@ const ENDOCRINE_PARTS = [
   ] },
 ];
 
+const LOCOMOTOR_PARTS = [
+  { group: "Три типи з'єднань кісток", items: [
+    { name: "Нерухомі", latin: "synarthroses", note: "шви черепа: кістки зрослися намертво, рух неможливий — зате міцно" },
+    { name: "Напіврухомі", latin: "amphiarthroses", note: "хрящ між кістками: міжхребцеві диски, лобковий симфіз. Трохи пружинять" },
+    { name: "Рухомі (суглоби)", latin: "diarthroses / articulationes", note: "щілина з мастилом усередині — дають справжній рух" },
+  ] },
+  { group: "Будова суглоба", items: [
+    { name: "Суглобовий хрящ", latin: "cartilago articularis", note: "гладенька накладка на кінцях кісток; тертя в суглобі менше, ніж у ковзанах на льоду" },
+    { name: "Суглобова капсула", latin: "capsula articularis", note: "щільна муфта, що герметично замикає суглоб" },
+    { name: "Синовіальна оболонка", latin: "membrana synovialis", note: "внутрішній шар капсули; виробляє мастило" },
+    { name: "Синовіальна рідина", latin: "synovia", note: "мастило й живлення для хряща — у самому хрящі судин немає" },
+    { name: "Суглобова порожнина", latin: "cavitas articularis", note: "щілина між кістками, заповнена цією рідиною" },
+    { name: "Зв'язки", latin: "ligamenta", note: "з'єднують кістку з кісткою й обмежують зайвий рух. Розтягнення — це саме про них" },
+    { name: "Сухожилки", latin: "tendines", note: "з'єднують м'яз із кісткою й передають тягу" },
+    { name: "Ентезис", latin: "enthesis", note: "місце вростання сухожилка чи зв'язки в кістку; часте джерело болю в спортсменів" },
+    { name: "Синовіальна сумка", latin: "bursa synovialis", note: "подушечка там, де сухожилок треться об кістку. Запалення — бурсит" },
+    { name: "Епіфіз кістки", latin: "epiphysis", note: "розширений кінець кістки, що входить у суглоб" },
+  ] },
+  { group: "Суглоби за формою", items: [
+    { name: "Кулястий", latin: "art. spheroidea", note: "плечовий і кульшовий: рух у всі боки. За свободу платить стійкістю — плече вивихується найчастіше" },
+    { name: "Блокоподібний", latin: "art. ginglymus", note: "лікоть, коліно: згинання-розгинання в одній площині, як дверна завіса" },
+    { name: "Сідлоподібний", latin: "art. sellaris", note: "основа великого пальця; завдяки йому палець протиставляється решті" },
+    { name: "Еліпсоподібний", latin: "art. ellipsoidea", note: "променево-зап'ястковий: рух у двох площинах, але без обертання" },
+    { name: "Обертовий", latin: "art. trochoidea", note: "між першим і другим шийними хребцями — ним ми крутимо головою «ні»" },
+    { name: "Плоский", latin: "art. plana", note: "між кістками зап'ястка: ковзання на кілька міліметрів, зате дуже міцно" },
+  ] },
+  { group: "Як виникає рух", items: [
+    { name: "М'яз-згинач", latin: "m. flexor", note: "зменшує кут у суглобі — підносить передпліччя до плеча" },
+    { name: "М'яз-розгинач", latin: "m. extensor", note: "збільшує кут — випрямляє кінцівку" },
+    { name: "М'язи-антагоністи", latin: "musculi antagonistae", note: "працюють парою: один тягне, другий розслабляється. М'яз уміє лише тягнути, штовхати — ні" },
+    { name: "Кістковий важіль", latin: "vectis osseus", note: "кістка — важіль, суглоб — вісь, м'яз — сила. Тому короткий рух м'яза дає широкий помах руки" },
+    { name: "Проксимально / дистально", latin: "proximalis / distalis", note: "ближче до тулуба / далі від нього. Лікоть проксимальніший за кисть" },
+  ] },
+];
+
+const SENSORY_VIEWS = [
+  { view: "eye", title: "Око", img: "/medicine/eye.svg",
+    caption: "Горизонтальний розріз правого ока. Світло йде крізь рогівку й кришталик і фокусується на сітківці",
+    sections: [
+      { group: "Оболонки", items: [
+        { name: "Рогівка", latin: "cornea", note: "прозоре «віконце» спереду; заломлює світло найсильніше — саме її ріжуть при лазерній корекції" },
+        { name: "Склера", latin: "sclera", note: "білок ока: щільна оболонка, що тримає форму" },
+        { name: "Судинна оболонка", latin: "choroidea", note: "живить сітківку й поглинає зайве світло" },
+        { name: "Сітківка", latin: "retina", note: "світлочутливий шар — власне «плівка» ока" },
+      ] },
+      { group: "Оптика", items: [
+        { name: "Райдужка", latin: "iris", note: "кольорова діафрагма; її м'язи змінюють розмір зіниці" },
+        { name: "Зіниця", latin: "pupilla", note: "не орган, а отвір: на світлі звужується, у темряві розширюється" },
+        { name: "Кришталик", latin: "lens", note: "жива лінза, що змінює кривину для наведення різкості. З віком твердне — звідси далекозорість" },
+        { name: "Війкове (циліарне) тіло", latin: "corpus ciliare", note: "м'яз, що керує кришталиком, і джерело водянистої вологи" },
+        { name: "Циннова зв'язка", latin: "zonula ciliaris", note: "ниточки, на яких підвішений кришталик" },
+        { name: "Водяниста волога", latin: "humor aquosus", note: "рідина передньої камери; її застій підвищує тиск — це глаукома" },
+        { name: "Скловидне тіло", latin: "corpus vitreum", note: "прозорий гель, що заповнює око. Його «мушки» перед очима — саме звідти" },
+      ] },
+      { group: "Куди йде сигнал", items: [
+        { name: "Жовта пляма й центральна ямка", latin: "macula lutea, fovea centralis", note: "точка найгострішого зору — дивимось ми фактично нею" },
+        { name: "Зоровий диск (сліпа пляма)", latin: "discus n. optici", note: "місце виходу нерва; рецепторів тут немає, і мозок домальовує пропуск" },
+        { name: "Зоровий нерв", latin: "n. opticus", note: "передає зображення в потиличну частку мозку" },
+      ] },
+    ] },
+  { view: "ear", title: "Вухо", img: "/medicine/ear.svg",
+    caption: "Вухо відповідає і за слух, і за рівновагу — це два різні органи в одній кістці",
+    sections: [
+      { group: "Зовнішнє вухо", items: [
+        { name: "Вушна раковина", latin: "auricula", note: "збирає звук і підказує мозку, з якого боку він прийшов" },
+        { name: "Зовнішній слуховий хід", latin: "meatus acusticus externus", note: "проводить звук до перетинки; сірка захищає його від пилу й мікробів" },
+        { name: "Барабанна перетинка", latin: "membrana tympani", note: "мембрана, що коливається у такт звуку" },
+      ] },
+      { group: "Середнє вухо", items: [
+        { name: "Молоточок, коваделко, стремінце", latin: "malleus, incus, stapes", note: "важільцями підсилюють коливання приблизно в 20 разів" },
+        { name: "Слухова (євстахієва) труба", latin: "tuba auditiva", note: "з'єднує вухо з горлом і вирівнює тиск — тому в літаку «закладає», поки не ковтнеш" },
+      ] },
+      { group: "Внутрішнє вухо", items: [
+        { name: "Завитка", latin: "cochlea", note: "спіраль із рідиною; різні її ділянки відгукуються на різну висоту звуку" },
+        { name: "Півколові канали", latin: "canales semicirculares", note: "три кільця в трьох площинах — відчувають повороти голови" },
+        { name: "Присінок", latin: "vestibulum", note: "відчуває нахили й прискорення. Разом із каналами дає рівновагу" },
+        { name: "Присінково-завитковий нерв", latin: "n. vestibulocochlearis", note: "несе в мозок і звук, і відчуття рівноваги" },
+      ] },
+    ] },
+  { view: "skin", title: "Шкіра", img: "/medicine/skin.svg",
+    caption: "Розріз шкіри. Схема без підписів — назви шарів у списку йдуть згори вниз, як на малюнку",
+    sections: [
+      { group: "Шари", items: [
+        { name: "Епідерміс", latin: "epidermis", note: "верхній шар без судин; постійно злущується й наростає знизу. Тут же меланін — засмага" },
+        { name: "Дерма", latin: "dermis", note: "жива основа: судини, нерви, залози, волосяні цибулини, колаген. Її розрив — це розтяжки" },
+        { name: "Гіподерма", latin: "hypodermis", note: "підшкірний жир: тепло, запас енергії й амортизація" },
+      ] },
+      { group: "Що в ній є", items: [
+        { name: "Волосяний фолікул", latin: "folliculus pili", note: "мішечок, з якого росте волосина; має власний м'яз — від нього «гусяча шкіра»" },
+        { name: "Сальна залоза", latin: "glandula sebacea", note: "змащує волос і шкіру. Закупорка — вугор" },
+        { name: "Потова залоза", latin: "glandula sudorifera", note: "охолоджує тіло випаровуванням — головний спосіб не перегрітися" },
+      ] },
+      { group: "Рецептори дотику", items: [
+        { name: "Вільні нервові закінчення", latin: "terminationes nervorum liberae", note: "біль і температура; найпростіші й найчисленніші" },
+        { name: "Тільце Мейснера", latin: "corpusculum tactus", note: "легкий дотик; густо на пучках пальців і губах" },
+        { name: "Тільце Пачіні", latin: "corpusculum lamellosum", note: "лежить глибоко; ловить тиск і вібрацію" },
+      ] },
+      { group: "Смак і нюх", items: [
+        { name: "Смакові сосочки язика", latin: "papillae gustatoriae", note: "п'ять смаків: солодкий, солоний, кислий, гіркий, умамі. «Карта язика» — міф, зони перекриваються" },
+        { name: "Нюховий епітелій", latin: "epithelium olfactorium", note: "у склепінні носа; більшість «смаку» їжі — насправді запах, тому при нежиті їжа прісна" },
+      ] },
+    ] },
+];
+
 const CIRCULATORY_PARTS = [
   { group: "Два кола кровообігу", items: [
     { name: "Велике коло", latin: "circulus sanguinis major", note: "лівий шлуночок → аорта → усе тіло → порожнисті вени → праве передсердя. Несе кисень органам" },
@@ -5313,6 +5417,33 @@ function BrainView() {
       caption="Сагітальний розріз. Номери на схемі відповідають списку"
       sections={[{ items: BRAIN_PARTS }]}
     />
+  );
+}
+
+function LocomotorView() {
+  return (
+    <AtlasView
+      img="/medicine/joint.svg"
+      alt="Будова суглоба"
+      caption="Розріз суглоба з м'язами-антагоністами. Кістки й м'язи мають власні вкладки — тут те, що їх з'єднує"
+      sections={LOCOMOTOR_PARTS}
+    />
+  );
+}
+
+function SensoryView() {
+  const [view, setView] = useState("eye");
+  const v = SENSORY_VIEWS.find((x) => x.view === view);
+  return (
+    <div>
+      <div className="mx-auto mb-3 flex max-w-sm rounded-full bg-slate-100 p-1">
+        {SENSORY_VIEWS.map((x) => (
+          <button key={x.view} onClick={() => setView(x.view)}
+            className={`flex-1 rounded-full py-1.5 text-xs font-bold transition ${view === x.view ? "bg-teal-600 text-white" : "text-slate-500"}`}>{x.title}</button>
+        ))}
+      </div>
+      <AtlasView key={view} img={v.img} alt={`Будова: ${v.title.toLowerCase()}`} caption={v.caption} sections={v.sections} />
+    </div>
   );
 }
 
@@ -5485,6 +5616,12 @@ function MedicineSection() {
           <button onClick={() => setTab("heart")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "heart" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             ❤️ Серце
           </button>
+          <button onClick={() => setTab("locomotor")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "locomotor" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🦿 Опорно-рухова
+          </button>
+          <button onClick={() => setTab("sensory")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "sensory" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            👁️ Сенсорна
+          </button>
           <button onClick={() => setTab("circulatory")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "circulatory" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             🩸 Кровоносна
           </button>
@@ -5516,6 +5653,8 @@ function MedicineSection() {
         {tab === "muscles" && <MuscleView />}
         {tab === "brain" && <BrainView />}
         {tab === "heart" && <HeartView />}
+        {tab === "locomotor" && <LocomotorView />}
+        {tab === "sensory" && <SensoryView />}
         {tab === "circulatory" && <CirculatoryView />}
         {tab === "lymphatic" && <LymphaticView />}
         {tab === "immune" && <ImmuneView />}
@@ -5530,6 +5669,8 @@ function MedicineSection() {
           сечостатева (Aleksandr Kolesnikov, CC BY-SA), нервова (TE, CC BY-SA),
           кровоносна (Mariana Ruiz / Jmarchn, суспільне надбання — підписи перекладено),
           лімфатична (TE, CC BY — підписи перекладено), імунна (NIAID, суспільне надбання — підписи перекладено),
+          суглоб (Madhero88, CC BY-SA — підписи перекладено), око (Rhcastilhos, CC BY-SA),
+          вухо (Chittka &amp; Brockmann, CC BY), шкіра (Madhero88, CC BY-SA),
           ендокринна (SEER / Sundar, CC BY-SA — підписи перекладено українською).
         </p>
       </main>
