@@ -5152,6 +5152,68 @@ const ENDOCRINE_PARTS = [
   ] },
 ];
 
+const CIRCULATORY_PARTS = [
+  { group: "Два кола кровообігу", items: [
+    { name: "Велике коло", latin: "circulus sanguinis major", note: "лівий шлуночок → аорта → усе тіло → порожнисті вени → праве передсердя. Несе кисень органам" },
+    { name: "Мале (легеневе) коло", latin: "circulus sanguinis minor", note: "правий шлуночок → легені → ліве передсердя. Тут кров набирає кисень і скидає вуглекислий газ" },
+    { name: "Ворітна система печінки", latin: "systema portae hepatis", note: "кров від кишечника йде спершу в печінку на «митницю», а вже потім до серця" },
+  ] },
+  { group: "Типи судин", items: [
+    { name: "Артерії", latin: "arteriae", note: "несуть кров ВІД серця; товста пружна стінка тримає тиск. На схемі червоні" },
+    { name: "Вени", latin: "venae", note: "несуть кров ДО серця; тонша стінка й клапани проти зворотного стоку. Сині" },
+    { name: "Капіляри", latin: "vasa capillaria", note: "стінка в одну клітину — саме тут відбувається обмін із тканинами" },
+  ] },
+  { group: "Голова й шия", items: [
+    { name: "Загальна сонна артерія", latin: "a. carotis communis", note: "головна артерія шиї; на ній намацують пульс" },
+    { name: "Внутрішня сонна артерія", latin: "a. carotis interna", note: "живить мозок. Її закупорка — інсульт" },
+    { name: "Зовнішня сонна артерія", latin: "a. carotis externa", note: "живить обличчя, щелепи й шкіру голови" },
+    { name: "Хребтова артерія", latin: "a. vertebralis", note: "піднімається крізь отвори в шийних хребцях до задніх відділів мозку" },
+    { name: "Основна артерія", latin: "a. basilaris", note: "утворена злиттям хребтових; живить стовбур мозку й мозочок" },
+    { name: "Внутрішня яремна вена", latin: "v. jugularis interna", note: "головний відтік крові від мозку" },
+    { name: "Зовнішня яремна вена", latin: "v. jugularis externa", note: "лежить поверхнево; набухає при серцевій недостатності" },
+    { name: "Венозні пазухи", latin: "sinus durae matris", note: "канали в оболонці мозку, куди зливається кров із черепа" },
+  ] },
+  { group: "Тулуб і великі судини", items: [
+    { name: "Аорта", latin: "aorta", note: "найбільша артерія тіла; виходить із лівого шлуночка" },
+    { name: "Низхідна аорта", latin: "aorta descendens", note: "іде вздовж хребта й роздає гілки до органів" },
+    { name: "Верхня порожниста вена", latin: "v. cava superior", note: "збирає кров від голови й рук" },
+    { name: "Нижня порожниста вена", latin: "v. cava inferior", note: "найбільша вена; збирає кров від тулуба й ніг" },
+    { name: "Вінцеві судини", latin: "vasa coronaria", note: "живлять сам серцевий м'яз. Їх закупорка — інфаркт" },
+    { name: "Легеневі артерія і вена", latin: "a. et v. pulmonalis", note: "єдина пара, де артерія несе венозну кров, а вена — артеріальну" },
+    { name: "Черевний стовбур", latin: "truncus coeliacus", note: "коротка гілка аорти до шлунка, печінки й селезінки" },
+    { name: "Верхня брижова артерія", latin: "a. mesenterica superior", note: "живить тонку кишку й праву половину товстої" },
+    { name: "Селезінкові судини", latin: "vasa splenica", note: "до селезінки й підшлункової" },
+    { name: "Ниркові судини", latin: "vasa renalia", note: "крізь нирки за добу проходить уся кров тіла багато разів" },
+    { name: "Печінкова вена", latin: "v. hepatica", note: "виносить кров із печінки в нижню порожнисту вену" },
+    { name: "Ворітна вена печінки", latin: "v. portae hepatis", note: "приносить у печінку кров від кишечника — з усім, що всмокталося" },
+    { name: "Статеві судини", latin: "vasa gonadalia", note: "до яєчників або яєчок" },
+  ] },
+  { group: "Рука", items: [
+    { name: "Підключична артерія і вена", latin: "a. et v. subclavia", note: "початок судин руки; проходять під ключицею" },
+    { name: "Пахвова артерія і вена", latin: "a. et v. axillaris", note: "продовження підключичних у пахвовій ямці" },
+    { name: "Плечова артерія", latin: "a. brachialis", note: "на ній вимірюють тиск манжетою" },
+    { name: "Променева артерія", latin: "a. radialis", note: "та сама, де намацують пульс на зап'ястку" },
+    { name: "Ліктьова артерія", latin: "a. ulnaris", note: "друга артерія передпліччя; разом із променевою утворює дуги долоні" },
+    { name: "Латеральна підшкірна вена", latin: "v. cephalica", note: "іде по зовнішньому краю руки" },
+    { name: "Присередня підшкірна вена", latin: "v. basilica", note: "по внутрішньому краю" },
+    { name: "Серединна ліктьова вена", latin: "v. mediana cubiti", note: "у ліктьовій ямці; саме з неї беруть кров на аналіз" },
+  ] },
+  { group: "Нога", items: [
+    { name: "Загальна клубова артерія і вена", latin: "a. et v. iliaca communis", note: "аорта роздвоюється на них на рівні таза" },
+    { name: "Внутрішня клубова артерія і вена", latin: "a. et v. iliaca interna", note: "живлять органи таза" },
+    { name: "Зовнішня клубова артерія і вена", latin: "a. et v. iliaca externa", note: "переходять у стегнові — до ноги" },
+    { name: "Стегнова артерія і вена", latin: "a. et v. femoralis", note: "магістраль стегна; крізь неї заводять катетер до серця" },
+    { name: "Глибока стегнова артерія", latin: "a. profunda femoris", note: "живить м'язи стегна" },
+    { name: "Підколінна артерія і вена", latin: "a. et v. poplitea", note: "проходять у ямці позаду коліна" },
+    { name: "Передня великогомілкова артерія", latin: "a. tibialis anterior", note: "спереду гомілки; переходить на тил стопи" },
+    { name: "Задня великогомілкова артерія", latin: "a. tibialis posterior", note: "позаду внутрішньої кісточки; там перевіряють пульс на стопі" },
+    { name: "Малогомілкові судини", latin: "vasa fibularia", note: "уздовж малогомілкової кістки" },
+    { name: "Велика підшкірна вена", latin: "v. saphena magna", note: "найдовша вена тіла — від стопи до паху. Саме вона найчастіше варикозить" },
+    { name: "Мала підшкірна вена", latin: "v. saphena parva", note: "по задній поверхні гомілки до підколінної ямки" },
+    { name: "Тильна венозна дуга", latin: "arcus venosus dorsalis", note: "сітка вен на тилі стопи, звідки починаються підшкірні вени" },
+  ] },
+];
+
 const LYMPHATIC_PARTS = [
   { group: "Судини й лімфа", items: [
     { name: "Лімфа", latin: "lympha", note: "рідина, що збирається з тканин; те, що не забрала кров" },
@@ -5250,6 +5312,17 @@ function BrainView() {
       alt="Головний мозок людини, серединний (сагітальний) розріз"
       caption="Сагітальний розріз. Номери на схемі відповідають списку"
       sections={[{ items: BRAIN_PARTS }]}
+    />
+  );
+}
+
+function CirculatoryView() {
+  return (
+    <AtlasView
+      img="/medicine/circulatory.svg"
+      alt="Кровоносна система людини"
+      caption="Червоне — артерії, синє — вени. Виняток лише в легенях, де все навпаки. «а.» — артерія, «в.» — вена"
+      sections={CIRCULATORY_PARTS}
     />
   );
 }
@@ -5412,6 +5485,9 @@ function MedicineSection() {
           <button onClick={() => setTab("heart")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "heart" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             ❤️ Серце
           </button>
+          <button onClick={() => setTab("circulatory")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "circulatory" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🩸 Кровоносна
+          </button>
           <button onClick={() => setTab("lymphatic")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "lymphatic" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             🫧 Лімфатична
           </button>
@@ -5440,6 +5516,7 @@ function MedicineSection() {
         {tab === "muscles" && <MuscleView />}
         {tab === "brain" && <BrainView />}
         {tab === "heart" && <HeartView />}
+        {tab === "circulatory" && <CirculatoryView />}
         {tab === "lymphatic" && <LymphaticView />}
         {tab === "immune" && <ImmuneView />}
         {tab === "nervous" && <NervousView />}
@@ -5451,6 +5528,8 @@ function MedicineSection() {
           Схеми — Wikimedia Commons: скелет, дихальна й травна (LadyofHats, суспільне надбання),
           м'язи (OpenStax, CC BY), серце й мозок (Jmarchn / Lsanabria, CC BY-SA),
           сечостатева (Aleksandr Kolesnikov, CC BY-SA), нервова (TE, CC BY-SA),
+          кровоносна (Mariana Ruiz / Jmarchn, суспільне надбання — підписи перекладено),
+          лімфатична (TE, CC BY — підписи перекладено), імунна (NIAID, суспільне надбання — підписи перекладено),
           ендокринна (SEER / Sundar, CC BY-SA — підписи перекладено українською).
         </p>
       </main>
