@@ -5095,6 +5095,63 @@ const DIGESTIVE_PARTS = [
   ] },
 ];
 
+const NERVOUS_PARTS = [
+  { group: "Центральна нервова система", items: [
+    { name: "Головний мозок", latin: "encephalon" },
+    { name: "Мозочок", latin: "cerebellum" },
+    { name: "Спинний мозок", latin: "medulla spinalis" },
+  ] },
+  { group: "Нервові сплетення", items: [
+    { name: "Плечове сплетення", latin: "plexus brachialis", note: "живить руку" },
+    { name: "Поперекове сплетення", latin: "plexus lumbalis" },
+    { name: "Крижове сплетення", latin: "plexus sacralis", note: "з нього виходить сідничий нерв" },
+  ] },
+  { group: "Нерви руки", items: [
+    { name: "М'язово-шкірний нерв", latin: "n. musculocutaneus" },
+    { name: "Променевий нерв", latin: "n. radialis" },
+    { name: "Серединний нерв", latin: "n. medianus" },
+    { name: "Ліктьовий нерв", latin: "n. ulnaris" },
+  ] },
+  { group: "Нерви тулуба", items: [
+    { name: "Міжреберні нерви", latin: "nn. intercostales" },
+    { name: "Підреберний нерв", latin: "n. subcostalis" },
+    { name: "Клубово-підчеревний нерв", latin: "n. iliohypogastricus" },
+    { name: "Стегново-статевий нерв", latin: "n. genitofemoralis" },
+  ] },
+  { group: "Нерви таза й ноги", items: [
+    { name: "Стегновий нерв", latin: "n. femoralis" },
+    { name: "М'язові гілки стегнового нерва", latin: "rami musculares n. femoralis" },
+    { name: "Замикальний нерв", latin: "n. obturatorius" },
+    { name: "Соромітний нерв", latin: "n. pudendus" },
+    { name: "Сідничий нерв", latin: "n. ischiadicus", note: "найтовщий нерв тіла" },
+    { name: "Підшкірний нерв", latin: "n. saphenus" },
+    { name: "Великогомілковий нерв", latin: "n. tibialis" },
+    { name: "Загальний малогомілковий нерв", latin: "n. fibularis communis" },
+    { name: "Глибокий малогомілковий нерв", latin: "n. fibularis profundus" },
+    { name: "Поверхневий малогомілковий нерв", latin: "n. fibularis superficialis" },
+  ] },
+];
+
+const ENDOCRINE_PARTS = [
+  { group: "Голова", items: [
+    { name: "Гіпофіз", latin: "hypophysis", note: "керує роботою решти залоз" },
+    { name: "Шишкоподібна залоза (епіфіз)", latin: "glandula pinealis", note: "мелатонін, ритм сну" },
+  ] },
+  { group: "Шия і грудна клітка", items: [
+    { name: "Щитоподібна залоза", latin: "glandula thyroidea", note: "обмін речовин" },
+    { name: "Прищитоподібні залози", latin: "glandulae parathyroideae", note: "обмін кальцію; на схемі не показані — лежать позаду щитоподібної" },
+    { name: "Тимус (загруднинна залоза)", latin: "thymus", note: "дозрівання Т-лімфоцитів; з віком зменшується" },
+  ] },
+  { group: "Черевна порожнина", items: [
+    { name: "Наднирники", latin: "glandulae suprarenales", note: "кортизол, адреналін" },
+    { name: "Підшлункова залоза", latin: "pancreas", note: "інсулін і глюкагон" },
+  ] },
+  { group: "Статеві залози", items: [
+    { name: "Яєчники", latin: "ovaria", note: "естрогени, прогестерон" },
+    { name: "Яєчка", latin: "testes", note: "тестостерон" },
+  ] },
+];
+
 /* image + legend list; `n` renders as a numbered chip when the drawing is numbered */
 function AtlasView({ img, alt, caption, sections, wide }) {
   const [sel, setSel] = useState(null);
@@ -5143,6 +5200,28 @@ function BrainView() {
       alt="Головний мозок людини, серединний (сагітальний) розріз"
       caption="Сагітальний розріз. Номери на схемі відповідають списку"
       sections={[{ items: BRAIN_PARTS }]}
+    />
+  );
+}
+
+function NervousView() {
+  return (
+    <AtlasView
+      img="/medicine/nervous.svg"
+      alt="Нервова система людини"
+      caption="Головний і спинний мозок — центральна частина; нерви, що відходять від них, — периферійна"
+      sections={NERVOUS_PARTS}
+    />
+  );
+}
+
+function EndocrineView() {
+  return (
+    <AtlasView
+      img="/medicine/endocrine.svg"
+      alt="Ендокринні залози людини"
+      caption="Ліворуч на схемі — чоловіче тіло, праворуч — жіноче; решта залоз спільні"
+      sections={ENDOCRINE_PARTS}
     />
   );
 }
@@ -5260,6 +5339,12 @@ function MedicineSection() {
           <button onClick={() => setTab("heart")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "heart" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             ❤️ Серце
           </button>
+          <button onClick={() => setTab("nervous")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "nervous" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            ⚡ Нервова
+          </button>
+          <button onClick={() => setTab("endocrine")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "endocrine" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🧪 Ендокринна
+          </button>
           <button onClick={() => setTab("respiratory")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "respiratory" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             🫁 Дихальна
           </button>
@@ -5276,9 +5361,17 @@ function MedicineSection() {
         {tab === "muscles" && <MuscleView />}
         {tab === "brain" && <BrainView />}
         {tab === "heart" && <HeartView />}
+        {tab === "nervous" && <NervousView />}
+        {tab === "endocrine" && <EndocrineView />}
         {tab === "respiratory" && <RespiratoryView />}
         {tab === "digestive" && <DigestiveView />}
         {tab === "urogenital" && <UrogenitalView />}
+        <p className="mt-6 px-2 text-center text-[11px] leading-relaxed text-slate-400">
+          Схеми — Wikimedia Commons: скелет, дихальна й травна (LadyofHats, суспільне надбання),
+          м'язи (OpenStax, CC BY), серце й мозок (Jmarchn / Lsanabria, CC BY-SA),
+          сечостатева (Aleksandr Kolesnikov, CC BY-SA), нервова (TE, CC BY-SA),
+          ендокринна (SEER / Sundar, CC BY-SA — підписи перекладено українською).
+        </p>
       </main>
     </div>
   );
