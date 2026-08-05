@@ -4556,54 +4556,54 @@ const SKELETON_GROUPS = [
       {
         title: "Мозковий череп — neurocranium (8)",
         bones: [
-          { id: "skull", name: "Лобова", latin: "os frontale", count: 1 },
-          { id: "skull", name: "Тім'яна", latin: "os parietale", count: 2 },
-          { id: "skull", name: "Потилична", latin: "os occipitale", count: 1 },
-          { id: "skull", name: "Скронева", latin: "os temporale", count: 2 },
-          { id: "skull", name: "Клиноподібна", latin: "os sphenoidale", count: 1 },
-          { id: "skull", name: "Решітчаста", latin: "os ethmoidale", count: 1 },
+          { id: "skull", name: "Лобова", latin: "os frontale", count: 1, note: "лоб і дах очниць; усередині — лобова пазуха" },
+          { id: "skull", name: "Тім'яна", latin: "os parietale", count: 2, note: "дах черепа" },
+          { id: "skull", name: "Потилична", latin: "os occipitale", count: 1, note: "потилиця; крізь її отвір мозок переходить у спинний" },
+          { id: "skull", name: "Скронева", latin: "os temporale", count: 2, note: "скроня; усередині сховані слухові й рівноважні органи" },
+          { id: "skull", name: "Клиноподібна", latin: "os sphenoidale", count: 1, note: "у центрі основи черепа; на ній лежить гіпофіз" },
+          { id: "skull", name: "Решітчаста", latin: "os ethmoidale", count: 1, note: "між очницями; крізь її отвори йдуть нюхові нитки" },
         ],
       },
       {
         title: "Лицевий череп — viscerocranium (14)",
         bones: [
-          { id: "skull", name: "Верхня щелепа", latin: "maxilla", count: 2 },
-          { id: "skull", name: "Піднебінна", latin: "os palatinum", count: 2 },
-          { id: "skull", name: "Вилична", latin: "os zygomaticum", count: 2 },
-          { id: "skull", name: "Носова", latin: "os nasale", count: 2 },
-          { id: "skull", name: "Слізна", latin: "os lacrimale", count: 2 },
-          { id: "skull", name: "Нижня носова раковина", latin: "concha nasalis inferior", count: 2 },
-          { id: "skull", name: "Леміш", latin: "vomer", count: 1 },
-          { id: "mandible", name: "Нижня щелепа", latin: "mandibula", count: 1 },
+          { id: "skull", name: "Верхня щелепа", latin: "maxilla", count: 2, note: "верхня щелепа з верхніми зубами; тримає гайморову пазуху" },
+          { id: "skull", name: "Піднебінна", latin: "os palatinum", count: 2, note: "задня частина твердого піднебіння" },
+          { id: "skull", name: "Вилична", latin: "os zygomaticum", count: 2, note: "вилиця — форма обличчя й опора для очниці" },
+          { id: "skull", name: "Носова", latin: "os nasale", count: 2, note: "спинка носа" },
+          { id: "skull", name: "Слізна", latin: "os lacrimale", count: 2, note: "найтендітніша кістка; у ній жолоб для сльозової протоки" },
+          { id: "skull", name: "Нижня носова раковина", latin: "concha nasalis inferior", count: 2, note: "завиток у носі, що завихрює й зігріває повітря" },
+          { id: "skull", name: "Леміш", latin: "vomer", count: 1, note: "сошник — задня частина носової перегородки" },
+          { id: "mandible", name: "Нижня щелепа", latin: "mandibula", count: 1, note: "єдина рухома кістка черепа — нею жуємо" },
         ],
       },
       {
         title: "Слухові кісточки — ossicula auditus (6)",
         bones: [
-          { id: "skull", name: "Молоточок", latin: "malleus", count: 2 },
-          { id: "skull", name: "Ковадло", latin: "incus", count: 2 },
-          { id: "skull", name: "Стремінце", latin: "stapes", count: 2 },
+          { id: "skull", name: "Молоточок", latin: "malleus", count: 2, note: "молоточок передає коливання з барабанної перетинки" },
+          { id: "skull", name: "Ковадло", latin: "incus", count: 2, note: "ковадло — середня ланка ланцюжка" },
+          { id: "skull", name: "Стремінце", latin: "stapes", count: 2, note: "стремінце, найменша кістка тіла; передає звук у внутрішнє вухо" },
         ],
       },
       {
         title: "Під'язикова кістка (1)",
-        bones: [{ id: "hyoid", name: "Під'язикова кістка", latin: "os hyoideum", count: 1 }],
+        bones: [{ id: "hyoid", name: "Під'язикова кістка", latin: "os hyoideum", count: 1, note: "єдина кістка, що ні з чим не з’єднана — висить на м’язах, тримає язик і гортань" }],
       },
       {
         title: "Хребет — columna vertebralis (26)",
         bones: [
-          { id: "cervical", name: "Шийні хребці (С1 — atlas, С2 — axis)", latin: "vertebrae cervicales", count: 7 },
-          { id: "thoracic", name: "Грудні хребці", latin: "vertebrae thoracicae", count: 12 },
-          { id: "lumbar", name: "Поперекові хребці", latin: "vertebrae lumbales", count: 5 },
-          { id: "sacrum", name: "Крижова кістка", latin: "os sacrum", count: 1 },
-          { id: "coccyx", name: "Куприк", latin: "os coccygis", count: 1 },
+          { id: "cervical", name: "Шийні хребці (С1 — atlas, С2 — axis)", latin: "vertebrae cervicales", count: 7, note: "тримають голову; C1 дозволяє кивати, C2 — обертати" },
+          { id: "thoracic", name: "Грудні хребці", latin: "vertebrae thoracicae", count: 12, note: "до них кріпляться ребра" },
+          { id: "lumbar", name: "Поперекові хребці", latin: "vertebrae lumbales", count: 5, note: "найбільші й найміцніші — на них лягає вага тіла" },
+          { id: "sacrum", name: "Крижова кістка", latin: "os sacrum", count: 1, note: "п’ять зрощених хребців; вклинена між тазовими кістками" },
+          { id: "coccyx", name: "Куприк", latin: "os coccygis", count: 1, note: "залишок хвоста; місце кріплення м’язів тазового дна" },
         ],
       },
       {
         title: "Грудна клітка — thorax (25)",
         bones: [
-          { id: "ribs", name: "Ребра", latin: "costae", count: "24 (12 пар)" },
-          { id: "sternum", name: "Груднина", latin: "sternum", count: 1 },
+          { id: "ribs", name: "Ребра", latin: "costae", count: "24 (12 пар)", note: "захищають серце й легені та рухаються при диханні" },
+          { id: "sternum", name: "Груднина", latin: "sternum", count: 1, note: "до неї спереду сходяться ребра; тут беруть пункцію кісткового мозку" },
         ],
       },
     ],
@@ -4614,19 +4614,19 @@ const SKELETON_GROUPS = [
       {
         title: "Пояс верхньої кінцівки (4)",
         bones: [
-          { id: "clavicle", name: "Ключиця", latin: "clavicula", count: 2 },
-          { id: "scapula", name: "Лопатка", latin: "scapula", count: 2 },
+          { id: "clavicle", name: "Ключиця", latin: "clavicula", count: 2, note: "єдина кістяна розпірка між рукою і тулубом; ламається найчастіше" },
+          { id: "scapula", name: "Лопатка", latin: "scapula", count: 2, note: "ковзає по спині; тримає плечовий суглоб" },
         ],
       },
       {
         title: "Вільна верхня кінцівка (60)",
         bones: [
-          { id: "humerus", name: "Плечова", latin: "humerus", count: 2 },
-          { id: "ulna", name: "Ліктьова", latin: "ulna", count: 2 },
-          { id: "radius", name: "Променева", latin: "radius", count: 2 },
-          { id: "carpus", name: "Кістки зап'ястка", latin: "ossa carpi", count: 16 },
-          { id: "metacarpus", name: "П'ясткові", latin: "ossa metacarpi", count: 10 },
-          { id: "handPhalanges", name: "Фаланги пальців", latin: "phalanges", count: 28 },
+          { id: "humerus", name: "Плечова", latin: "humerus", count: 2, note: "плече; поруч із нею йде променевий нерв" },
+          { id: "ulna", name: "Ліктьова", latin: "ulna", count: 2, note: "з боку мізинця; утворює лікоть" },
+          { id: "radius", name: "Променева", latin: "radius", count: 2, note: "з боку великого пальця; обертається навколо ліктьової — так ми крутимо долоню" },
+          { id: "carpus", name: "Кістки зап'ястка", latin: "ossa carpi", count: 16, note: "вісім дрібних кісточок у два ряди — дають кисті гнучкість" },
+          { id: "metacarpus", name: "П'ясткові", latin: "ossa metacarpi", count: 10, note: "кістки долоні, по одній на палець" },
+          { id: "handPhalanges", name: "Фаланги пальців", latin: "phalanges", count: 28, note: "кісточки пальців; великий палець протиставляється решті — звідси точний хват" },
         ],
         detail: {
           id: "carpus", kind: "pairs",
@@ -4647,13 +4647,13 @@ const SKELETON_GROUPS = [
       {
         title: "Вільна нижня кінцівка (60)",
         bones: [
-          { id: "femur", name: "Стегнова", latin: "femur", count: 2 },
-          { id: "patella", name: "Наколінок", latin: "patella", count: 2 },
-          { id: "tibia", name: "Великогомілкова", latin: "tibia", count: 2 },
-          { id: "fibula", name: "Малогомілкова", latin: "fibula", count: 2 },
-          { id: "tarsus", name: "Кістки заплесна", latin: "ossa tarsi", count: 14 },
-          { id: "metatarsus", name: "Плеснові", latin: "ossa metatarsi", count: 10 },
-          { id: "footPhalanges", name: "Фаланги пальців", latin: "phalanges", count: 28 },
+          { id: "femur", name: "Стегнова", latin: "femur", count: 2, note: "найдовша й найміцніша кістка тіла" },
+          { id: "patella", name: "Наколінок", latin: "patella", count: 2, note: "колінна чашечка — важіль, що підсилює розгинання коліна" },
+          { id: "tibia", name: "Великогомілкова", latin: "tibia", count: 2, note: "несе всю вагу; спереду прикрита лише шкірою" },
+          { id: "fibula", name: "Малогомілкова", latin: "fibula", count: 2, note: "ваги майже не несе; дає опору м’язам і бічну кісточку" },
+          { id: "tarsus", name: "Кістки заплесна", latin: "ossa tarsi", count: 14, note: "сім кісток п’яти й склепіння стопи" },
+          { id: "metatarsus", name: "Плеснові", latin: "ossa metatarsi", count: 10, note: "кістки склепіння стопи; п’ята з них часто ламається" },
+          { id: "footPhalanges", name: "Фаланги пальців", latin: "phalanges", count: 28, note: "пальці стопи; допомагають відштовхуватись і тримати рівновагу" },
         ],
         detail: {
           id: "tarsus", kind: "list",
@@ -4856,69 +4856,69 @@ const MUSCLE_ATLAS_GROUPS = [
   {
     title: "Вигляд спереду", view: "front",
     muscles: [
-      { name: "Надчерепний м'яз", latin: "m. epicranius" },
-      { name: "Груднинно-ключично-соскоподібний м'яз", latin: "m. sternocleidomastoideus" },
-      { name: "Трапецієподібний м'яз", latin: "m. trapezius" },
-      { name: "Дельтоподібний м'яз", latin: "m. deltoideus" },
-      { name: "Великий грудний м'яз", latin: "m. pectoralis major" },
-      { name: "Малий грудний м'яз", latin: "m. pectoralis minor" },
-      { name: "Передній зубчастий м'яз", latin: "m. serratus anterior" },
-      { name: "Прямий м'яз живота", latin: "m. rectus abdominis" },
-      { name: "Зовнішній косий м'яз живота", latin: "m. obliquus externus abdominis" },
-      { name: "Двоголовий м'яз плеча", latin: "m. biceps brachii" },
-      { name: "Плечовий м'яз", latin: "m. brachialis" },
-      { name: "Плечопроменевий м'яз", latin: "m. brachioradialis" },
-      { name: "Круглий пронатор", latin: "m. pronator teres" },
-      { name: "Променевий згинач зап'ястя", latin: "m. flexor carpi radialis" },
-      { name: "Гребінний м'яз", latin: "m. pectineus" },
-      { name: "Довгий привідний м'яз", latin: "m. adductor longus" },
-      { name: "М'яз-натягувач широкої фасції стегна", latin: "m. tensor fasciae latae" },
-      { name: "Клубово-поперековий м'яз", latin: "m. iliopsoas" },
-      { name: "Кравецький м'яз", latin: "m. sartorius" },
-      { name: "Прямий м'яз стегна", latin: "m. rectus femoris" },
-      { name: "Тонкий м'яз", latin: "m. gracilis" },
-      { name: "Латеральний широкий м'яз", latin: "m. vastus lateralis" },
-      { name: "Присередній широкий м'яз", latin: "m. vastus medialis" },
-      { name: "Довгий малогомілковий м'яз", latin: "m. peroneus longus" },
-      { name: "Передній великогомілковий м'яз", latin: "m. tibialis anterior" },
-      { name: "Камбалоподібний і литковий м'язи", latin: "m. soleus et gastrocnemius" },
+      { name: "Надчерепний м'яз", latin: "m. epicranius", note: "піднімає брови і зморщує лоб" },
+      { name: "Груднинно-ключично-соскоподібний м'яз", latin: "m. sternocleidomastoideus", note: "повертає й нахиляє голову; випинає при напруженні шиї" },
+      { name: "Трапецієподібний м'яз", latin: "m. trapezius", note: "знизує плечима й тримає лопатку; болить від сидіння за столом" },
+      { name: "Дельтоподібний м'яз", latin: "m. deltoideus", note: "відводить руку вбік; надає плечу округлої форми" },
+      { name: "Великий грудний м'яз", latin: "m. pectoralis major", note: "приводить руку до грудей — рух «обійняти», відтискання" },
+      { name: "Малий грудний м'яз", latin: "m. pectoralis minor", note: "лежить під великим; тягне лопатку вперед і вниз" },
+      { name: "Передній зубчастий м'яз", latin: "m. serratus anterior", note: "притискає лопатку до ребер; при слабкості лопатка відстовбурчується" },
+      { name: "Прямий м'яз живота", latin: "m. rectus abdominis", note: "згинає тулуб — той самий «прес» із кубиками" },
+      { name: "Зовнішній косий м'яз живота", latin: "m. obliquus externus abdominis", note: "нахиляє й скручує тулуб убік" },
+      { name: "Двоголовий м'яз плеча", latin: "m. biceps brachii", note: "згинає лікоть і повертає долоню догори" },
+      { name: "Плечовий м'яз", latin: "m. brachialis", note: "справжній згинач ліктя — працює під біцепсом" },
+      { name: "Плечопроменевий м'яз", latin: "m. brachioradialis", note: "згинає лікоть, коли долоня «ребром»" },
+      { name: "Круглий пронатор", latin: "m. pronator teres", note: "повертає передпліччя долонею вниз" },
+      { name: "Променевий згинач зап'ястя", latin: "m. flexor carpi radialis", note: "згинає кисть у зап’ястку" },
+      { name: "Гребінний м'яз", latin: "m. pectineus", note: "приводить і згинає стегно" },
+      { name: "Довгий привідний м'яз", latin: "m. adductor longus", note: "зводить ноги докупи; часто травмується у футболі" },
+      { name: "М'яз-натягувач широкої фасції стегна", latin: "m. tensor fasciae latae", note: "натягує бічну стрічку стегна, стабілізує коліно при ходьбі" },
+      { name: "Клубово-поперековий м'яз", latin: "m. iliopsoas", note: "головний згинач стегна — піднімає коліно; скорочується від сидіння" },
+      { name: "Кравецький м'яз", latin: "m. sartorius", note: "найдовший м’яз тіла; закидає ногу на ногу" },
+      { name: "Прямий м'яз стегна", latin: "m. rectus femoris", note: "розгинає коліно й згинає стегно — єдиний із чотириголового йде через два суглоби" },
+      { name: "Тонкий м'яз", latin: "m. gracilis", note: "тонкий приводний м’яз уздовж внутрішньої поверхні стегна" },
+      { name: "Латеральний широкий м'яз", latin: "m. vastus lateralis", note: "зовнішня голівка чотириголового; розгинає коліно" },
+      { name: "Присередній широкий м'яз", latin: "m. vastus medialis", note: "внутрішня голівка; тримає надколінок від зміщення" },
+      { name: "Довгий малогомілковий м'яз", latin: "m. peroneus longus", note: "відводить стопу назовні й підтримує склепіння" },
+      { name: "Передній великогомілковий м'яз", latin: "m. tibialis anterior", note: "тягне стопу вгору; при слабкості стопа шльопає" },
+      { name: "Камбалоподібний і литковий м'язи", latin: "m. soleus et gastrocnemius", note: "литка: стають навшпиньки й штовхають тіло вперед. Ще й «другe серце» — женуть кров угору" },
     ],
   },
   {
     title: "Вигляд ззаду", view: "back",
     muscles: [
-      { name: "Надчерепний м'яз", latin: "m. epicranius" },
-      { name: "Сухожильний шолом", latin: "galea aponeurotica" },
-      { name: "Ремінний м'яз голови", latin: "m. splenius capitis" },
-      { name: "М'яз-підіймач лопатки", latin: "m. levator scapulae" },
-      { name: "Ромбоподібний м'яз", latin: "m. rhomboideus" },
-      { name: "Трапецієподібний м'яз", latin: "m. trapezius" },
-      { name: "Надостний м'яз", latin: "m. supraspinatus" },
-      { name: "Малий круглий м'яз", latin: "m. teres minor" },
-      { name: "Підостний м'яз", latin: "m. infraspinatus" },
-      { name: "Великий круглий м'яз", latin: "m. teres major" },
-      { name: "Дельтоподібний м'яз", latin: "m. deltoideus" },
-      { name: "Найширший м'яз спини", latin: "m. latissimus dorsi" },
-      { name: "Триголовий м'яз плеча", latin: "m. triceps brachii" },
-      { name: "Плечопроменевий м'яз", latin: "m. brachioradialis" },
-      { name: "Променевий розгинач зап'ястя", latin: "m. extensor carpi radialis" },
-      { name: "Розгинач пальців", latin: "m. extensor digitorum" },
-      { name: "Ліктьовий розгинач зап'ястя", latin: "m. extensor carpi ulnaris" },
-      { name: "Ліктьовий згинач зап'ястя", latin: "m. flexor carpi ulnaris" },
-      { name: "Нижній задній зубчастий м'яз", latin: "m. serratus posterior inferior" },
-      { name: "Зовнішній косий м'яз живота", latin: "m. obliquus externus abdominis" },
-      { name: "Середній сідничний м'яз", latin: "m. gluteus medius" },
-      { name: "Великий сідничний м'яз", latin: "m. gluteus maximus" },
-      { name: "Малий сідничний м'яз", latin: "m. gluteus minimus" },
-      { name: "Близнюкові м'язи", latin: "mm. gemelli" },
-      { name: "Двоголовий м'яз стегна", latin: "m. biceps femoris" },
-      { name: "Півсухожилковий м'яз", latin: "m. semitendinosus" },
-      { name: "Півперетинчастий м'яз", latin: "m. semimembranosus" },
-      { name: "Тонкий м'яз", latin: "m. gracilis" },
-      { name: "Довгий малогомілковий м'яз", latin: "m. peroneus longus" },
-      { name: "Литковий м'яз", latin: "m. gastrocnemius" },
-      { name: "Камбалоподібний м'яз", latin: "m. soleus" },
-      { name: "Задній великогомілковий м'яз", latin: "m. tibialis posterior" },
+      { name: "Надчерепний м'яз", latin: "m. epicranius", note: "піднімає брови і зморщує лоб" },
+      { name: "Сухожильний шолом", latin: "galea aponeurotica", note: "сухожильний шолом — розтягнута пластина, що з’єднує лобову й потиличну частини" },
+      { name: "Ремінний м'яз голови", latin: "m. splenius capitis", note: "розгинає й повертає голову назад" },
+      { name: "М'яз-підіймач лопатки", latin: "m. levator scapulae", note: "піднімає лопатку; від напруження болить основа шиї" },
+      { name: "Ромбоподібний м'яз", latin: "m. rhomboideus", note: "зводить лопатки до хребта — «розправити плечі»" },
+      { name: "Трапецієподібний м'яз", latin: "m. trapezius", note: "знизує плечима й тримає лопатку; болить від сидіння за столом" },
+      { name: "Надостний м'яз", latin: "m. supraspinatus", note: "починає відведення руки; часто рветься в спортсменів" },
+      { name: "Малий круглий м'яз", latin: "m. teres minor", note: "обертає плече назовні; частина ротаторної манжети" },
+      { name: "Підостний м'яз", latin: "m. infraspinatus", note: "обертає плече назовні" },
+      { name: "Великий круглий м'яз", latin: "m. teres major", note: "приводить і обертає плече всередину" },
+      { name: "Дельтоподібний м'яз", latin: "m. deltoideus", note: "відводить руку вбік; надає плечу округлої форми" },
+      { name: "Найширший м'яз спини", latin: "m. latissimus dorsi", note: "тягне руку вниз і назад — підтягування, гребля" },
+      { name: "Триголовий м'яз плеча", latin: "m. triceps brachii", note: "розгинає лікоть — протилежність біцепсу" },
+      { name: "Плечопроменевий м'яз", latin: "m. brachioradialis", note: "згинає лікоть, коли долоня «ребром»" },
+      { name: "Променевий розгинач зап'ястя", latin: "m. extensor carpi radialis", note: "розгинає кисть; перенапруження — «лікоть тенісиста»" },
+      { name: "Розгинач пальців", latin: "m. extensor digitorum", note: "розгинає пальці" },
+      { name: "Ліктьовий розгинач зап'ястя", latin: "m. extensor carpi ulnaris", note: "розгинає й відводить кисть у бік мізинця" },
+      { name: "Ліктьовий згинач зап'ястя", latin: "m. flexor carpi ulnaris", note: "згинає кисть у бік мізинця" },
+      { name: "Нижній задній зубчастий м'яз", latin: "m. serratus posterior inferior", note: "опускає нижні ребра при видиху" },
+      { name: "Зовнішній косий м'яз живота", latin: "m. obliquus externus abdominis", note: "нахиляє й скручує тулуб убік" },
+      { name: "Середній сідничний м'яз", latin: "m. gluteus medius", note: "утримує таз рівно, коли стоїмо на одній нозі" },
+      { name: "Великий сідничний м'яз", latin: "m. gluteus maximus", note: "найпотужніший м’яз тіла; випрямляє стегно — вставання, сходи, біг" },
+      { name: "Малий сідничний м'яз", latin: "m. gluteus minimus", note: "разом із середнім відводить стегно" },
+      { name: "Близнюкові м'язи", latin: "mm. gemelli", note: "дрібні м’язи, що обертають стегно назовні" },
+      { name: "Двоголовий м'яз стегна", latin: "m. biceps femoris", note: "задня поверхня стегна: згинає коліно. Тягнеться при нахилі до підлоги" },
+      { name: "Півсухожилковий м'яз", latin: "m. semitendinosus", note: "згинає коліно й розгинає стегно" },
+      { name: "Півперетинчастий м'яз", latin: "m. semimembranosus", note: "разом із півсухожилковим утворює задню групу стегна" },
+      { name: "Тонкий м'яз", latin: "m. gracilis", note: "тонкий приводний м’яз уздовж внутрішньої поверхні стегна" },
+      { name: "Довгий малогомілковий м'яз", latin: "m. peroneus longus", note: "відводить стопу назовні й підтримує склепіння" },
+      { name: "Литковий м'яз", latin: "m. gastrocnemius", note: "литковий; видно рельєфом, працює при випрямленому коліні" },
+      { name: "Камбалоподібний м'яз", latin: "m. soleus", note: "камбалоподібний, лежить під литковим; тримає нас стоячи" },
+      { name: "Задній великогомілковий м'яз", latin: "m. tibialis posterior", note: "підтримує склепіння стопи; при слабкості — плоскостопість" },
     ],
   },
 ];
@@ -4928,207 +4928,207 @@ const MUSCLE_ATLAS_GROUPS = [
    we deliberately don't re-point at the drawing ourselves, because a hotspot
    nudged onto the wrong structure is worse than none in a medical reference. */
 const BRAIN_PARTS = [
-  { n: 1, name: "Великий мозок", latin: "cerebrum", note: "об'єднує 2 і 3" },
-  { n: 2, name: "Кінцевий мозок", latin: "telencephalon" },
-  { n: 3, name: "Проміжний мозок", latin: "diencephalon" },
-  { n: 4, name: "Стовбур головного мозку", latin: "truncus encephali", note: "об'єднує 5, 6 і 7" },
-  { n: 5, name: "Середній мозок", latin: "mesencephalon" },
-  { n: 6, name: "Міст", latin: "pons" },
-  { n: 7, name: "Довгастий мозок", latin: "medulla oblongata" },
-  { n: 8, name: "Мозочок", latin: "cerebellum" },
-  { n: 9, name: "Спинний мозок", latin: "medulla spinalis" },
+  { n: 1, name: "Великий мозок", latin: "cerebrum", note: "об'єднує 2 і 3. Усе свідоме: думки, мова, пам'ять, рухи за власним бажанням" },
+  { n: 2, name: "Кінцевий мозок", latin: "telencephalon", note: "дві півкулі з корою — саме тут ухвалюються рішення й зберігається пам'ять" },
+  { n: 3, name: "Проміжний мозок", latin: "diencephalon", note: "таламус пропускає крізь себе всі відчуття, гіпоталамус керує голодом, спрагою, температурою й гормонами" },
+  { n: 4, name: "Стовбур головного мозку", latin: "truncus encephali", note: "об'єднує 5, 6 і 7. Тримає життя без нашої участі — дихання й серцебиття" },
+  { n: 5, name: "Середній мозок", latin: "mesencephalon", note: "рефлекси на світло й звук: повернути голову на шум, звузити зіницю" },
+  { n: 6, name: "Міст", latin: "pons", note: "місток між півкулями й мозочком; бере участь у диханні та сні" },
+  { n: 7, name: "Довгастий мозок", latin: "medulla oblongata", note: "центри дихання, серцебиття, кашлю й ковтання. Травма тут смертельна" },
+  { n: 8, name: "Мозочок", latin: "cerebellum", note: "рівновага й злагодженість рухів; завдяки йому рухи плавні, а не смикані" },
+  { n: 9, name: "Спинний мозок", latin: "medulla spinalis", note: "кабель між мозком і тілом; сам замикає прості рефлекси — відсмикнути руку від гарячого" },
 ];
 
 const HEART_PARTS = [
   { group: "Камери", items: [
-    { name: "Праве передсердя", latin: "atrium dextrum" },
-    { name: "Ліве передсердя", latin: "atrium sinistrum" },
-    { name: "Правий шлуночок", latin: "ventriculus dexter" },
-    { name: "Лівий шлуночок", latin: "ventriculus sinister" },
+    { name: "Праве передсердя", latin: "atrium dextrum", note: "приймає відпрацьовану кров з усього тіла" },
+    { name: "Ліве передсердя", latin: "atrium sinistrum", note: "приймає збагачену киснем кров із легень" },
+    { name: "Правий шлуночок", latin: "ventriculus dexter", note: "штовхає кров у легені — недалеко, тому стінка тонша" },
+    { name: "Лівий шлуночок", latin: "ventriculus sinister", note: "жене кров на все тіло; найтовща стінка в серці — саме він створює тиск" },
   ] },
   { group: "Клапани", items: [
-    { name: "Тристулковий клапан", latin: "valva tricuspidalis", note: "праве передсердя → правий шлуночок" },
-    { name: "Клапан легеневого стовбура", latin: "valva trunci pulmonalis" },
-    { name: "Мітральний (двостулковий) клапан", latin: "valva mitralis", note: "ліве передсердя → лівий шлуночок" },
-    { name: "Клапан аорти", latin: "valva aortae" },
+    { name: "Тристулковий клапан", latin: "valva tricuspidalis", note: "праве передсердя → правий шлуночок; не дає крові вернутись назад" },
+    { name: "Клапан легеневого стовбура", latin: "valva trunci pulmonalis", note: "випускає кров до легень і замикається за нею" },
+    { name: "Мітральний (двостулковий) клапан", latin: "valva mitralis", note: "ліве передсердя → лівий шлуночок; найчастіше страждає при вадах" },
+    { name: "Клапан аорти", latin: "valva aortae", note: "випускає кров в аорту. Ляскіт клапанів — це і є два тони серця" },
   ] },
   { group: "Великі судини", items: [
-    { name: "Верхня порожниста вена", latin: "vena cava superior" },
-    { name: "Нижня порожниста вена", latin: "vena cava inferior" },
-    { name: "Легеневий стовбур і легеневі артерії", latin: "truncus pulmonalis, aa. pulmonales" },
-    { name: "Легеневі вени", latin: "venae pulmonales" },
-    { name: "Аорта", latin: "aorta" },
+    { name: "Верхня порожниста вена", latin: "vena cava superior", note: "приносить кров від голови й рук" },
+    { name: "Нижня порожниста вена", latin: "vena cava inferior", note: "приносить кров від тулуба й ніг" },
+    { name: "Легеневий стовбур і легеневі артерії", latin: "truncus pulmonalis, aa. pulmonales", note: "єдині артерії, що несуть венозну кров — до легень по кисень" },
+    { name: "Легеневі вени", latin: "venae pulmonales", note: "єдині вени з артеріальною кров'ю — повертають кисень із легень" },
+    { name: "Аорта", latin: "aorta", note: "найбільша артерія; від неї починаються всі шляхи до органів" },
   ] },
   { group: "Оболонка", items: [
-    { name: "Перикард", latin: "pericardium" },
+    { name: "Перикард", latin: "pericardium", note: "сумка навколо серця; всередині трохи рідини, щоб серце ковзало без тертя" },
   ] },
 ];
 
 const UROGENITAL_VIEWS = [
   { view: "female", title: "Жіноча", img: "/medicine/urogenital_female.png", parts: [
-    { n: "1", name: "Яєчник", latin: "ovarium" },
-    { n: "2", name: "Воронка маткової труби", latin: "infundibulum" },
-    { n: "3", name: "Маткова труба", latin: "tuba uterina" },
-    { n: "4", name: "Матка", latin: "uterus" },
-    { n: "5", name: "Шийка матки", latin: "cervix uteri" },
-    { n: "6", name: "Піхва", latin: "vagina" },
-    { n: "6*", name: "Склепіння піхви", latin: "fornix vaginae" },
-    { n: "7", name: "Сечовий міхур", latin: "vesica urinaria" },
-    { n: "8", name: "Сечівник", latin: "urethra" },
-    { n: "9", name: "Парауретральна залоза", latin: "glandula paraurethralis" },
-    { n: "10", name: "Клітор — голівка й тіло", latin: "clitoris" },
-    { n: "11", name: "Цибулина присінка", latin: "bulbus vestibuli" },
-    { n: "12", name: "Ніжка клітора", latin: "crus clitoridis" },
-    { n: "13", name: "Точка G", latin: "G-zone" },
-    { n: "14", name: "Малі статеві губи", latin: "labia minora" },
-    { n: "15", name: "Великі статеві губи", latin: "labia majora" },
-    { n: "16", name: "Велика присінкова (бартолінова) залоза", latin: "glandula vestibularis major" },
-    { n: "17", name: "Промежина", latin: "perineum" },
-    { n: "18", name: "Ободова кишка", latin: "colon" },
-    { n: "19", name: "Пряма кишка", latin: "rectum" },
-    { n: "20", name: "Анус", latin: "anus" },
-    { n: "a", name: "Лобкова кістка", latin: "os pubis" },
-    { n: "b", name: "Крижова кістка", latin: "os sacrum" },
-    { n: "c", name: "Куприк", latin: "os coccygis" },
+    { n: "1", name: "Яєчник", latin: "ovarium", note: "щомісяця випускає яйцеклітину; виробляє естрогени й прогестерон" },
+    { n: "2", name: "Воронка маткової труби", latin: "infundibulum", note: "бахромою підхоплює яйцеклітину, що вийшла з яєчника" },
+    { n: "3", name: "Маткова труба", latin: "tuba uterina", note: "тут зазвичай відбувається запліднення; війки женуть зародок до матки" },
+    { n: "4", name: "Матка", latin: "uterus", note: "виношує плід; її слизова щомісяця оновлюється — це менструація" },
+    { n: "5", name: "Шийка матки", latin: "cervix uteri", note: "вхід у матку; у пологах розкривається. Місце, звідки беруть мазок на цитологію" },
+    { n: "6", name: "Піхва", latin: "vagina", note: "з'єднує матку із зовнішнім світом; кисле середовище стримує мікробів" },
+    { n: "6*", name: "Склепіння піхви", latin: "fornix vaginae", note: "заглиблення навколо шийки матки" },
+    { n: "7", name: "Сечовий міхур", latin: "vesica urinaria", note: "накопичує сечу; позив з'являється приблизно з 250–300 мл" },
+    { n: "8", name: "Сечівник", latin: "urethra", note: "короткий — близько 4 см, тому цистит у жінок частіший" },
+    { n: "9", name: "Парауретральна залоза", latin: "glandula paraurethralis", note: "залозки навколо сечівника, аналог простати" },
+    { n: "10", name: "Клітор — голівка й тіло", latin: "clitoris", note: "орган із найбільшою густиною нервових закінчень; ззовні видно лише голівку" },
+    { n: "11", name: "Цибулина присінка", latin: "bulbus vestibuli", note: "печериста тканина обабіч входу; набрякає при збудженні" },
+    { n: "12", name: "Ніжка клітора", latin: "crus clitoridis", note: "продовження клітора вглиб, уздовж лобкових кісток" },
+    { n: "13", name: "Точка G", latin: "G-zone", note: "ділянка передньої стінки піхви; імовірно, це внутрішня частина клітора" },
+    { n: "14", name: "Малі статеві губи", latin: "labia minora", note: "прикривають вхід у піхву й сечівник" },
+    { n: "15", name: "Великі статеві губи", latin: "labia majora", note: "зовнішні складки зі шкіри й жиру; механічний захист" },
+    { n: "16", name: "Велика присінкова (бартолінова) залоза", latin: "glandula vestibularis major", note: "зволожує вхід у піхву. Закупорка протоки — бартолініт" },
+    { n: "17", name: "Промежина", latin: "perineum", note: "ділянка між входом у піхву й анусом; у пологах саме тут буває розрив" },
+    { n: "18", name: "Ободова кишка", latin: "colon", note: "показана для орієнтира — лежить позаду матки" },
+    { n: "19", name: "Пряма кишка", latin: "rectum", note: "сусідить із піхвою ззаду" },
+    { n: "20", name: "Анус", latin: "anus", note: "вихід травного каналу" },
+    { n: "a", name: "Лобкова кістка", latin: "os pubis", note: "передня стінка таза; орієнтир для всього, що лежить за нею" },
+    { n: "b", name: "Крижова кістка", latin: "os sacrum", note: "задня стінка таза" },
+    { n: "c", name: "Куприк", latin: "os coccygis", note: "залишок хвоста; до нього кріпляться м'язи тазового дна" },
   ] },
   { view: "male", title: "Чоловіча", img: "/medicine/urogenital_male.png", parts: [
-    { n: "1", name: "Яєчко", latin: "testis" },
-    { n: "2", name: "Придаток яєчка", latin: "epididymis" },
-    { n: "3", name: "Сім'явиносна протока", latin: "ductus deferens" },
-    { n: "4", name: "Простата", latin: "prostata" },
-    { n: "5", name: "Пухирчаста залоза", latin: "glandula vesiculosa" },
-    { n: "6", name: "Сім'явипорскувальна протока", latin: "ductus ejaculatorius" },
-    { n: "7", name: "Бульбоуретральна залоза", latin: "glandula bulbourethralis" },
-    { n: "8", name: "Сечовий міхур", latin: "vesica urinaria" },
-    { n: "9", name: "Сечівник", latin: "urethra" },
-    { n: "10", name: "Губчасте тіло голівки", latin: "corpus spongiosum glandis" },
-    { n: "11", name: "Губчасте тіло", latin: "corpus spongiosum penis" },
-    { n: "12", name: "Печеристе тіло", latin: "corpus cavernosum penis" },
-    { n: "13", name: "Сигмоподібна кишка", latin: "colon sigmoideum" },
-    { n: "14", name: "Пряма кишка", latin: "rectum" },
-    { n: "15", name: "Анус", latin: "anus" },
-    { n: "a", name: "Лобковий симфіз", latin: "symphysis pubica" },
-    { n: "b", name: "Крижова кістка", latin: "os sacrum" },
-    { n: "c", name: "Куприк", latin: "os coccygis" },
+    { n: "1", name: "Яєчко", latin: "testis", note: "виробляє сперматозоїди й тестостерон; лежить у мошонці, бо потребує на 2–3 °C менше" },
+    { n: "2", name: "Придаток яєчка", latin: "epididymis", note: "тут сперматозоїди дозрівають і зберігаються" },
+    { n: "3", name: "Сім'явиносна протока", latin: "ductus deferens", note: "несе сперматозоїди вгору до простати. Саме її перерізають при вазектомії" },
+    { n: "4", name: "Простата", latin: "prostata", note: "додає рідину, що живить сперматозоїди. З віком розростається й тисне на сечівник" },
+    { n: "5", name: "Пухирчаста залоза", latin: "glandula vesiculosa", note: "дає більшу частину об'єму сперми — рідину з фруктозою «на паливо»" },
+    { n: "6", name: "Сім'явипорскувальна протока", latin: "ductus ejaculatorius", note: "коротка протока крізь простату, де все зливається в сечівник" },
+    { n: "7", name: "Бульбоуретральна залоза", latin: "glandula bulbourethralis", note: "виділяє краплю слизу, що нейтралізує залишки сечі в сечівнику" },
+    { n: "8", name: "Сечовий міхур", latin: "vesica urinaria", note: "накопичує сечу до позиву" },
+    { n: "9", name: "Сечівник", latin: "urethra", note: "спільний шлях для сечі й сперми, але не водночас — клапан не пускає" },
+    { n: "10", name: "Губчасте тіло голівки", latin: "corpus spongiosum glandis", note: "чутлива голівка; продовження губчастого тіла" },
+    { n: "11", name: "Губчасте тіло", latin: "corpus spongiosum penis", note: "оточує сечівник і не дає йому перетискатися при ерекції" },
+    { n: "12", name: "Печеристе тіло", latin: "corpus cavernosum penis", note: "два тіла, що наповнюються кров'ю — саме вони дають ерекцію" },
+    { n: "13", name: "Сигмоподібна кишка", latin: "colon sigmoideum", note: "показана для орієнтира — лежить позаду міхура" },
+    { n: "14", name: "Пряма кишка", latin: "rectum", note: "крізь її стінку промацують простату" },
+    { n: "15", name: "Анус", latin: "anus", note: "вихід травного каналу" },
+    { n: "a", name: "Лобковий симфіз", latin: "symphysis pubica", note: "хрящове з'єднання лобкових кісток спереду" },
+    { n: "b", name: "Крижова кістка", latin: "os sacrum", note: "задня стінка таза" },
+    { n: "c", name: "Куприк", latin: "os coccygis", note: "залишок хвоста; місце кріплення м'язів тазового дна" },
   ] },
 ];
 
 const RESPIRATORY_PARTS = [
   { group: "Верхні дихальні шляхи", items: [
-    { name: "Носова порожнина", latin: "cavitas nasi" },
-    { name: "Присінок носа", latin: "vestibulum nasi" },
-    { name: "Лобова пазуха", latin: "sinus frontalis" },
-    { name: "Клиноподібна пазуха", latin: "sinus sphenoidalis" },
-    { name: "Ротова порожнина", latin: "cavitas oris" },
-    { name: "Глотка", latin: "pharynx" },
-    { name: "Надгортанник", latin: "epiglottis" },
-    { name: "Голосова складка", latin: "plica vocalis" },
-    { name: "Щитоподібний хрящ", latin: "cartilago thyroidea" },
-    { name: "Перстенеподібний хрящ", latin: "cartilago cricoidea" },
+    { name: "Носова порожнина", latin: "cavitas nasi", note: "гріє, зволожує й очищає повітря — тому дихати носом здоровіше, ніж ротом" },
+    { name: "Присінок носа", latin: "vestibulum nasi", note: "вхід із волосками, що затримують пил" },
+    { name: "Лобова пазуха", latin: "sinus frontalis", note: "порожнина в кістці; полегшує череп і резонує голос. Запалення — фронтит" },
+    { name: "Клиноподібна пазуха", latin: "sinus sphenoidalis", note: "найглибша пазуха, під основою мозку" },
+    { name: "Ротова порожнина", latin: "cavitas oris", note: "запасний шлях для повітря, коли ніс закладений" },
+    { name: "Глотка", latin: "pharynx", note: "перехрестя: тут перетинаються шляхи повітря та їжі" },
+    { name: "Надгортанник", latin: "epiglottis", note: "кришка, що закриває гортань під час ковтання. Спрацювала невчасно — ми давимось" },
+    { name: "Голосова складка", latin: "plica vocalis", note: "коливається під струменем повітря — так народжується голос" },
+    { name: "Щитоподібний хрящ", latin: "cartilago thyroidea", note: "той самий «кадик»; захищає гортань спереду" },
+    { name: "Перстенеподібний хрящ", latin: "cartilago cricoidea", note: "єдине повне кільце в дихальних шляхах — тримає їх відкритими" },
   ] },
   { group: "Нижні дихальні шляхи", items: [
-    { name: "Трахея", latin: "trachea" },
-    { name: "Кіль трахеї", latin: "carina tracheae", note: "місце поділу на головні бронхи" },
-    { name: "Головні бронхи — лівий і правий", latin: "bronchi principales" },
-    { name: "Проміжний бронх", latin: "bronchus intermedius" },
-    { name: "Часткові (вторинні) бронхи", latin: "bronchi lobares" },
+    { name: "Трахея", latin: "trachea", note: "трубка з хрящовими півкільцями, щоб не спадалася при вдиху" },
+    { name: "Кіль трахеї", latin: "carina tracheae", note: "місце поділу на головні бронхи; дуже чутливе — звідси сильний кашльовий рефлекс" },
+    { name: "Головні бронхи — лівий і правий", latin: "bronchi principales", note: "правий ширший і крутіший, тому проковтнуте частіше потрапляє саме в нього" },
+    { name: "Проміжний бронх", latin: "bronchus intermedius", note: "коротка ділянка правого бронха між верхньою і середньою частками" },
+    { name: "Часткові (вторинні) бронхи", latin: "bronchi lobares", note: "по одному на кожну частку; далі діляться, аж поки не дійдуть до альвеол" },
   ] },
   { group: "Легені", items: [
-    { name: "Верхівка легені", latin: "apex pulmonis" },
-    { name: "Верхня частка", latin: "lobus superior" },
-    { name: "Середня частка", latin: "lobus medius", note: "лише в правій легені" },
-    { name: "Нижня частка", latin: "lobus inferior" },
-    { name: "Горизонтальна щілина", latin: "fissura horizontalis" },
-    { name: "Коса щілина", latin: "fissura obliqua" },
-    { name: "Серцева вирізка", latin: "incisura cardiaca" },
-    { name: "Язичок легені", latin: "lingula pulmonis" },
-    { name: "Діафрагма", latin: "diaphragma" },
+    { name: "Верхівка легені", latin: "apex pulmonis", note: "виступає вище ключиці — тому туди ж часто сідає туберкульоз" },
+    { name: "Верхня частка", latin: "lobus superior", note: "легені поділені щілинами на частки: праворуч три, ліворуч дві" },
+    { name: "Середня частка", latin: "lobus medius", note: "лише в правій легені — ліворуч місце зайняте серцем" },
+    { name: "Нижня частка", latin: "lobus inferior", note: "найбільша; саме вона працює при глибокому вдиху" },
+    { name: "Горизонтальна щілина", latin: "fissura horizontalis", note: "відділяє верхню частку від середньої; є лише праворуч" },
+    { name: "Коса щілина", latin: "fissura obliqua", note: "відділяє нижню частку; є в обох легенях" },
+    { name: "Серцева вирізка", latin: "incisura cardiaca", note: "виїмка в лівій легені, куди вкладається серце" },
+    { name: "Язичок легені", latin: "lingula pulmonis", note: "язикоподібний виступ під серцевою вирізкою" },
+    { name: "Діафрагма", latin: "diaphragma", note: "головний дихальний м'яз: опускається — повітря заходить саме, бо тиск падає" },
   ] },
   { group: "Де відбувається газообмін", items: [
-    { name: "Альвеолярний хід", latin: "ductus alveolaris" },
-    { name: "Альвеолярні мішечки", latin: "sacculi alveolares" },
-    { name: "Альвеоли", latin: "alveoli pulmonis" },
-    { name: "Капіляри", latin: "vasa capillaria" },
-    { name: "Легенева артерія", latin: "arteria pulmonalis", note: "приносить венозну кров" },
-    { name: "Легенева вена", latin: "vena pulmonalis", note: "виносить артеріальну кров" },
+    { name: "Альвеолярний хід", latin: "ductus alveolaris", note: "останній відрізок трубки перед самими мішечками" },
+    { name: "Альвеолярні мішечки", latin: "sacculi alveolares", note: "грона альвеол на кінці ходу" },
+    { name: "Альвеоли", latin: "alveoli pulmonis", note: "бульбашки завтовшки в одну клітину; тут кисень переходить у кров. Їх близько 300 млн" },
+    { name: "Капіляри", latin: "vasa capillaria", note: "обплітають альвеолу сіткою; кров тече в один ряд клітин" },
+    { name: "Легенева артерія", latin: "arteria pulmonalis", note: "приносить венозну кров — по кисень" },
+    { name: "Легенева вена", latin: "vena pulmonalis", note: "виносить артеріальну кров — уже з киснем, до серця" },
   ] },
 ];
 
 const DIGESTIVE_PARTS = [
   { group: "Ротова порожнина", items: [
-    { name: "Піднебіння", latin: "palatum" },
-    { name: "Язичок", latin: "uvula palatina" },
-    { name: "Язик", latin: "lingua" },
-    { name: "Зуби", latin: "dentes" },
+    { name: "Піднебіння", latin: "palatum", note: "відділяє рот від носа, щоб можна було жувати й дихати водночас" },
+    { name: "Язичок", latin: "uvula palatina", note: "затуляє хід у ніс під час ковтання — щоб їжа не пішла в носа" },
+    { name: "Язик", latin: "lingua", note: "перемішує їжу, формує грудку й штовхає її в глотку; плюс смак і мова" },
+    { name: "Зуби", latin: "dentes", note: "механічно подрібнюють — що дрібніше, то легше ферментам дістатися" },
   ] },
   { group: "Слинні залози", items: [
-    { name: "Привушна залоза", latin: "glandula parotidea" },
-    { name: "Піднижньощелепна залоза", latin: "glandula submandibularis" },
-    { name: "Під'язикова залоза", latin: "glandula sublingualis" },
+    { name: "Привушна залоза", latin: "glandula parotidea", note: "найбільша; саме вона набрякає при епідемічному паротиті (свинці)" },
+    { name: "Піднижньощелепна залоза", latin: "glandula submandibularis", note: "дає більшу частину слини в спокої" },
+    { name: "Під'язикова залоза", latin: "glandula sublingualis", note: "найменша; слина змочує їжу й починає розщеплювати крохмаль" },
   ] },
   { group: "Верхній відділ", items: [
-    { name: "Глотка", latin: "pharynx" },
-    { name: "Стравохід", latin: "oesophagus" },
-    { name: "Шлунок", latin: "gaster" },
+    { name: "Глотка", latin: "pharynx", note: "проштовхує грудку далі; тут ковтання стає некерованим рефлексом" },
+    { name: "Стравохід", latin: "oesophagus", note: "жене їжу хвилею м'язів, тому ковтати можна навіть лежачи" },
+    { name: "Шлунок", latin: "gaster", note: "місить їжу й заливає соляною кислотою: вбиває мікробів і розщеплює білки" },
   ] },
   { group: "Тонка кишка", items: [
-    { name: "Дванадцятипала кишка", latin: "duodenum" },
-    { name: "Порожня кишка", latin: "jejunum" },
-    { name: "Клубова кишка", latin: "ileum" },
+    { name: "Дванадцятипала кишка", latin: "duodenum", note: "сюди вливаються жовч і сік підшлункової — головний цех перетравлення" },
+    { name: "Порожня кишка", latin: "jejunum", note: "тут всмоктується більшість поживних речовин" },
+    { name: "Клубова кишка", latin: "ileum", note: "добирає рештки — зокрема вітамін B12 і жовчні кислоти" },
   ] },
   { group: "Товста кишка", items: [
-    { name: "Сліпа кишка", latin: "caecum" },
-    { name: "Червоподібний відросток (апендикс)", latin: "appendix vermiformis" },
-    { name: "Висхідна ободова кишка", latin: "colon ascendens" },
-    { name: "Поперечна ободова кишка", latin: "colon transversum" },
-    { name: "Низхідна ободова кишка", latin: "colon descendens" },
-    { name: "Сигмоподібна кишка", latin: "colon sigmoideum" },
-    { name: "Пряма кишка", latin: "rectum" },
-    { name: "Відхідник", latin: "anus" },
+    { name: "Сліпа кишка", latin: "caecum", note: "початок товстої; сюди впадає тонка кишка" },
+    { name: "Червоподібний відросток (апендикс)", latin: "appendix vermiformis", note: "лімфоїдна тканина й сховок для корисних бактерій. Запалення — апендицит" },
+    { name: "Висхідна ободова кишка", latin: "colon ascendens", note: "іде вгору праворуч; тут починає всмоктуватися вода" },
+    { name: "Поперечна ободова кишка", latin: "colon transversum", note: "перетинає живіт справа наліво" },
+    { name: "Низхідна ободова кишка", latin: "colon descendens", note: "іде вниз ліворуч; вміст дедалі густіший" },
+    { name: "Сигмоподібна кишка", latin: "colon sigmoideum", note: "S-подібна петля перед прямою кишкою" },
+    { name: "Пряма кишка", latin: "rectum", note: "накопичує кал; її розтягнення й дає позив" },
+    { name: "Відхідник", latin: "anus", note: "два жоми: внутрішній мимовільний і зовнішній, підвладний волі" },
   ] },
   { group: "Великі залози травлення", items: [
-    { name: "Печінка", latin: "hepar" },
-    { name: "Жовчний міхур", latin: "vesica biliaris" },
-    { name: "Загальна жовчна протока", latin: "ductus choledochus" },
-    { name: "Підшлункова залоза", latin: "pancreas" },
-    { name: "Панкреатична протока", latin: "ductus pancreaticus" },
+    { name: "Печінка", latin: "hepar", note: "хімічний завод тіла: знешкоджує отрути й ліки, запасає глюкозу, виробляє жовч" },
+    { name: "Жовчний міхур", latin: "vesica biliaris", note: "склад жовчі; вичавлює її, коли надходить жирна їжа" },
+    { name: "Загальна жовчна протока", latin: "ductus choledochus", note: "несе жовч у дванадцятипалу кишку. Закупорка каменем — жовтяниця" },
+    { name: "Підшлункова залоза", latin: "pancreas", note: "ферменти на всі три групи їжі; водночас виробляє інсулін" },
+    { name: "Панкреатична протока", latin: "ductus pancreaticus", note: "виводить сік у кишку — поруч із жовчною протокою" },
   ] },
 ];
 
 const NERVOUS_PARTS = [
   { group: "Центральна нервова система", items: [
-    { name: "Головний мозок", latin: "encephalon" },
-    { name: "Мозочок", latin: "cerebellum" },
-    { name: "Спинний мозок", latin: "medulla spinalis" },
+    { name: "Головний мозок", latin: "encephalon", note: "обробляє все, що надходить, і вирішує, що робити" },
+    { name: "Мозочок", latin: "cerebellum", note: "робить рухи точними й тримає рівновагу" },
+    { name: "Спинний мозок", latin: "medulla spinalis", note: "передає сигнали в обидва боки й сам замикає рефлекси" },
   ] },
   { group: "Нервові сплетення", items: [
-    { name: "Плечове сплетення", latin: "plexus brachialis", note: "живить руку" },
-    { name: "Поперекове сплетення", latin: "plexus lumbalis" },
-    { name: "Крижове сплетення", latin: "plexus sacralis", note: "з нього виходить сідничий нерв" },
+    { name: "Плечове сплетення", latin: "plexus brachialis", note: "вузол, де корінці шиї переплітаються й розходяться нервами в руку" },
+    { name: "Поперекове сплетення", latin: "plexus lumbalis", note: "дає нерви передній поверхні стегна й низу живота" },
+    { name: "Крижове сплетення", latin: "plexus sacralis", note: "з нього виходить сідничий нерв — уся задня поверхня ноги" },
   ] },
   { group: "Нерви руки", items: [
-    { name: "М'язово-шкірний нерв", latin: "n. musculocutaneus" },
-    { name: "Променевий нерв", latin: "n. radialis" },
-    { name: "Серединний нерв", latin: "n. medianus" },
-    { name: "Ліктьовий нерв", latin: "n. ulnaris" },
+    { name: "М'язово-шкірний нерв", latin: "n. musculocutaneus", note: "згинає лікоть — керує біцепсом" },
+    { name: "Променевий нерв", latin: "n. radialis", note: "розгинає кисть. Придавили руку вві сні — кисть звисає («паралич закоханих»)" },
+    { name: "Серединний нерв", latin: "n. medianus", note: "згинає пальці й дає чутливість долоні. Затискається в зап'ястку — тунельний синдром" },
+    { name: "Ліктьовий нерв", latin: "n. ulnaris", note: "мізинець і хват. Той самий нерв, що «б'є струмом», коли вдаритись ліктем" },
   ] },
   { group: "Нерви тулуба", items: [
-    { name: "Міжреберні нерви", latin: "nn. intercostales" },
-    { name: "Підреберний нерв", latin: "n. subcostalis" },
-    { name: "Клубово-підчеревний нерв", latin: "n. iliohypogastricus" },
-    { name: "Стегново-статевий нерв", latin: "n. genitofemoralis" },
+    { name: "Міжреберні нерви", latin: "nn. intercostales", note: "керують міжреберними м'язами; при оперізувальному лишаї болить саме по їхньому ходу" },
+    { name: "Підреберний нерв", latin: "n. subcostalis", note: "іде під останнім ребром до м'язів живота" },
+    { name: "Клубово-підчеревний нерв", latin: "n. iliohypogastricus", note: "чутливість низу живота й пахвинної ділянки" },
+    { name: "Стегново-статевий нерв", latin: "n. genitofemoralis", note: "дає чутливість паху й верху стегна" },
   ] },
   { group: "Нерви таза й ноги", items: [
-    { name: "Стегновий нерв", latin: "n. femoralis" },
-    { name: "М'язові гілки стегнового нерва", latin: "rami musculares n. femoralis" },
-    { name: "Замикальний нерв", latin: "n. obturatorius" },
-    { name: "Соромітний нерв", latin: "n. pudendus" },
-    { name: "Сідничий нерв", latin: "n. ischiadicus", note: "найтовщий нерв тіла" },
-    { name: "Підшкірний нерв", latin: "n. saphenus" },
-    { name: "Великогомілковий нерв", latin: "n. tibialis" },
-    { name: "Загальний малогомілковий нерв", latin: "n. fibularis communis" },
-    { name: "Глибокий малогомілковий нерв", latin: "n. fibularis profundus" },
-    { name: "Поверхневий малогомілковий нерв", latin: "n. fibularis superficialis" },
+    { name: "Стегновий нерв", latin: "n. femoralis", note: "розгинає коліно — без нього нога підкошується" },
+    { name: "М'язові гілки стегнового нерва", latin: "rami musculares n. femoralis", note: "гілочки до чотириголового м'яза стегна" },
+    { name: "Замикальний нерв", latin: "n. obturatorius", note: "зводить ноги докупи — керує привідними м'язами" },
+    { name: "Соромітний нерв", latin: "n. pudendus", note: "промежина й жоми; відповідає за втримання сечі й калу" },
+    { name: "Сідничий нерв", latin: "n. ischiadicus", note: "найтовщий нерв тіла. Защемлення дає простріл від сідниці вниз ногою" },
+    { name: "Підшкірний нерв", latin: "n. saphenus", note: "чутливість внутрішньої поверхні гомілки; рухів не дає" },
+    { name: "Великогомілковий нерв", latin: "n. tibialis", note: "згинає стопу вниз — дозволяє стати навшпиньки" },
+    { name: "Загальний малогомілковий нерв", latin: "n. fibularis communis", note: "лежить поверхнево біля голівки малогомілкової кістки, тому легко травмується" },
+    { name: "Глибокий малогомілковий нерв", latin: "n. fibularis profundus", note: "тягне стопу вгору. Пошкодження — стопа шльопає при ходьбі" },
+    { name: "Поверхневий малогомілковий нерв", latin: "n. fibularis superficialis", note: "відводить стопу назовні й дає чутливість її тилу" },
   ] },
 ];
 
@@ -5149,6 +5149,56 @@ const ENDOCRINE_PARTS = [
   { group: "Статеві залози", items: [
     { name: "Яєчники", latin: "ovaria", note: "естрогени, прогестерон" },
     { name: "Яєчка", latin: "testes", note: "тестостерон" },
+  ] },
+];
+
+const LYMPHATIC_PARTS = [
+  { group: "Судини й лімфа", items: [
+    { name: "Лімфа", latin: "lympha", note: "рідина, що збирається з тканин; те, що не забрала кров" },
+    { name: "Лімфатичні капіляри", latin: "vasa lymphocapillaria", note: "починаються сліпо просто в тканинах і всмоктують надлишок рідини" },
+    { name: "Лімфатичні судини", latin: "vasa lymphatica", note: "несуть лімфу лише в одному напрямку — до серця; мають клапани" },
+    { name: "Грудна протока", latin: "ductus thoracicus", note: "найбільша; збирає лімфу від ніг, живота й лівої половини тіла та вливає її у вену" },
+  ] },
+  { group: "Лімфатичні вузли", items: [
+    { name: "Лімфатичні вузли", latin: "nodi lymphatici", note: "фільтри на шляху лімфи: тут затримуються мікроби, і тут їх «показують» лімфоцитам" },
+    { name: "Шийні вузли", latin: "nodi lymphatici cervicales", note: "збільшуються при ангіні й застуді — звідси «залози на шиї»" },
+    { name: "Пахвові вузли", latin: "nodi lymphatici axillares", note: "збирають лімфу з руки та грудної залози" },
+    { name: "Пахвинні вузли", latin: "nodi lymphatici inguinales", note: "збирають лімфу з ноги й промежини" },
+  ] },
+  { group: "Лімфоїдні органи", items: [
+    { name: "Селезінка", latin: "splen / lien", note: "фільтрує кров, а не лімфу: прибирає старі еритроцити й ловить мікробів у крові" },
+    { name: "Тимус", latin: "thymus", note: "школа Т-лімфоцитів: тут вони вчаться не атакувати власні тканини" },
+    { name: "Мигдалики", latin: "tonsillae", note: "перша застава на вході в горло — зустрічають те, що вдихаємо і ковтаємо" },
+    { name: "Червоний кістковий мозок", latin: "medulla ossium rubra", note: "де народжуються всі клітини крові, зокрема імунні" },
+  ] },
+];
+
+const IMMUNE_PARTS = [
+  { group: "Три рівні захисту", items: [
+    { name: "Бар'єри", latin: "barrierae", note: "шкіра, слиз, шлунковий сік, сльози — не пускають усередину; найдешевший захист" },
+    { name: "Вроджений імунітет", latin: "immunitas innata", note: "діє одразу й однаково проти всіх чужих; це запалення, гарячка, поїдання мікробів" },
+    { name: "Набутий імунітет", latin: "immunitas adaptiva", note: "повільніший, але точний і має пам'ять — саме на ньому працюють щеплення" },
+  ] },
+  { group: "Клітини вродженого імунітету", items: [
+    { name: "Нейтрофіл", latin: "neutrophilus", note: "найчисленніший; першим прибігає в осередок і пожирає бактерії. З нього — гній" },
+    { name: "Макрофаг", latin: "macrophagus", note: "«великий пожирач»: прибирає мікробів і власне сміття, викликає запалення" },
+    { name: "Моноцит", latin: "monocytus", note: "їздить у крові й перетворюється на макрофага, коли виходить у тканину" },
+    { name: "Дендритна клітина", latin: "cellula dendritica", note: "розвідник: ловить чуже й несе показати лімфоцитам у вузол — місток до набутого імунітету" },
+    { name: "Природний кілер (NK)", latin: "lymphocytus NK", note: "вбиває заражені вірусом і пухлинні клітини без попереднього знайомства" },
+    { name: "Еозинофіл", latin: "eosinophilus", note: "проти паразитів; бере участь в алергії" },
+    { name: "Базофіл", latin: "basophilus", note: "виділяє гістамін — звідси набряк, свербіж і почервоніння" },
+    { name: "Тучна клітина", latin: "mastocytus", note: "сидить у тканинах; запускає алергічну реакцію" },
+  ] },
+  { group: "Клітини набутого імунітету", items: [
+    { name: "B-лімфоцит", latin: "lymphocytus B", note: "виробляє антитіла — білки, що прилипають до конкретного мікроба" },
+    { name: "T-хелпер", latin: "lymphocytus T-helper", note: "диригент: вмикає інші клітини. Саме його вражає ВІЛ" },
+    { name: "Цитотоксичний T-лімфоцит", latin: "lymphocytus T-cytotoxicus", note: "вбиває власні клітини, якщо ті заражені" },
+    { name: "Клітини пам'яті", latin: "cellulae memoriae", note: "лишаються після хвороби чи щеплення; удруге відповідь швидша й сильніша" },
+  ] },
+  { group: "Зброя", items: [
+    { name: "Антитіла", latin: "immunoglobulina", note: "мітять мікроба, знешкоджують токсини й склеюють збудників докупи" },
+    { name: "Система комплементу", latin: "systema complementi", note: "каскад білків крові, що продірявлює оболонку бактерії" },
+    { name: "Запалення", latin: "inflammatio", note: "почервоніння, набряк, біль, жар — так тіло зганяє захисні клітини до місця пошкодження" },
   ] },
 ];
 
@@ -5200,6 +5250,28 @@ function BrainView() {
       alt="Головний мозок людини, серединний (сагітальний) розріз"
       caption="Сагітальний розріз. Номери на схемі відповідають списку"
       sections={[{ items: BRAIN_PARTS }]}
+    />
+  );
+}
+
+function LymphaticView() {
+  return (
+    <AtlasView
+      img="/medicine/lymphatic.svg"
+      alt="Лімфатична система людини"
+      caption="Лімфа тече лише в один бік — від тканин до вен шиї; серця для неї немає, її женуть м'язи й дихання"
+      sections={LYMPHATIC_PARTS}
+    />
+  );
+}
+
+function ImmuneView() {
+  return (
+    <AtlasView
+      img="/medicine/immune.svg"
+      alt="Клітини вродженого імунітету"
+      caption="На схемі — клітини вродженого імунітету. Лімфоцити набутого імунітету виглядають як прості круглі клітини й тут не показані"
+      sections={IMMUNE_PARTS}
     />
   );
 }
@@ -5308,7 +5380,8 @@ function MuscleView() {
             className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition ${selIdx === i ? "border-amber-400 bg-amber-50" : "border-transparent bg-white hover:border-slate-200 hover:bg-slate-50"}`}>
             <div className="min-w-0">
               <div className={`text-sm font-semibold ${selIdx === i ? "text-amber-800" : "text-slate-800"}`}>{m.name}</div>
-              <div className="truncate text-xs italic text-slate-400">{m.latin}</div>
+              <div className="text-xs italic text-slate-400">{m.latin}</div>
+              {m.note && <div className="mt-0.5 text-[11px] leading-snug text-slate-400">{m.note}</div>}
             </div>
           </button>
         ))}
@@ -5339,6 +5412,12 @@ function MedicineSection() {
           <button onClick={() => setTab("heart")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "heart" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             ❤️ Серце
           </button>
+          <button onClick={() => setTab("lymphatic")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "lymphatic" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🫧 Лімфатична
+          </button>
+          <button onClick={() => setTab("immune")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "immune" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🛡️ Імунна
+          </button>
           <button onClick={() => setTab("nervous")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "nervous" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             ⚡ Нервова
           </button>
@@ -5361,6 +5440,8 @@ function MedicineSection() {
         {tab === "muscles" && <MuscleView />}
         {tab === "brain" && <BrainView />}
         {tab === "heart" && <HeartView />}
+        {tab === "lymphatic" && <LymphaticView />}
+        {tab === "immune" && <ImmuneView />}
         {tab === "nervous" && <NervousView />}
         {tab === "endocrine" && <EndocrineView />}
         {tab === "respiratory" && <RespiratoryView />}
