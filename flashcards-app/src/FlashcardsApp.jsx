@@ -5793,11 +5793,151 @@ function ChemBrainMap({ chem }) {
   );
 }
 
+const SYNAPSE_STEPS = [
+  { k: "synth", n: "Синтез",
+    t: "Медіатор виробляють ферменти просто в закінченні аксона — з простих речовин, які туди привозять. Дофамін і норадреналін роблять із тирозину, серотонін — із триптофану.",
+    d: "Тому й кажуть, що для серотоніну потрібен триптофан з їжі: без сировини нема з чого робити. Великі пептиди, як ендорфіни, — виняток: їх збирають у тілі клітини й довозять по аксону готовими." },
+  { k: "pack", n: "Пакування",
+    t: "Окремий насос заганяє медіатор усередину пухирців — везикул. В одну везикулу вміщається кілька тисяч молекул.",
+    d: "У цитоплазмі медіатор беззахисний — його розщепили б ферменти. У везикулі він у безпеці й напоготові. Резерпін ламає саме цей насос: везикули лишаються порожніми." },
+  { k: "arrive", n: "Імпульс і кальцій",
+    t: "Добігає нервовий імпульс. Від зміни заряду відкриваються кальцієві канали, і Ca²⁺ заходить усередину закінчення.",
+    d: "Ось тут електричний сигнал стає хімічним. Кальцій — це спусковий гачок: немає кальцію — не буде викиду, хоч би скільки імпульсів прийшло." },
+  { k: "fuse", n: "Злиття з мембраною",
+    t: "Кальцій змушує везикулу підійти до мембрани й злитися з нею. Вона розкривається назовні й вивалює вміст у щілину.",
+    d: "Це і є відповідь на питання «як медіатор потрапляє в щілину»: не просочується, а викидається порційно — цілою везикулою за раз. Ботулотоксин ріже білки, що зшивають везикулу з мембраною, — викид стає неможливим, м'яз не скорочується." },
+  { k: "bind", n: "Перехід і дія",
+    t: "Медіатор перепливає щілину — вона завширшки лише близько 20 нанометрів — і сідає на рецептори навпроти.",
+    d: "Далі можливі два варіанти. Швидкий: рецептор сам є каналом і відкривається за мілісекунду. Повільний: рецептор запускає ланцюжок усередині клітини — довше, зате надовго змінює її поведінку." },
+  { k: "clear", n: "Прибирання",
+    t: "Медіатор треба прибрати зі щілини, інакше сигнал не спиниться. Три шляхи: насос затягує його назад у закінчення, фермент розщеплює просто в щілині, або він просто розпливається.",
+    d: "Найважливіший крок для фармакології. СІЗЗС блокують насос для серотоніну, кокаїн — для дофаміну: медіатор лишається в щілині довше й діє сильніше. Ліки від Альцгеймера гальмують фермент, що розщеплює ацетилхолін." },
+];
+
+function SynapseCycle({ step }) {
+  const k = SYNAPSE_STEPS[step].k;
+  const at = (...ids) => (ids.includes(k) ? 1 : 0.18);
+  const hot = (...ids) => (ids.includes(k) ? "#f59e0b" : "#cbd5e1");
+  return (
+    <svg viewBox="0 0 420 260" className="w-full" role="img" aria-label={`Крок: ${SYNAPSE_STEPS[step].n}`}>
+      {/* пресинаптичне закінчення */}
+      <path d="M40,8 Q40,116 120,116 L300,116 Q380,116 380,8 Z" fill="#f1f5f9" stroke="#94a3b8" strokeWidth="2.5" />
+      <text x="210" y="30" textAnchor="middle" className="fill-slate-400" style={{ fontSize: 11, fontWeight: 700 }}>закінчення аксона</text>
+
+      {/* синтез: молекули з'являються */}
+      <g opacity={at("synth")}>
+        {[[110,58],[132,48],[152,62],[96,74]].map(([x,y],i)=>(
+          <circle key={i} cx={x} cy={y} r="4" fill="#f59e0b" />
+        ))}
+        <text x="90" y="94" className="fill-amber-700" style={{ fontSize: 10, fontWeight: 700 }}>ферменти роблять медіатор</text>
+      </g>
+
+      {/* везикули */}
+      <g opacity={at("pack","arrive","fuse")}>
+        {[[150,70],[196,58],[240,72]].map(([x,y],i)=>(
+          <g key={i}>
+            <circle cx={x} cy={y} r="15" fill="none" stroke={hot("pack")} strokeWidth="2.5" />
+            {[[-5,-4],[5,-3],[0,5],[-4,3],[5,4]].map(([dx,dy],j)=>(
+              <circle key={j} cx={x+dx} cy={y+dy} r="2.4" fill="#f59e0b" opacity={k==="synth"?0.2:0.95} />
+            ))}
+          </g>
+        ))}
+      </g>
+
+      {/* кальцієві канали */}
+      <g opacity={at("arrive","fuse")}>
+        {[86, 334].map((x,i)=>(
+          <g key={i}>
+            <rect x={x-9} y="104" width="18" height="20" rx="5" fill={hot("arrive")} stroke="#64748b" strokeWidth="1.5" />
+            <text x={x} y="98" textAnchor="middle" className="fill-slate-500" style={{ fontSize: 9, fontWeight: 700 }}>Ca²⁺</text>
+            {k === "arrive" && [0,1,2].map(j=>(
+              <circle key={j} cx={x} cy={92 - j*14} r="3.5" fill="#0ea5e9" />
+            ))}
+          </g>
+        ))}
+      </g>
+
+      {/* злиття: везикула розкрита на мембрані */}
+      <g opacity={at("fuse")}>
+        <path d="M186,116 q14,-22 28,0" fill="none" stroke="#f59e0b" strokeWidth="3" />
+        {[[190,128],[200,134],[212,130],[204,122]].map(([x,y],i)=>(
+          <circle key={i} cx={x} cy={y} r="3.6" fill="#f59e0b" />
+        ))}
+      </g>
+
+      {/* щілина */}
+      <line x1="30" y1="150" x2="390" y2="150" stroke="#cbd5e1" strokeWidth="1.5" strokeDasharray="5 5" />
+      <text x="386" y="146" textAnchor="end" className="fill-slate-400" style={{ fontSize: 10 }}>синаптична щілина ≈ 20 нм</text>
+
+      {/* медіатор у щілині */}
+      <g opacity={at("bind","clear")}>
+        {[[150,140],[186,144],[222,138],[258,144],[120,142]].map(([x,y],i)=>(
+          <circle key={i} cx={x} cy={y} r="4" fill="#f59e0b" />
+        ))}
+      </g>
+
+      {/* постсинаптична мембрана */}
+      <path d="M30,196 Q210,168 390,196 L390,254 L30,254 Z" fill="#f1f5f9" stroke="#94a3b8" strokeWidth="2.5" />
+      <text x="210" y="240" textAnchor="middle" className="fill-slate-400" style={{ fontSize: 11, fontWeight: 700 }}>наступний нейрон</text>
+
+      {/* рецептори */}
+      {[120,168,216,264].map((x,i)=>(
+        <rect key={i} x={x-11} y={181 + Math.round(Math.abs(x-210)/16)} width="22" height="13" rx="5"
+          fill={k==="bind" ? "#14b8a6" : "#cbd5e1"} stroke="#94a3b8" strokeWidth="1.5" opacity={at("bind","clear")} />
+      ))}
+
+      {/* прибирання: насос назад + фермент */}
+      <g opacity={at("clear")}>
+        <rect x="316" y="104" width="20" height="22" rx="6" fill="#0d9488" stroke="#0f766e" strokeWidth="1.5" />
+        <path d="M300,140 L322,126" stroke="#0d9488" strokeWidth="2.5" markerEnd="url(#chem-arrow)" />
+        <text x="340" y="120" className="fill-teal-700" style={{ fontSize: 9, fontWeight: 700 }}>насос</text>
+        <circle cx="286" cy="150" r="9" fill="none" stroke="#e11d48" strokeWidth="2" />
+        <text x="298" y="166" className="fill-rose-600" style={{ fontSize: 9, fontWeight: 700 }}>фермент</text>
+      </g>
+    </svg>
+  );
+}
+
 function NeurotransmitterView() {
   const [sel, setSel] = useState("dopamine");
+  const [step, setStep] = useState(0);
   const chem = NEURO_CHEM.find((c) => c.id === sel);
   const t = CHEM_TONE[chem.tone];
+  const s = SYNAPSE_STEPS[step];
   return (
+    <>
+    <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4">
+      <h2 className="text-sm font-extrabold text-slate-900">Як медіатор потрапляє в синаптичну щілину</h2>
+      <p className="mt-0.5 text-xs text-slate-400">Шість кроків одного циклу — тисни, щоб пройти по черзі</p>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {SYNAPSE_STEPS.map((x, i) => (
+          <button key={x.k} onClick={() => setStep(i)}
+            className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold transition ${i === step ? "bg-amber-400 text-amber-900" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            <span className={`grid h-4 w-4 place-items-center rounded-full text-[9px] ${i === step ? "bg-amber-900 text-amber-50" : "bg-slate-300 text-white"}`}>{i + 1}</span>
+            {x.n}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-5">
+        <SynapseCycle step={step} />
+        <div className="mt-3 lg:mt-0">
+          <div className="rounded-xl bg-amber-50 p-3">
+            <div className="text-sm font-bold text-amber-900">{step + 1}. {s.n}</div>
+            <p className="mt-1 text-sm leading-relaxed text-slate-700">{s.t}</p>
+          </div>
+          <p className="mt-2 rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-600">{s.d}</p>
+          <div className="mt-2 flex gap-2">
+            <button onClick={() => setStep((v) => Math.max(0, v - 1))} disabled={step === 0}
+              className="flex-1 rounded-xl bg-slate-100 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-200 disabled:opacity-40">← Назад</button>
+            <button onClick={() => setStep((v) => Math.min(SYNAPSE_STEPS.length - 1, v + 1))} disabled={step === SYNAPSE_STEPS.length - 1}
+              className="flex-1 rounded-xl bg-teal-600 py-2 text-xs font-bold text-white transition hover:bg-teal-700 disabled:opacity-40">Далі →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-6">
       <div className="lg:sticky lg:top-20">
         <div className="rounded-2xl border border-slate-200 bg-white p-3">
@@ -5849,6 +5989,322 @@ function NeurotransmitterView() {
           Тут спрощено: медіатор сам собою не «добрий» і не «поганий» — усе залежить від того, на який рецептор він сяде.
           Той самий дофамін в одному шляху керує рухом, а в іншому — мотивацією.
         </p>
+      </div>
+    </div>
+    </>
+  );
+}
+
+/* ---------- Медицина → «Бар'єр мозку»: ГЕБ і як сировина доходить до нейрона ---------- */
+const BBB_ITEMS = [
+  { id: "o2", name: "Кисень і CO₂", how: "free",
+    why: "Дрібні й розчинні в жирах — просто просочуються крізь мембрани клітин, без жодних дверей." },
+  { id: "alcohol", name: "Алкоголь", how: "free",
+    why: "Теж проходить наскрізь. Саме тому діє на мозок за хвилини — бар'єр для нього не перешкода." },
+  { id: "caffeine", name: "Кофеїн", how: "free",
+    why: "Проходить вільно й блокує в мозку рецептори аденозину — речовини, що накопичується за день і схиляє до сну." },
+  { id: "opioid", name: "Морфін і опіоїди", how: "free",
+    why: "Жиророзчинні, тому дістаються мозку й діють на його рецептори. Героїн проходить іще швидше за морфін — тим і небезпечніший." },
+  { id: "glucose", name: "Глюкоза", how: "carrier",
+    why: "Завелика, щоб просочитись, тож її переносить білок GLUT1. Мозок майже не має запасів і живиться нею постійно — звідси і 20 % усієї глюкози тіла." },
+  { id: "tyr", name: "Тирозин і триптофан", how: "carrier",
+    why: "Амінокислоти-сировина заходять через переносник LAT1. З тирозину нейрон зробить дофамін, із триптофану — серотонін. Це і є відповідь, як медіатор з'являється в мозку: заходить не він, а матеріал для нього." },
+  { id: "ldopa", name: "Леводопа (L-ДОПА)", how: "carrier",
+    why: "Ключовий приклад. Сам дофамін у мозок не потрапляє — а леводопа має ту саму «перепустку» LAT1, проходить і вже всередині перетворюється на дофамін. На цьому й тримається лікування Паркінсона." },
+  { id: "dopamine", name: "Дофамін і серотонін", how: "blocked",
+    why: "Заряджені й без власного переносника — бар'єр їх не пускає. Тому з'їдений серотонін до мозку не дійде, хоч би скільки його було в таблетці." },
+  { id: "abx", name: "Більшість антибіотиків", how: "blocked",
+    why: "Не проходять, тому запалення мозкових оболон лікують окремими препаратами й великими дозами. Парадокс: при менінгіті бар'єр «протікає» — і ліки заходять краще, ніж у здоровому мозку." },
+  { id: "ab", name: "Антитіла й великі білки", how: "blocked",
+    why: "Завеликі. Через це мозок значною мірою живе окремо від імунної системи — і через це ж важко доставляти туди сучасні білкові ліки." },
+];
+
+const BBB_HOW = {
+  free:    { label: "Проходить вільно", tone: "#059669", soft: "bg-emerald-50 border-emerald-300", text: "text-emerald-900" },
+  carrier: { label: "Через переносник", tone: "#0284c7", soft: "bg-sky-50 border-sky-300",         text: "text-sky-900" },
+  blocked: { label: "Не проходить",     tone: "#e11d48", soft: "bg-rose-50 border-rose-300",       text: "text-rose-900" },
+};
+
+function BBBDiagram({ item }) {
+  const h = BBB_HOW[item.how];
+  const stop = item.how === "blocked";
+  return (
+    <svg viewBox="0 0 420 250" className="w-full" role="img" aria-label={`Бар'єр: ${item.name}`}>
+      {/* кров */}
+      <rect x="0" y="0" width="420" height="72" fill="#fee2e2" />
+      <text x="14" y="24" className="fill-rose-700" style={{ fontSize: 12, fontWeight: 800 }}>КРОВ</text>
+      {[40,90,140,190,240,290,340,390].map((x,i)=>(
+        <circle key={i} cx={x} cy={48} r="9" fill="#fca5a5" />
+      ))}
+      {/* ендотелій зі щільними контактами */}
+      <rect x="0" y="72" width="420" height="46" fill="#e2e8f0" stroke="#94a3b8" strokeWidth="2" />
+      {[0,140,280,420].map((x,i)=>(
+        <g key={i}>
+          <line x1={x} y1="72" x2={x} y2="118" stroke="#0f172a" strokeWidth="5" />
+        </g>
+      ))}
+      <text x="14" y="98" className="fill-slate-600" style={{ fontSize: 11, fontWeight: 800 }}>ендотелій — щільні контакти</text>
+      {/* переносник */}
+      {item.how === "carrier" && (
+        <g>
+          <rect x="196" y="70" width="28" height="50" rx="9" fill="#0284c7" stroke="#075985" strokeWidth="2" />
+          <text x="210" y="134" textAnchor="middle" className="fill-sky-700" style={{ fontSize: 10, fontWeight: 800 }}>переносник</text>
+        </g>
+      )}
+      {/* ніжки астроцита */}
+      <path d="M0,126 Q60,150 120,126 Q180,150 240,126 Q300,150 360,126 Q400,140 420,126 L420,148 L0,148 Z" fill="#ccfbf1" stroke="#5eead4" strokeWidth="2" />
+      <text x="14" y="166" className="fill-teal-700" style={{ fontSize: 11, fontWeight: 800 }}>ніжки астроцитів</text>
+      {/* мозок */}
+      <rect x="0" y="176" width="420" height="74" fill="#f1f5f9" />
+      <text x="14" y="200" className="fill-slate-500" style={{ fontSize: 12, fontWeight: 800 }}>МОЗОК</text>
+      <circle cx="330" cy="216" r="20" fill="#cbd5e1" stroke="#94a3b8" strokeWidth="2" />
+      <text x="330" y="220" textAnchor="middle" className="fill-slate-600" style={{ fontSize: 9, fontWeight: 700 }}>нейрон</text>
+
+      {/* сама речовина */}
+      <g>
+        <circle cx="210" cy={stop ? 56 : 56} r="11" fill={h.tone} />
+        {!stop && <path d="M210,74 L210,196" stroke={h.tone} strokeWidth="3" strokeDasharray="7 6" markerEnd="url(#bbb-arrow)" />}
+        {stop && (
+          <g>
+            <line x1="188" y1="70" x2="232" y2="70" stroke="#e11d48" strokeWidth="4" />
+            <text x="240" y="62" className="fill-rose-600" style={{ fontSize: 11, fontWeight: 800 }}>стоп</text>
+          </g>
+        )}
+        {!stop && <circle cx="210" cy="206" r="9" fill={h.tone} opacity="0.55" />}
+      </g>
+      <defs>
+        <marker id="bbb-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill={h.tone} />
+        </marker>
+      </defs>
+    </svg>
+  );
+}
+
+function BBBView() {
+  const [sel, setSel] = useState("ldopa");
+  const item = BBB_ITEMS.find((x) => x.id === sel);
+  const h = BBB_HOW[item.how];
+  return (
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-6">
+      <div className="lg:sticky lg:top-20 space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+          <BBBDiagram item={item} />
+          <p className="mt-1 px-1 text-center text-[11px] leading-snug text-slate-400">
+            Стінка мозкової судини в розрізі. Згори кров, знизу тканина мозку
+          </p>
+        </div>
+        <div className={`rounded-2xl border p-4 ${h.soft}`}>
+          <div className="flex items-center gap-2">
+            <span className="h-3.5 w-3.5 shrink-0 rounded-full" style={{ background: h.tone }} />
+            <span className={`text-base font-extrabold ${h.text}`}>{item.name}</span>
+            <span className="ml-auto rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-bold text-slate-500">{h.label}</span>
+          </div>
+          <p className="mt-2 text-sm leading-relaxed text-slate-700">{item.why}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-3 lg:mt-0">
+        <div className="rounded-2xl bg-white p-3">
+          <div className="text-sm font-extrabold text-slate-900">Що це взагалі таке</div>
+          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+            У решті тіла судини «дірчасті» — речовини виходять із крові в тканину майже вільно.
+            У мозку клітини стінки судин зшиті <span className="font-semibold text-slate-800">щільними контактами</span> без щілин,
+            а зовні їх обіймають ніжки астроцитів. Виходить фільтр, який пропускає одиниці.
+            Мозок за це платить: приблизно <span className="font-semibold text-slate-800">98 % ліків</span> до нього не доходять.
+          </p>
+        </div>
+        <div className="rounded-2xl bg-teal-50 p-3">
+          <div className="text-sm font-extrabold text-teal-900">Як медіатор опиняється в нейроні</div>
+          <ol className="mt-1 space-y-1 text-sm leading-relaxed text-teal-900">
+            <li><span className="font-semibold">1.</span> Крізь бар'єр заходить не медіатор, а <span className="font-semibold">сировина</span> — тирозин або триптофан, через переносник LAT1.</li>
+            <li><span className="font-semibold">2.</span> Нейрон затягує її всередину власним переносником на своїй мембрані.</li>
+            <li><span className="font-semibold">3.</span> Ферменти всередині перетворюють її на дофамін, норадреналін чи серотонін.</li>
+            <li><span className="font-semibold">4.</span> Готовий медіатор насос заганяє у везикули — і далі йде цикл із вкладки «Медіатори».</li>
+          </ol>
+        </div>
+        <div className="space-y-1.5">
+          {BBB_ITEMS.map((x) => {
+            const xh = BBB_HOW[x.how];
+            return (
+              <button key={x.id} onClick={() => setSel(x.id)}
+                className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition ${sel === x.id ? xh.soft : "border-transparent bg-white hover:border-slate-200 hover:bg-slate-50"}`}>
+                <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: xh.tone }} />
+                <span className="min-w-0">
+                  <span className={`block text-sm font-semibold ${sel === x.id ? xh.text : "text-slate-800"}`}>{x.name}</span>
+                  <span className="block text-[11px] text-slate-400">{xh.label}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="px-1 text-[11px] leading-relaxed text-slate-400">
+          Бар'єр є не скрізь: у кількох ділянках його навмисно немає. Наприклад, у зоні стовбура, що запускає блювання, —
+          щоб мозок міг «нюхати» кров і вчасно виявити отруту.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Медицина → «Вітаміни»: дефіцит / норма / надлишок ---------- */
+const VITAMINS = [
+  { id: "a", letter: "A", name: "Ретинол", group: "fat",
+    does: "Сутінковий зір, шкіра й слизові, робота імунітету.",
+    food: "Печінка, яйця, молочні продукти; бета-каротин — морква, гарбуз, шпинат.",
+    low: "Спершу «куряча сліпота» — око не пристосовується до темряви. Далі сухість рогівки; у світі це головна причина дитячої сліпоти, якій можна було запобігти. Ще суха шкіра й часті інфекції.",
+    high: "Накопичується в печінці. Разова величезна доза дає нудоту й головний біль, тривала — ураження печінки й біль у кістках. Під час вагітності надлишок ретиноїдів шкодить плоду.",
+    note: "Бета-каротин з овочів так не отруює: тіло перетворює його на вітамін A лише в міру потреби. Максимум — шкіра пожовтіє." },
+  { id: "d", letter: "D", name: "Кальциферол", group: "fat",
+    does: "Дає кишечнику всмоктувати кальцій і фосфор — без нього кальцій з їжі майже не засвоюється. Впливає й на імунітет.",
+    food: "Синтезується в шкірі під сонцем. З їжі — жирна риба, яєчний жовток, печінка тріски.",
+    low: "У дітей — рахіт: кістки м'якшають і викривляються. У дорослих — остеомаляція й остеопороз, м'язова слабкість, ниючий біль у кістках. Найпоширеніший дефіцит у наших широтах узимку.",
+    high: "Кальцію в крові стає забагато: нудота, спрага, часте сечовипускання, камені в нирках, з часом — кальцій відкладається в судинах.",
+    note: "Від сонця передозувати неможливо — шкіра сама припиняє синтез. Отруєння буває лише від добавок." },
+  { id: "e", letter: "E", name: "Токоферол", group: "fat",
+    does: "Антиоксидант: захищає оболонки клітин від окиснення.",
+    food: "Рослинні олії, горіхи, насіння, авокадо.",
+    low: "Трапляється рідко — здебільшого коли порушене всмоктування жирів. Проявляється розладами координації, слабкістю м'язів і руйнуванням еритроцитів.",
+    high: "Погіршує згортання крові — з'являються синці й кровоточивість, особливо разом із розріджувальними ліками.",
+    note: "Той випадок, коли «більше» точно не означає «краще»: користь високих доз у добавках не підтвердилась." },
+  { id: "k", letter: "K", name: "Філохінон", group: "fat",
+    does: "Без нього печінка не може зробити чинники згортання крові. Потрібен і кісткам.",
+    food: "Зелені листові овочі — шпинат, капуста, броколі. Частину виробляє мікрофлора кишечника.",
+    low: "Кров погано зсідається: синці від дрібних ударів, кровоточивість. У новонароджених буває геморагічна хвороба — тому вітамін K вводять одразу після народження.",
+    high: "Природний вітамін K практично не токсичний.",
+    note: "Варфарин працює саме проти вітаміну K. Тому на ньому важливо не стрибати з кількістю зелені, а тримати її сталою." },
+  { id: "c", letter: "C", name: "Аскорбінова кислота", group: "water",
+    does: "Потрібен, щоб побудувати колаген — це каркас шкіри, судин, ясен і зв'язок. Допомагає засвоювати залізо з рослинної їжі.",
+    food: "Перець, шипшина, смородина, цитрусові, квашена капуста, зелень.",
+    low: "Цинга: кровоточиві ясна, розхитані зуби, синці, рани не загоюються, слабкість. Колаген просто нема з чого будувати.",
+    high: "Надлишок виводиться нирками. Дуже великі дози дають розлад травлення й підвищують ризик оксалатних каменів.",
+    note: "Людина — один з небагатьох ссавців, що не вміє синтезувати вітамін C сама. Тому й хворіли на цингу цілі екіпажі." },
+  { id: "b1", letter: "B₁", name: "Тіамін", group: "water",
+    does: "Ключ до того, щоб клітина дістала енергію з вуглеводів. Найбільше потрібен нервам і серцю.",
+    food: "Свинина, бобові, цільні злаки, горіхи.",
+    low: "Бері-бері: слабкість, оніміння в ногах, задишка, набряки. У людей із залежністю від алкоголю — енцефалопатія Верніке: сплутаність і порушення рухів очей, стан невідкладний.",
+    high: "Надлишок виводиться, токсичність не описана.",
+    note: "Що більше в раціоні простих вуглеводів і алкоголю, то більше тіаміну витрачається." },
+  { id: "b2", letter: "B₂", name: "Рибофлавін", group: "water",
+    does: "Учасник усіх реакцій отримання енергії; підтримує шкіру й слизові.",
+    food: "Молочне, яйця, печінка, мигдаль, гриби.",
+    low: "Тріщини й заїди в кутиках рота, запалений язик, лущення навколо носа, різь в очах на світло.",
+    high: "Виводиться нирками; сеча стає яскраво-жовтою — це нешкідливо.",
+    note: "Руйнується на світлі — тому молоко й тримають у непрозорій упаковці." },
+  { id: "b3", letter: "B₃", name: "Ніацин", group: "water",
+    does: "Основа коферментів, без яких не працює обмін речовин у кожній клітині.",
+    food: "М'ясо, риба, арахіс, гриби. Частково тіло робить його з триптофану.",
+    low: "Пелагра — «три Д»: дерматит на відкритих сонцю ділянках, діарея, деменція. Без лікування четверте Д — смерть.",
+    high: "У лікувальних дозах дає різке почервоніння обличчя й шиї з жаром; тривалі високі дози шкодять печінці.",
+    note: "Пелагра масово траплялась там, де харчувались майже самою кукурудзою: ніацин у ній є, але в незасвоюваній формі." },
+  { id: "b6", letter: "B₆", name: "Піридоксин", group: "water",
+    does: "Обмін амінокислот і синтез нейромедіаторів — серотоніну, дофаміну, ГАМК.",
+    food: "Риба, м'ясо, картопля, банани, нут.",
+    low: "Анемія, дратівливість, дерматит навколо очей і рота, у важких випадках — судоми.",
+    high: "Єдиний з групи B, що справді токсичний: тривалі високі дози ушкоджують чутливі нерви — оніміння й хитка хода. Минає повільно й не завжди повністю.",
+    note: "Саме тому в добавках B6 варто дивитись на дозу, а не брати «побільше»." },
+  { id: "b9", letter: "B₉", name: "Фолат", group: "water",
+    does: "Потрібен там, де клітини швидко діляться: кровотворення й ріст плоду.",
+    food: "Листова зелень (від folium — «листок»), бобові, печінка, буряк.",
+    low: "Мегалобластна анемія: еритроцити великі й незрілі. У вагітних дефіцит на ранніх тижнях дає вади нервової трубки в дитини.",
+    high: "Сам собою малотоксичний, але велика доза фолату маскує дефіцит B12: анемію він виправить, а ушкодження нервів триватиме непоміченим.",
+    note: "Нервова трубка закривається до 4-го тижня — часто раніше, ніж жінка дізнається про вагітність. Тому фолат радять заздалегідь." },
+  { id: "b12", letter: "B₁₂", name: "Кобаламін", group: "water",
+    does: "Кровотворення й побудова мієліну — оболонки нервових волокон.",
+    food: "Лише тваринні продукти: м'ясо, риба, яйця, молочне. У рослинах його нема.",
+    low: "Мегалобластна анемія плюс неврологія: оніміння, поколювання, хитка хода, погіршення пам'яті. Нервові ушкодження можуть лишитись назавжди.",
+    high: "Не токсичний, надлишок виводиться.",
+    note: "Виняток серед водорозчинних: запасається в печінці на роки, тому дефіцит наростає повільно. Для засвоєння потрібен «внутрішній чинник» шлунка — без нього не допоможе навіть м'ясо." },
+];
+
+const VIT_STATE = {
+  low:  { label: "Дефіцит",  ring: "border-rose-300 bg-rose-50",     text: "text-rose-900",   pill: "bg-rose-500" },
+  ok:   { label: "Норма",    ring: "border-emerald-300 bg-emerald-50", text: "text-emerald-900", pill: "bg-emerald-500" },
+  high: { label: "Надлишок", ring: "border-amber-300 bg-amber-50",   text: "text-amber-900",  pill: "bg-amber-500" },
+};
+
+function VitaminView() {
+  const [sel, setSel] = useState("d");
+  const [state, setState] = useState("low");
+  const v = VITAMINS.find((x) => x.id === sel);
+  const st = VIT_STATE[state];
+  const body = state === "ok" ? v.does : state === "low" ? v.low : v.high;
+
+  return (
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start lg:gap-6">
+      <div className="lg:sticky lg:top-20 space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center gap-3">
+            <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl text-2xl font-black text-white ${v.group === "fat" ? "bg-amber-500" : "bg-sky-500"}`}>{v.letter}</span>
+            <div className="min-w-0">
+              <div className="text-base font-extrabold text-slate-900">Вітамін {v.letter}</div>
+              <div className="text-sm text-slate-500">{v.name}</div>
+            </div>
+            <span className={`ml-auto shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${v.group === "fat" ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>
+              {v.group === "fat" ? "жиророзчинний" : "водорозчинний"}
+            </span>
+          </div>
+
+          <div className="mt-3 flex rounded-full bg-slate-100 p-1">
+            {["low", "ok", "high"].map((k) => (
+              <button key={k} onClick={() => setState(k)}
+                className={`flex-1 rounded-full py-1.5 text-xs font-bold transition ${state === k ? `${VIT_STATE[k].pill} text-white` : "text-slate-500 hover:text-slate-700"}`}>
+                {VIT_STATE[k].label}
+              </button>
+            ))}
+          </div>
+
+          <div className={`mt-3 rounded-xl border p-3 ${st.ring}`}>
+            <div className={`mb-1 text-xs font-bold uppercase tracking-wide ${st.text}`}>
+              {state === "ok" ? "Що робить у нормі" : state === "low" ? "Чого бракує при дефіциті" : "Що буває при надлишку"}
+            </div>
+            <p className="text-sm leading-relaxed text-slate-700">{body}</p>
+          </div>
+
+          <div className="mt-2 rounded-xl bg-slate-50 p-3">
+            <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Де брати</div>
+            <p className="mt-0.5 text-sm leading-relaxed text-slate-600">{v.food}</p>
+          </div>
+          <p className="mt-2 rounded-xl bg-teal-50 p-3 text-sm leading-relaxed text-teal-900">
+            <span className="font-semibold">Варто знати: </span>{v.note}
+          </p>
+        </div>
+
+        <p className="rounded-2xl bg-slate-100 p-3 text-[11px] leading-relaxed text-slate-500">
+          Це довідка для навчання, а не підстава призначати собі добавки. Дефіцит підтверджують аналізом,
+          а не за списком симптомів — вони неспецифічні й збігаються в різних станів.
+        </p>
+      </div>
+
+      <div className="mt-4 space-y-3 lg:mt-0">
+        <div className="rounded-2xl bg-white p-3">
+          <div className="text-sm font-extrabold text-slate-900">Головний поділ</div>
+          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+            <span className="font-semibold text-amber-700">Жиророзчинні (A, D, E, K)</span> запасаються в печінці й жировій тканині —
+            їх можна накопичити про запас, але ними ж можна й отруїтися.
+            <span className="font-semibold text-sky-700"> Водорозчинні (C і група B)</span> надовго не затримуються:
+            надлишок виходить із сечею, тож потрібні регулярно. Виняток — B₁₂, він теж запасається.
+          </p>
+        </div>
+        {["fat", "water"].map((g) => (
+          <div key={g}>
+            <div className={`mb-1.5 px-1 text-xs font-bold uppercase tracking-wide ${g === "fat" ? "text-amber-700" : "text-sky-700"}`}>
+              {g === "fat" ? "Жиророзчинні" : "Водорозчинні"}
+            </div>
+            <div className="space-y-1.5">
+              {VITAMINS.filter((x) => x.group === g).map((x) => (
+                <button key={x.id} onClick={() => setSel(x.id)}
+                  className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition ${sel === x.id ? "border-teal-400 bg-teal-50" : "border-transparent bg-white hover:border-slate-200 hover:bg-slate-50"}`}>
+                  <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-sm font-black text-white ${g === "fat" ? "bg-amber-500" : "bg-sky-500"}`}>{x.letter}</span>
+                  <span className="min-w-0">
+                    <span className={`block text-sm font-semibold ${sel === x.id ? "text-teal-900" : "text-slate-800"}`}>{x.name}</span>
+                    <span className="block truncate text-[11px] text-slate-400">{x.does.split(/[.;]/)[0]}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -6056,6 +6512,12 @@ function MedicineSection() {
           <button onClick={() => setTab("chem")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "chem" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             🧪 Медіатори
           </button>
+          <button onClick={() => setTab("bbb")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "bbb" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            🚧 Бар'єр мозку
+          </button>
+          <button onClick={() => setTab("vitamins")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "vitamins" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+            💊 Вітаміни
+          </button>
           <button onClick={() => setTab("locomotor")} className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-bold transition ${tab === "locomotor" ? "bg-teal-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
             🦿 Опорно-рухова
           </button>
@@ -6095,6 +6557,8 @@ function MedicineSection() {
         {tab === "heart" && <HeartView />}
         {tab === "brainworks" && <BrainWorksView />}
         {tab === "chem" && <NeurotransmitterView />}
+        {tab === "bbb" && <BBBView />}
+        {tab === "vitamins" && <VitaminView />}
         {tab === "locomotor" && <LocomotorView />}
         {tab === "sensory" && <SensoryView />}
         {tab === "circulatory" && <CirculatoryView />}
