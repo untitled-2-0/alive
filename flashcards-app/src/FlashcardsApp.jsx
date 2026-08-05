@@ -8120,9 +8120,9 @@ function ImportView({ decks, onImport, onCancel, onLoadLang, loadingLang }) {
           <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
             Французька, іспанська й польська зібрані з речень Tatoeba (ліцензія CC BY) — їх писали носії мов.
             Розподіл по темах автоматичний, тож окремі фрази можуть лежати не в тій колоді.
-            У польській частина пар зведена через англійську: вона має мітку «через англійську».
-            Такі картки варто перечитувати уважніше — англійська не має роду, тож у них він подекуди губиться
-            («zmieniłeś» до чоловіка може стати «змінилась»).
+            У польській зведені через англійську пари лежать в окремих колодах із приміткою «(через англ.)» —
+            їх можна вчити окремо або взагалі не чіпати. Англійська не має роду, тож у таких парах він подекуди
+            губиться («zmieniłeś» до чоловіка може стати «змінилась»).
           </p>
         </div>
       )}
@@ -19022,7 +19022,7 @@ const LANG_PACKS = [
   { id: "en", file: "/english-decks.json", group: "English",     emoji: "🇬🇧", color: "blue",   language: "en", label: "Англійська", note: "15 колод" },
   { id: "fr", file: "/french-decks.json",  group: "Французька",  emoji: "🇫🇷", color: "indigo", language: "fr", label: "Французька", note: "8 054 фрази" },
   { id: "es", file: "/spanish-decks.json", group: "Іспанська",   emoji: "🇪🇸", color: "amber",  language: "es", label: "Іспанська",  note: "7 026 фраз" },
-  { id: "pl", file: "/polish-decks.json",  group: "Польська",    emoji: "🇵🇱", color: "rose",   language: "pl", label: "Польська",   note: "7 700 фраз · 3 237 із них зведено через англійську" },
+  { id: "pl", file: "/polish-decks.json",  group: "Польська",    emoji: "🇵🇱", color: "rose",   language: "pl", label: "Польська",   note: "9 700 фраз · 15 колод прямих + 15 зведених через англійську" },
 ];
 
 const pathStepId = (slug, i) => `${slug}:${i}`;
